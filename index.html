@@ -2,44 +2,71 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Smart PKL HKTI 2</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart PKL SMK HKTI 2</title>
   <link rel="icon" href="https://i.ibb.co.com/fz5jDtBC/LOGO-SMK-HKTI-2.png" />
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      background-color: #eee;
-      overflow: hidden; /* Mencegah scroll ganda */
-    }
+    html, body { margin:0; padding:0; width:100%; height:100%; background:#eee; overflow:hidden;
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif }
+    .iframe-container { width:100%; height:100dvh; overflow:hidden }
+    iframe { display:block; width:100%; height:100%; border:none }
 
-    .iframe-container {
-      width: 100%;
-      height: 100dvh; /* Menggunakan dvh agar pas di mobile browser */
-      overflow: hidden;
-    }
-
-    iframe {
-      display: block;
-      width: 100%;
-      height: 100%;
-      border: none;
-    }
+    /* Panel bantuan — hanya muncul bila aplikasi tidak mengabari bahwa ia siap */
+    #gagal { position:fixed; inset:0; z-index:10; display:none; place-items:center;
+      background:#f7f9fc; padding:24px }
+    #gagal.tampil { display:grid }
+    .kotak { max-width:420px; background:#fff; border:1px solid #e1e3e4; border-radius:16px;
+      padding:26px 22px; box-shadow:0 10px 30px rgba(0,0,0,.08); text-align:center }
+    .kotak h1 { font-size:18px; margin:0 0 8px; color:#1a1c1e }
+    .kotak p { font-size:14px; line-height:1.6; color:#5a6266; margin:0 0 18px }
+    .kotak a { display:block; padding:13px 18px; border-radius:10px; background:#1c7293;
+      color:#fff; text-decoration:none; font-weight:600; font-size:15px; margin-bottom:10px }
+    .kotak a.alt { background:#fff; color:#1c7293; border:1.5px solid #bfc8ce }
   </style>
 </head>
 <body>
   <div class="iframe-container">
+    <!--
+      ?authuser=0 memaksa Google memakai akun pertama di perangkat.
+      Tanpa ini, ponsel yang masuk ke beberapa akun Google bisa dialihkan
+      ke konteks akun yang salah dan berakhir di halaman galat Drive.
+    -->
     <iframe
       id="app"
-      src="https://script.google.com/macros/s/AKfycbyn8TpS-p33LhpoZbhPBqf66ZXUbwTRssZYmHBfwK1jdYvjscVTz6QFgqj8l8Zpk986lQ/exec"
+      src="https://script.google.com/macros/s/AKfycbyn8TpS-p33LhpoZbhPBqf66ZXUbwTRssZYmHBfwK1jdYvjscVTz6QFgqj8l8Zpk986lQ/exec?authuser=0"
       scrolling="yes"
       allowfullscreen="true"
       webkitallowfullscreen="true"
       mozallowfullscreen="true"
+      referrerpolicy="no-referrer-when-downgrade"
       allow="fullscreen; camera; microphone; display-capture; geolocation;">
     </iframe>
   </div>
+
+  <div id="gagal">
+    <div class="kotak">
+      <h1>Aplikasi belum bisa ditampilkan</h1>
+      <p>Google memblokir tampilan di dalam halaman ini, biasanya karena perangkat
+         masuk ke beberapa akun Google sekaligus. Buka langsung lewat tombol di bawah.</p>
+      <a id="langsung" href="#" target="_blank" rel="noopener">Buka Aplikasi di Tab Baru</a>
+      <a class="alt" href="#" onclick="location.reload();return false">Coba Muat Ulang</a>
+    </div>
+  </div>
+
+<script>
+  var SRC = document.getElementById('app').src;
+  document.getElementById('langsung').href = SRC;
+
+  /* Aplikasi mengirim 'simpkl-siap' begitu berhasil dimuat.
+     Bila dalam 9 detik tidak ada kabar, yang tampil di iframe hampir pasti
+     halaman galat Google — bukan aplikasi. Tawarkan jalan keluar. */
+  var siap = false;
+  window.addEventListener('message', function (e) {
+    if (e.data === 'simpkl-siap') siap = true;
+  });
+  setTimeout(function () {
+    if (!siap) document.getElementById('gagal').classList.add('tampil');
+  }, 9000);
+</script>
 </body>
 </html>
