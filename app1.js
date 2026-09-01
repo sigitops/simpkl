@@ -177,12 +177,21 @@ const [kelas, ikon] = peta[status] || ['chip-neutral', 'info'];
 return `<span class="chip ${kelas}"><span class="mi">${ikon}</span>${esc(status)}</span>`;
 }
 function tglSingkat(iso) {
+// Logikanya sengaja sama persis dengan kembarannya di Kode.gs — teks
+// yyyy-mm-dd diurai apa adanya, bukan lewat new Date(), agar zona waktu tidak
+// menggeser harinya. Mengiris 10 huruf pertama membuat nilai bertimestamp
+// penuh (mis. 2026-01-05T00:00:00.000Z, yang kadang datang dari sel Sheets
+// bertipe tanggal) ikut terbaca, bukan tampil mentah.
 if (!iso) return '-';
-const d = new Date(String(iso) + 'T00:00:00');
-if (isNaN(d)) return esc(iso);
+const teks = String(iso).slice(0, 10);
+const bagian = teks.split('-');
+if (bagian.length !== 3) return esc(String(iso));
+const th = Number(bagian[0]), bl = Number(bagian[1]), tg = Number(bagian[2]);
+if (!th || !bl || !tg || bl < 1 || bl > 12) return esc(String(iso));
 const h = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
 const b = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-return `${h[d.getDay()]}, ${d.getDate()} ${b[d.getMonth()]} ${d.getFullYear()}`;
+const d = new Date(Date.UTC(th, bl - 1, tg));
+return `${h[d.getUTCDay()]}, ${tg} ${b[bl - 1]} ${th}`;
 }
 function jamTampil(nilai) {
 const s = String(nilai == null ? '' : nilai).trim();

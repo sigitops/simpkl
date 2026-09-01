@@ -1,7 +1,7 @@
 # SIM PKL — Panduan Teknis
 
 Sistem Informasi & Manajemen Presensi Siswa Praktik Kerja Lapangan
-SMK HKTI 2 Purwareja Klampok · versi 3.2
+SMK HKTI 2 Purwareja Klampok · versi 3.3
 
 Dokumen ini menjelaskan aplikasi sebagaimana adanya sekarang: cara kerjanya, cara
 memasangnya dari nol, dan cara mengembangkannya. Ditulis untuk orang yang akan
@@ -162,6 +162,21 @@ latar belakang. Sesi lokal sudah dibuang, jadi tidak ada yang bisa dilakukan
 seandainya permintaan itu gagal di jalan.
 
 Keduanya berlaku untuk ketiga peran — alurnya memang cuma satu.
+
+### Fungsi kembar server–klien
+
+Sebagian kecil HTML dirakit di server, bukan di browser — yang terbesar adalah
+isi modal detail siswa di `htmlDetailSiswa()`. Potongan itu memakai pembantu
+tampilan `esc()`, `tglSingkat()`, dan `chipStatus()`, sehingga **ketiganya harus
+ada di kedua sisi dengan keluaran yang sama persis**.
+
+Kelalaian ini sudah dua kali lolos ke lapangan — `tglSingkat is not defined`
+lalu `chipStatus is not defined` — karena Apps Script baru mengeluh saat fungsi
+itu benar-benar dipanggil, bukan saat kode disimpan. `uji/uji-kembaran.js`
+menjaganya dengan dua pemeriksaan: tidak ada fungsi khusus-klien yang dipanggil
+di dalam `${…}` pada `Kode.gs`, dan setiap fungsi kembar menghasilkan keluaran
+identik untuk 30 contoh masukan. Jalankan uji itu setiap kali menambah pembantu
+tampilan baru.
 
 ### Menambah fungsi server baru
 
