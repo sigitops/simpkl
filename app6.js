@@ -159,7 +159,7 @@ muatStatusTemplate();
 async function muatDaftarSertifikat() {
 const box = $('tabelSertifikat');
 if (!box) return;
-box.innerHTML = '<div class="skeleton" style="height:280px"></div>';
+box.innerHTML = memuatInline('Mengambil daftar sertifikat…');
 try {
 const res = await panggilCepat('getDaftarSertifikat', AppState.sessionToken);
 if (!res.success) { box.innerHTML = emptyState('block', 'Akses ditolak', res.message); return; }
@@ -303,7 +303,7 @@ if (res.success) muatDaftarPengumuman();
 } catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
 }
 async function bukaPengumumanCepat() {
-bukaModal('Pengumuman', '<div class="skeleton" style="height:160px"></div>', []);
+bukaModal('Pengumuman', memuatInline('Mengambil pengumuman…'), []);
 try {
 const res = await panggil('getPengumuman', AppState.sessionToken);
 $('modalBody').innerHTML = (res.success && res.data.length)
@@ -710,4 +710,4 @@ if (res.success) { batalkanPaketData(); periksaPenempatan(); }
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '3.0';
+window.__SIMPKL_EOF = '3.2';

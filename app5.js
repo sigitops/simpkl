@@ -154,7 +154,7 @@ async function muatTabelMaster() {
 const entitas = entitasAktif();
 const box = $('tabelMaster');
 if (!entitas || !box) return;
-box.innerHTML = '<div class="skeleton" style="height:280px"></div>';
+box.innerHTML = memuatInline('Mengambil data…');
 try {
 const res = await panggilCepat('getMasterData', AppState.sessionToken, entitas);
 if (!res.success) { box.innerHTML = emptyState('block', 'Akses ditolak', res.message); return; }

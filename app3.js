@@ -26,7 +26,7 @@ async function muatRiwayatPresensi() {
 const filter = ambilFilterAktif();
 if (!filter) return;
 const list = $('listRiwayatPresensi');
-if (list) list.innerHTML = '<div class="skeleton" style="height:200px"></div>';
+if (list) list.innerHTML = memuatInline('Mengambil riwayat presensi…');
 try {
 const res = await panggilCepat('getRiwayatPresensi', AppState.sessionToken, filter);
 if (!res.success) { toast(res.message, 'error'); return; }
@@ -174,7 +174,7 @@ async function muatRiwayatJurnal() {
 const filter = ambilFilterAktif();
 if (!filter) return;
 const list = $('listJurnal');
-if (list) list.innerHTML = '<div class="skeleton" style="height:220px"></div>';
+if (list) list.innerHTML = memuatInline('Mengambil jurnal…');
 try {
 const res = await panggil('getRiwayatJurnal', AppState.sessionToken, filter);
 if (!res.success) { toast(res.message, 'error'); return; }
@@ -284,7 +284,7 @@ muatRiwayatJurnal();
 }
 async function muatTempatPKL() {
 const list = $('listTempatPKL');
-if (list) list.innerHTML = '<div class="skeleton" style="height:240px"></div>';
+if (list) list.innerHTML = memuatInline('Mengambil daftar tempat PKL…');
 try {
 const res = await panggilCepat('getDaftarTempatPKL', AppState.sessionToken, AppState.posisi || null);
 if (!res.success) { toast(res.message, 'error'); return; }

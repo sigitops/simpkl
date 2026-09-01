@@ -120,9 +120,16 @@
       <span class="mi">search</span>
       <input type="search" id="cmdkInput" class="cmdk-input" autocomplete="off"
              placeholder="Cari siswa, guru, tempat PKL, atau halaman…" aria-label="Kata kunci pencarian">
+      <span class="muat-cincin cmdk-sibuk" id="cmdkSibuk" hidden aria-hidden="true"></span>
       <kbd class="kbd">Esc</kbd>
     </div>
-    <div class="cmdk-results" id="cmdkResults"></div>
+    <div class="cmdk-results" id="cmdkResults" role="listbox" aria-label="Hasil pencarian"></div>
+    <div class="cmdk-kaki">
+      <span class="cmdk-petunjuk"><kbd class="kbd">&uarr;</kbd><kbd class="kbd">&darr;</kbd> pilih</span>
+      <span class="cmdk-petunjuk"><kbd class="kbd">&crarr;</kbd> buka</span>
+      <span class="cmdk-petunjuk"><kbd class="kbd">Esc</kbd> tutup</span>
+      <span class="cmdk-jumlah" id="cmdkJumlah"></span>
+    </div>
   </div>
 </div>
 <div id="modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modalTitle">

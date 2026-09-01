@@ -137,7 +137,7 @@ plugins: { legend: { position: 'bottom', labels: { color: w.teks, usePointStyle:
 async function muatTabelMonitoring() {
 const box = $('tabelMonitoring');
 if (!box) return;
-box.innerHTML = '<div class="skeleton" style="height:280px"></div>';
+box.innerHTML = memuatInline('Mengambil data siswa…');
 try {
 const res = await panggilCepat('getDaftarPenempatan', AppState.sessionToken);
 if (!res.success) { box.innerHTML = emptyState('block', 'Akses ditolak', res.message); return; }
@@ -321,7 +321,7 @@ $('tabelRekapJurnal').innerHTML = emptyState('error', 'Gagal memuat rekap', err.
 }
 }
 async function bukaJurnalSiswa(siswaId) {
-bukaModal('Jurnal Siswa', '<div class="skeleton" style="height:220px"></div>', []);
+bukaModal('Jurnal Siswa', memuatInline('Mengambil jurnal siswa…'), []);
 try {
 const res = await panggil('getJurnalSiswa', AppState.sessionToken, siswaId);
 if (!res.success) { $('modalBody').innerHTML = emptyState('block', 'Akses ditolak', res.message); return; }
@@ -493,7 +493,7 @@ if (res.success) muatRekapLaporan();
 async function muatDaftarPenilaian() {
 const box = $('tabelPenilaian');
 if (!box) return;
-box.innerHTML = '<div class="skeleton" style="height:280px"></div>';
+box.innerHTML = memuatInline('Mengambil rekap laporan…');
 try {
 const res = await panggilCepat('getDaftarPenilaian', AppState.sessionToken);
 if (!res.success) { box.innerHTML = emptyState('block', 'Akses ditolak', res.message); return; }
@@ -627,7 +627,7 @@ muatDaftarPenilaian();
 } catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
 }
 async function bukaKelolaKriteria() {
-bukaModal('Kriteria & Bobot Penilaian', '<div class="skeleton" style="height:220px"></div>',
+bukaModal('Kriteria & Bobot Penilaian', memuatInline('Mengambil kriteria…'),
 [{ label: 'Tutup', kelas: 'btn-outline', aksi: () => { tutupModal(); muatDaftarPenilaian(); } },
 { label: '<span class="mi">add</span> Tambah Kriteria', kelas: 'btn-primary', aksi: () => bukaFormKriteria() }]);
 renderDaftarKriteria();

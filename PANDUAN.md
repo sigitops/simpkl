@@ -1,7 +1,7 @@
 # SIM PKL — Panduan Teknis
 
 Sistem Informasi & Manajemen Presensi Siswa Praktik Kerja Lapangan
-SMK HKTI 2 Purwareja Klampok · versi 3.1
+SMK HKTI 2 Purwareja Klampok · versi 3.2
 
 Dokumen ini menjelaskan aplikasi sebagaimana adanya sekarang: cara kerjanya, cara
 memasangnya dari nol, dan cara mengembangkannya. Ditulis untuk orang yang akan
@@ -197,6 +197,7 @@ Empat lapis, dari yang paling dekat ke pengguna:
 | **Kerangka semua halaman** | `semuaHalamanHtml()` mengirim HTML seluruh menu sekali saat login. Perpindahan menu jadi operasi DOM murni — nol perjalanan server |
 | **Paket data awal** | `paketDataAwal()` menarik data seluruh halaman di latar belakang setelah aplikasi hidup |
 | **Cache berkunci versi** | `dataAwalHalaman()` menyimpan hasil per halaman per akun. Kuncinya memuat `versiData()` yang naik setiap ada penulisan, jadi cache lama otomatis tak terbaca — tanpa risiko data basi |
+| **Pramuat saat singgah** | Kursor yang berhenti 170 ms di sebuah menu memicu pengambilan data halaman itu, jadi saat diklik datanya sudah ada. Dulu berhenti sia-sia karena kerangka HTML memang sudah terkirim; kini yang diperiksa adalah kesiapan datanya |
 | **Singgahan klien** | `SinggahData` di `app1.js` menggambar halaman yang pernah dibuka seketika dari data tersimpan, lalu memeriksa server diam-diam dan menggambar ulang hanya bila isinya berubah. `batalkanPaketData()` membuangnya setiap kali pengguna mengubah data |
 | **Memo per eksekusi** | `MEMO_SHEET` membuat satu sheet hanya dibaca sekali per permintaan, betapa pun sering disentuh |
 
@@ -525,6 +526,13 @@ saat diubah, ukur ulang — jangan hanya dilihat.
 > CSS yang sah: browser membuang seluruh deklarasinya tanpa pesan galat apa pun.
 > Pola ini pernah membuat padding topbar, bilah navigasi bawah, laci, dan kaki
 > modal tidak pernah berlaku sama sekali. Tulis `calc(8px + env(...))`.
+
+**Pemuat data.** `memuatInline()` di klien dan `muat()` di server menghasilkan
+markup yang sama: cincin berputar dengan keterangan di bawahnya. Kemunculannya
+ditunda 180 ms lewat CSS — halaman yang datanya sudah tersinggah tidak pernah
+sempat menampilkannya, jadi tidak ada kedipan yang justru terasa lambat. Kotak
+kecil seperti kartu KPI tetap memakai kerangka abu-abu `sk()` karena bentuknya
+sudah menyerupai isi yang akan datang.
 
 **Ubah tampilan.** Semua warna dan jarak berupa variabel CSS di puncak
 `app.css`, terpisah untuk tema terang dan gelap.

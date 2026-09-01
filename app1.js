@@ -143,9 +143,12 @@ $('modalPreview').hidden = true;
 $('previewBody').innerHTML = '';
 document.body.style.overflow = '';
 }
-function memuatInline(pesan) {
-return `<div class="muat-inline"><span class="muat-spin"></span>
-<span>${esc(pesan || 'Memuat data…')}</span></div>`;
+function memuatInline(pesan, kecil) {
+// Kemunculannya ditunda 180 ms lewat CSS. Bila data datang dari singgahan,
+// pemuat ini tidak pernah sempat terlihat — tidak ada kedipan.
+return `<div class="muat-inline${kecil ? ' muat-inline-kecil' : ''}" role="status" aria-live="polite">
+<span class="muat-cincin" aria-hidden="true"></span>
+<p class="muat-teks">${esc(pesan || 'Mengambil data…')}</p></div>`;
 }
 function emptyState(ikon, judul, deskripsi, tombolHtml) {
 return `<div class="empty">
@@ -862,6 +865,8 @@ const html = AppState.htmlHalaman && AppState.htmlHalaman[halaman];
 if (html && !opsi.paksaMuatUlang) {
 AppState.dataAwal = (AppState.paketData && AppState.paketData[halaman]) || null;
 if (opsi.dataSegar) AppState.dataAwal = null;
+AppState.dataSiap = AppState.dataSiap || {};
+AppState.dataSiap[halaman] = true;
 wadah.innerHTML = html;
 wadah.classList.remove('halaman-masuk');
 void wadah.offsetWidth;
@@ -869,9 +874,7 @@ wadah.classList.add('halaman-masuk');
 selesaikanNavigasi(halaman);
 return;
 }
-wadah.innerHTML = `<div class="skeleton" style="height:56px"></div>
-<div class="skeleton" style="height:180px"></div>
-${memuatInline('Menyiapkan halaman…')}`;
+wadah.innerHTML = memuatInline('Menyiapkan halaman…');
 try {
 const res = await panggil('getPageContent', halaman, { sessionToken: AppState.sessionToken });
 if (!res.success) {
@@ -905,6 +908,7 @@ return false;
 function batalkanPaketData() {
 AppState.paketData = null;
 AppState.dataAwal = null;
+AppState.dataSiap = {};
 SinggahData.bersihkan();
 }
 function muatHalamanUlang() {
@@ -965,10 +969,24 @@ if (btn) btn.setAttribute('aria-expanded', 'false');
 document.body.style.overflow = '';
 }
 function kembaliKeBeranda() { navigateTo('beranda'); }
+let PRAMUAT_TIMER = null;
 function pramuatHalaman(halaman) {
+// Ditunda sebentar supaya kursor yang hanya menyapu daftar menu tidak
+// memicu belasan permintaan sekaligus.
+clearTimeout(PRAMUAT_TIMER);
+if (!halaman || !AppState.sessionToken) return;
+PRAMUAT_TIMER = setTimeout(function () { jalankanPramuat(halaman); }, 170);
+}
+function jalankanPramuat(halaman) {
 if (!halaman || !AppState.sessionToken) return;
 if (!AppState.htmlHalaman) AppState.htmlHalaman = {};
-if (AppState.htmlHalaman[halaman]) return;
+AppState.paketData = AppState.paketData || {};
+AppState.dataSiap = AppState.dataSiap || {};
+// Seluruh kerangka halaman memang sudah dikirim saat masuk, jadi yang masih
+// berharga untuk diambil lebih dulu adalah datanya. Berhenti hanya bila
+// keduanya benar-benar sudah siap.
+if (AppState.htmlHalaman[halaman] &&
+(AppState.paketData[halaman] || AppState.dataSiap[halaman])) return;
 AppState.sedangPramuat = AppState.sedangPramuat || {};
 if (AppState.sedangPramuat[halaman]) return;
 AppState.sedangPramuat[halaman] = true;
@@ -1027,6 +1045,15 @@ const btn = $('avatarBtn');
 if (btn) btn.setAttribute('aria-expanded', 'false');
 }
 }
+function setelSibukCmdk(sibuk) {
+const el = $('cmdkSibuk');
+if (el) el.hidden = !sibuk;
+}
+function setelJumlahCmdk(n, q) {
+const el = $('cmdkJumlah');
+if (!el) return;
+el.textContent = (q && n) ? n + ' hasil' : '';
+}
 function bukaPencarianGlobal() {
 if (!AppState.sessionToken) return;
 $('cmdk').hidden = false;
@@ -1035,10 +1062,13 @@ const inp = $('cmdkInput');
 inp.value = '';
 AppState.cmdkIndex = -1;
 AppState.cmdkHasil = [];
-renderHasilPencarian([], '');
+setelSibukCmdk(false);
+renderHasilPencarian(halamanTerjangkau().slice(0, 6), '');
 setTimeout(() => inp.focus(), 30);
 }
 function tutupPencarianGlobal() {
+clearTimeout(AppState.cmdkTimer);
+setelSibukCmdk(false);
 $('cmdk').hidden = true;
 document.body.style.overflow = '';
 }
@@ -1053,26 +1083,35 @@ const q = String(kata || '').trim();
 const halaman = q
 ? halamanTerjangkau().filter(h => h.judul.toLowerCase().indexOf(q.toLowerCase()) >= 0)
 : halamanTerjangkau().slice(0, 6);
-if (q.length < 2) { renderHasilPencarian(halaman, q); return; }
+if (q.length < 2) { setelSibukCmdk(false); renderHasilPencarian(halaman, q); return; }
+setelSibukCmdk(true);
 renderHasilPencarian(halaman, q, true);
 AppState.cmdkTimer = setTimeout(async () => {
 try {
-const res = await panggil('pencarianGlobal', AppState.sessionToken, q);
-const data = (res.success && Array.isArray(res.data)) ? res.data : [];
+const res = await panggilDiam('pencarianGlobal', [AppState.sessionToken, q]);
+const data = (res && res.success && Array.isArray(res.data)) ? res.data : [];
+// Pengguna mungkin sudah mengetik lagi selama menunggu — jangan menimpa.
+if (String(($('cmdkInput') || {}).value || '').trim() !== q) return;
+setelSibukCmdk(false);
 renderHasilPencarian(halaman.concat(data), q);
 } catch (e) {
+setelSibukCmdk(false);
 renderHasilPencarian(halaman, q);
 }
-}, 260);
+}, 240);
 }
 function renderHasilPencarian(hasil, q, memuat) {
 const box = $('cmdkResults');
 if (!box) return;
 AppState.cmdkHasil = hasil;
 AppState.cmdkIndex = hasil.length ? 0 : -1;
+setelJumlahCmdk(hasil.length, q);
 if (!hasil.length) {
-box.innerHTML = `<p class="cmdk-kosong">${q ? 'Tidak ada hasil untuk "' + esc(q) + '".'
-: 'Ketik untuk mencari siswa, guru, tempat PKL, atau halaman.'}</p>`;
+box.innerHTML = memuat
+? memuatInline('Mencari "' + q + '"…', true)
+: `<div class="cmdk-kosong"><span class="mi">${q ? 'search_off' : 'search'}</span>
+<p>${q ? 'Tidak ada hasil untuk "' + esc(q) + '".'
+: 'Ketik untuk mencari siswa, guru, tempat PKL, atau halaman.'}</p></div>`;
 return;
 }
 const grup = {};
@@ -1081,14 +1120,16 @@ box.innerHTML = Object.keys(grup).map(tipe => `
 <div class="cmdk-group">${esc(tipe)}</div>
 ${grup[tipe].map(({ h, i }) => `
 <button class="cmdk-item ${i === AppState.cmdkIndex ? 'aktif' : ''}" data-idx="${i}"
-onclick="pilihHasilPencarian(${i})">
+role="option" aria-selected="${i === AppState.cmdkIndex}"
+onclick="pilihHasilPencarian(${i})" onmouseenter="sorotHasilPencarian(${i})">
 <span class="mi">${h.ikon || 'chevron_right'}</span>
 <span class="cmdk-item-main">
 <span class="cmdk-item-judul">${esc(h.judul)}</span>
 <span class="cmdk-item-sub">${esc(h.sub || '')}</span>
 </span>
+<span class="cmdk-item-enter">&crarr;</span>
 </button>`).join('')}`).join('') +
-(memuat ? '<p class="cmdk-kosong">Mencari data…</p>' : '');
+(memuat ? memuatInline('Mencari data…', true) : '');
 }
 function pilihHasilPencarian(i) {
 const h = AppState.cmdkHasil[i];
@@ -1096,11 +1137,23 @@ if (!h) return;
 tutupPencarianGlobal();
 navigateTo(h.aksi);
 }
+function sorotHasilPencarian(i) {
+if (i === AppState.cmdkIndex) return;
+AppState.cmdkIndex = i;
+$$('.cmdk-item').forEach(el => {
+const aktif = Number(el.dataset.idx) === i;
+el.classList.toggle('aktif', aktif);
+el.setAttribute('aria-selected', String(aktif));
+});
+}
 function navigasiPencarian(arah) {
 if (!AppState.cmdkHasil.length) return;
 AppState.cmdkIndex = (AppState.cmdkIndex + arah + AppState.cmdkHasil.length) % AppState.cmdkHasil.length;
-$$('.cmdk-item').forEach(el =>
-el.classList.toggle('aktif', Number(el.dataset.idx) === AppState.cmdkIndex));
+$$('.cmdk-item').forEach(el => {
+const aktif = Number(el.dataset.idx) === AppState.cmdkIndex;
+el.classList.toggle('aktif', aktif);
+el.setAttribute('aria-selected', String(aktif));
+});
 const aktif = document.querySelector('.cmdk-item.aktif');
 if (aktif) aktif.scrollIntoView({ block: 'nearest' });
 }
