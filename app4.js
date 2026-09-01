@@ -149,10 +149,12 @@ data: res.data, kunciPilih: 'siswaId', sortAwal: 'nama',
 cariField: ['nama', 'nis', 'kelas', 'tempat', 'guru'],
 kosong: { ikon: 'group_off', judul: 'Belum ada siswa PKL aktif',
 desc: 'Data muncul setelah pendaftaran siswa diterima Pokja PKL.' },
-filterEkstra: row => {
-const st = $('monStatus') ? $('monStatus').value : '';
-return !st || row.statusPresensi === st;
-},
+filterTetap: [{
+k: 'statusPresensi', label: 'Status Presensi',
+opsi: ['Hadir', 'Telat', 'Izin', 'Sakit', 'Alpha', 'Belum Presensi'],
+// Izin/Sakit yang masih menunggu ditulis "Izin (Menunggu)" — tetap ikut tersaring.
+cocok: (r, nilai) => String(r.statusPresensi || '').indexOf(nilai) === 0
+}],
 kolom: [
 { k: 'nama', label: 'Nama Siswa', sortable: true,
 render: r => `<div class="td-strong">${esc(r.nama)}</div><div class="td-sub">${esc(r.nis)}</div>` },
@@ -164,11 +166,14 @@ render: r => chipStatus(r.statusPresensi) +
 (r.waktuPresensi ? `<div class="td-sub">${jamTampil(r.waktuPresensi)} WIB</div>` : '') },
 { k: 'statusJurnal', label: 'Jurnal', sortable: true, render: r => chipStatus(r.statusJurnal) }
 ],
-aksi: r => `<button class="btn-icon" aria-label="Detail ${esc(r.nama)}"
-onclick="bukaDetailSiswa('${esc(r.siswaId)}')"><span class="mi">visibility</span></button>`
+aksi: r => `<button class="btn-icon" aria-label="Lihat detail ${esc(r.nama)}"
+onclick="bukaDetailSiswa('${esc(r.siswaId)}')"><span class="mi">visibility</span></button>
+${AppState.user.role === 'admin' ? `<button class="btn-icon" aria-label="Pindahkan tempat PKL ${esc(r.nama)}"
+onclick="bukaPindahTempat('${esc(r.siswaId)}')"><span class="mi">swap_horiz</span></button>` : ''}
+${AppState.user.role === 'admin' && r.bisaBatalPindah ? `<button class="btn-icon danger"
+aria-label="Batalkan perpindahan ${esc(r.nama)}"
+onclick="bukaBatalPindah('${esc(r.siswaId)}')"><span class="mi">undo</span></button>` : ''}`
 });
-const sel = $('monStatus');
-if (sel) sel.onchange = () => { AppState.tabel['monitoring'].halaman = 1; renderTabel('monitoring'); };
 } catch (err) {
 box.innerHTML = emptyState('error', 'Gagal memuat data', err.message);
 }
@@ -433,10 +438,8 @@ judulEkspor: 'Rekap Laporan Akhir',
 data: res.data.items, kunciPilih: 'siswaId', sortAwal: 'Nama',
 cariField: ['Nama', 'NIS', 'Kelas', 'Tempat', 'Guru', 'Judul'],
 kosong: { ikon: 'description', judul: 'Belum ada data', desc: 'Belum ada siswa dengan penempatan aktif.' },
-filterEkstra: row => {
-const st = $('rlStatus') ? $('rlStatus').value : '';
-return !st || row.Status === st;
-},
+filterTetap: [{ k: 'Status', label: 'Status Laporan',
+opsi: ['Belum Ada', 'Menunggu', 'Disetujui', 'Ditolak'] }],
 kolom: [
 { k: 'Nama', label: 'Siswa', sortable: true,
 render: r => `<div class="td-strong">${esc(r.Nama)}</div><div class="td-sub">${esc(r.NIS)} · ${esc(r.Kelas)}</div>` },
@@ -459,8 +462,6 @@ onclick="prosesLaporan('${esc(r.laporanId)}','Disetujui')"><span class="mi">chec
 onclick="prosesLaporan('${esc(r.laporanId)}','Ditolak')"><span class="mi">cancel</span></button>` : ''}`
 : '<span class="td-sub">—</span>'
 });
-const sel = $('rlStatus');
-if (sel) sel.onchange = () => { AppState.tabel['rekapLaporan'].halaman = 1; renderTabel('rekapLaporan'); };
 } catch (err) {
 $('tabelRekapLaporan').innerHTML = emptyState('error', 'Gagal memuat rekap', err.message);
 }
@@ -914,6 +915,58 @@ Riwayat Tempat PKL (${res.data.length} penempatan)</div>
 ${r.alasan ? `<div class="jejak-alasan">${esc(r.alasan)}${r.oleh ? ' — ' + esc(r.oleh) : ''}</div>` : ''}
 </li>`).join('')}</ol>`;
 } catch (e) { box.hidden = true; }
+}
+
+
+// ── Menarik kembali perpindahan yang terlanjur diproses ────
+async function bukaBatalPindah(siswaId) {
+tampilkanSibuk('Memuat riwayat…');
+let res;
+try { res = await panggil('getRiwayatPenempatan', AppState.sessionToken, siswaId); }
+catch (e) { sembunyikanSibuk(); toast(e.message, 'error'); return; }
+sembunyikanSibuk();
+if (!res.success || !res.data || res.data.length < 2) {
+toast('Penempatan siswa ini bukan hasil perpindahan.', 'warning', 5500);
+return;
+}
+const sekarang = res.data[0], sebelum = res.data[1];
+bukaModal('Batalkan Perpindahan', `
+<div class="pindah-alur" style="margin-top:0">
+<span class="pindah-titik">${esc(sekarang.tempat)}</span>
+<span class="mi pindah-panah">arrow_back</span>
+<span class="pindah-titik pindah-tujuan">${esc(sebelum.tempat)}</span>
+</div>
+<div class="alert alert-warning" style="margin:16px 0">
+<span class="mi">undo</span>
+<div><strong>Perpindahan akan ditarik kembali</strong>
+<p>Siswa kembali ke <strong>${esc(sebelum.tempat)}</strong> beserta guru pembimbingnya yang lama.
+Kuota kedua tempat menyesuaikan otomatis. Riwayat tetap mencatat bahwa perpindahan ini
+pernah dibuat lalu dibatalkan.</p></div>
+</div>
+<div class="field">
+<label class="field-label" for="bpAlasan">Alasan Pembatalan *</label>
+<textarea class="field-input" id="bpAlasan" rows="3" maxlength="400"
+placeholder="Contoh: salah memilih siswa saat menyetujui pengajuan."></textarea>
+<div class="field-help">Minimal 10 karakter. Tersimpan sebagai catatan resmi.</div>
+<div class="field-error" id="errBpAlasan"></div>
+</div>`,
+[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
+{ label: '<span class="mi">undo</span> Tarik Kembali', kelas: 'btn-danger',
+aksi: async () => {
+const a = $('bpAlasan').value.trim();
+if (a.length < 10) { $('errBpAlasan').textContent = 'Alasan minimal 10 karakter.'; return; }
+tutupModal();
+tampilkanSibuk('Mengembalikan penempatan…');
+try {
+const r = await panggil('batalkanPindahTempat', AppState.sessionToken, siswaId, a);
+sembunyikanSibuk();
+if (!r.success) { toast(r.message, 'error', 8000); return; }
+toast(r.message, 'success', 6500);
+batalkanPaketData();
+muatTabelMonitoring();
+muatAntreanPindah();
+} catch (e) { sembunyikanSibuk(); toast(e.message, 'error'); }
+} }]);
 }
 
 window.__blok = 4;

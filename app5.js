@@ -53,7 +53,7 @@ ${p.jalur === 'Langsung'
 <td>${tglSingkat(p.tanggalAjuan)}</td>
 <td>${chipStatus(p.status)}${p.catatan ? `<div class="td-sub" style="margin-top:4px">${esc(p.catatan)}</div>` : ''}</td>
 <td><div class="td-actions">
-${p.suratUrl ? `<button class="btn-icon" aria-label="Lihat surat"
+${p.suratUrl ? `<button class="btn-icon" aria-label="Lihat surat pengantar"
 onclick="bukaPratinjau('Surat Pengantar','${esc(p.suratUrl)}','','gambar')">
 <span class="mi">description</span></button>` : ''}
 ${p.status === 'Diproses' ? `
@@ -61,6 +61,9 @@ ${p.status === 'Diproses' ? `
 <span class="mi">check</span> Terima</button>
 <button class="btn btn-danger btn-xs" onclick="tolakPendaftaran('${esc(p.id)}')">
 <span class="mi">close</span> Tolak</button>` : ''}
+${p.bisaBatalPenempatan ? `
+<button class="btn-icon danger" aria-label="Batalkan penempatan ${esc(p.namaSiswa)}"
+onclick="bukaBatalPenempatan('${esc(p.id)}')"><span class="mi">undo</span></button>` : ''}
 </div></td>
 </tr>`).join('')}</tbody></table>`;
 }
@@ -607,7 +610,7 @@ pengawasan sekolah. Alasannya tercatat dan ikut terekspor bersama data pendaftar
 
 <div class="field">
 <label class="field-label" for="plCariSiswa">1. Pilih Siswa *</label>
-<div class="input-affix search-affix">
+<div class="input-affix search-affix pilih-cari">
 <span class="mi">search</span>
 <input class="field-input" type="search" id="plCariSiswa" placeholder="Ketik nama, NIS, atau kelas…"
 autocomplete="off" oninput="gambarPilihanSiswaTempatkan()">
@@ -803,6 +806,45 @@ toast(res.message, 'success');
 batalkanPaketData();
 muatTabelMaster();
 } catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
+}
+
+
+// ── Menarik kembali penempatan yang terlanjur diproses ─────
+function bukaBatalPenempatan(id) {
+const p = (AppState.dataPendaftaran || []).find(x => x.id === id);
+bukaModal('Batalkan Penempatan', `
+${p ? `<div class="info-tonal"><span class="mi">person</span>
+<div><div class="info-strong">${esc(p.namaSiswa)}</div>
+<div class="info-sub">${esc(p.kelas || '-')} &middot; ${esc(p.namaTempat)}</div></div></div>` : ''}
+<div class="alert alert-warning" style="margin:16px 0">
+<span class="mi">undo</span>
+<div><strong>Penempatan akan ditarik kembali</strong>
+<p>Siswa kembali berstatus belum ditempatkan, kuota tempat PKL dikembalikan, dan
+pendaftarannya berubah menjadi <em>Dibatalkan</em>. Siswa dapat mendaftar lagi setelah ini.</p></div>
+</div>
+<div class="field">
+<label class="field-label" for="bnAlasan">Alasan Pembatalan *</label>
+<textarea class="field-input" id="bnAlasan" rows="3" maxlength="400"
+placeholder="Contoh: salah memilih tempat PKL saat memproses pendaftaran."></textarea>
+<div class="field-help">Minimal 10 karakter. Tersimpan sebagai catatan resmi.</div>
+<div class="field-error" id="errBnAlasan"></div>
+</div>`,
+[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
+{ label: '<span class="mi">undo</span> Tarik Kembali', kelas: 'btn-danger',
+aksi: async () => {
+const a = $('bnAlasan').value.trim();
+if (a.length < 10) { $('errBnAlasan').textContent = 'Alasan minimal 10 karakter.'; return; }
+tutupModal();
+tampilkanSibuk('Membatalkan penempatan…');
+try {
+const res = await panggil('batalkanPenempatan', AppState.sessionToken, id, a);
+sembunyikanSibuk();
+if (!res.success) { toast(res.message, 'error', 8000); return; }
+toast(res.message, 'success', 6500);
+batalkanPaketData();
+muatPendaftaran();
+} catch (e) { sembunyikanSibuk(); toast(e.message, 'error'); }
+} }]);
 }
 
 window.__blok = 5;

@@ -1,7 +1,7 @@
 # SIM PKL — Panduan Teknis
 
 Sistem Informasi & Manajemen Presensi Siswa Praktik Kerja Lapangan
-SMK HKTI 2 Purwareja Klampok · versi 2.9
+SMK HKTI 2 Purwareja Klampok · versi 3.0
 
 Dokumen ini menjelaskan aplikasi sebagaimana adanya sekarang: cara kerjanya, cara
 memasangnya dari nol, dan cara mengembangkannya. Ditulis untuk orang yang akan
@@ -37,7 +37,7 @@ Aplikasi terbagi dua bagian yang berjalan di tempat berbeda:
               │  credentials: 'omit'  ← tanpa cookie
               ▼
     ┌───────────────────┐
-    │  Apps Script      │  Kode.gs — doPost() → petaApi() → 85 fungsi
+    │  Apps Script      │  Kode.gs — doPost() → petaApi() → 87 fungsi
     └─────────┬─────────┘
               ▼
     Google Sheets (data)  +  Google Drive (berkas)
@@ -140,7 +140,7 @@ const res = await panggil('namaFungsiServer', arg1, arg2);
 menerjemahkannya:
 
 1. Membaca `{ fn, args }` dari badan permintaan.
-2. Mencocokkan `fn` dengan **daftar putih** `petaApi()` — 85 nama.
+2. Mencocokkan `fn` dengan **daftar putih** `petaApi()` — 87 nama.
 3. Menjalankan fungsinya, mengembalikan `{ hasil: … }` atau `{ __galat: "…" }`.
 
 Sebagian besar fungsi server mengembalikan bentuk seragam:
@@ -179,7 +179,7 @@ Keduanya berlaku untuk ketiga peran — alurnya memang cuma satu.
 Alamat `/exec` menerima POST dari siapa saja — itu memang perlu, dan sama dengan
 situasi sebelumnya. Pertahanannya ada di dua lapis:
 
-- **Daftar putih.** Hanya 85 nama di `petaApi()` yang bisa dijangkau. Fungsi
+- **Daftar putih.** Hanya 87 nama di `petaApi()` yang bisa dijangkau. Fungsi
   internal seperti `setupAppEnvironment`, `bacaSheet`, atau `hashPassword` tidak.
 - **Token sesi.** Setiap fungsi memeriksa sesi dan perannya sendiri. Tanpa login
   yang sah, tidak ada satu data pun yang bisa diambil.
@@ -197,6 +197,7 @@ Empat lapis, dari yang paling dekat ke pengguna:
 | **Kerangka semua halaman** | `semuaHalamanHtml()` mengirim HTML seluruh menu sekali saat login. Perpindahan menu jadi operasi DOM murni — nol perjalanan server |
 | **Paket data awal** | `paketDataAwal()` menarik data seluruh halaman di latar belakang setelah aplikasi hidup |
 | **Cache berkunci versi** | `dataAwalHalaman()` menyimpan hasil per halaman per akun. Kuncinya memuat `versiData()` yang naik setiap ada penulisan, jadi cache lama otomatis tak terbaca — tanpa risiko data basi |
+| **Singgahan klien** | `SinggahData` di `app1.js` menggambar halaman yang pernah dibuka seketika dari data tersimpan, lalu memeriksa server diam-diam dan menggambar ulang hanya bila isinya berubah. `batalkanPaketData()` membuangnya setiap kali pengguna mengubah data |
 | **Memo per eksekusi** | `MEMO_SHEET` membuat satu sheet hanya dibaca sekali per permintaan, betapa pun sering disentuh |
 
 Dua hal berikut sengaja di-memo karena dulu terbukti menghabiskan puluhan detik:
@@ -333,6 +334,15 @@ ikut menghitungnya tanpa satu baris pun kode laporan perlu diubah.
 **Kunci pendaftaran mandiri.** Kolom `Siswa.KunciPendaftaran` menahan siswa yang
 butuh pengawasan intensif sekolah agar tidak memilih tempat sendiri;
 `ajukanPendaftaran()` menolaknya dengan alasan yang tercatat di `AlasanKunci`.
+
+**Pembatalan.** `batalkanPenempatan()` menarik kembali penempatan yang baru
+dibuat, dan `batalkanPindahTempat()` mengembalikan siswa ke tempat sebelum
+perpindahan terakhir. Keduanya menolak bila `jejakPenempatan_()` menemukan
+presensi atau jurnal yang sudah menempel pada penempatan bersangkutan — sebab
+membatalkan penempatan yang sudah dipakai membuat rekap kehadiran menunjuk ke
+lokasi yang tidak lagi berlaku. Untuk kasus itu jalurnya adalah perpindahan
+biasa, yang justru merawat riwayat. Baris yang dibatalkan berstatus `Batal`,
+jadi riwayat tetap jujur mencatat bahwa tindakan itu pernah terjadi.
 
 **Perpindahan.** `pindahkanPenempatan_()` adalah satu-satunya tempat perpindahan
 benar-benar terjadi — dipakai baik oleh perpindahan langsung Pokja PKL maupun

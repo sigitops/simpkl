@@ -188,13 +188,25 @@ const m = s.match(/([0-9]{1,2}):([0-9]{2})/);
 return m ? (('0' + m[1]).slice(-2) + ':' + m[2]) : s;
 }
 function panggilCepat(namaFungsi, ...args) {
+const kunci = SinggahData.kunci(namaFungsi, args);
 const awal = AppState.dataAwal;
 if (awal && Object.prototype.hasOwnProperty.call(awal, namaFungsi)) {
 const hasil = awal[namaFungsi];
 delete awal[namaFungsi];
+SinggahData.simpan(kunci, hasil);
 return Promise.resolve(hasil);
 }
-return panggil(namaFungsi, ...args);
+// Sudah pernah dibuka: gambar seketika dari singgahan, lalu periksa diam-diam.
+const singgahan = SinggahData.ambil(kunci);
+if (singgahan) {
+// Gambar ulang tepat setelah penyegaran tidak perlu memeriksa server lagi:
+// datanya baru saja diambil. Penandanya sekali pakai, jadi kunjungan
+// berikutnya tetap memeriksa seperti biasa.
+if (singgahan.barusanSegar) singgahan.barusanSegar = false;
+else segarkanDiLatar(kunci, namaFungsi, args);
+return Promise.resolve(singgahan.data);
+}
+return panggil(namaFungsi, ...args).then(hasil => { SinggahData.simpan(kunci, hasil); return hasil; });
 }
 let SIBUK_JUMLAH = 0;
 function mulaiSibukGlobal() {
@@ -342,7 +354,11 @@ data: cfg.data || [],
 cari: st.cfg && st.cfg.id === cfg.id ? (st.cari || '') : '',
 sortKey: st.cfg && st.cfg.id === cfg.id ? st.sortKey : (cfg.sortAwal || null),
 sortDir: st.cfg && st.cfg.id === cfg.id ? (st.sortDir || 'asc') : 'asc',
-halaman: 1,
+// Memuat ulang tabel yang sama tidak melempar pengguna kembali ke halaman
+// pertama — baik saat penyegaran diam-diam maupun setelah menyimpan data.
+// Perubahan pencarian, penyaringan, dan jumlah entri tetap kembali ke awal,
+// sebab ketiganya menyetel st.halaman sendiri.
+halaman: st.cfg && st.cfg.id === cfg.id ? (st.halaman || 1) : 1,
 perHal: st.cfg && st.cfg.id === cfg.id ? (st.perHal || 25) : 25,
 filterNilai: st.cfg && st.cfg.id === cfg.id ? (st.filterNilai || {}) : {},
 terpilih: {}
@@ -391,9 +407,13 @@ String(row[f] == null ? '' : row[f]).toLowerCase().indexOf(q) >= 0));
 }
 const aktif = st.filterNilai;
 if (aktif && typeof aktif === 'object') {
+const tetapMap = {};
+(cfg.filterTetap || []).forEach(f => { tetapMap[f.k] = f; });
 Object.keys(aktif).forEach(kk => {
 if (!aktif[kk]) return;
-data = data.filter(r => String(r[kk] == null ? '' : r[kk]).trim() === aktif[kk]);
+const ft = tetapMap[kk];
+if (ft && typeof ft.cocok === 'function') data = data.filter(r => ft.cocok(r, aktif[kk]));
+else data = data.filter(r => String(r[kk] == null ? '' : r[kk]).trim() === aktif[kk]);
 });
 }
 if (cfg.filterEkstra) data = data.filter(cfg.filterEkstra);
@@ -446,7 +466,13 @@ const pfx = st.cfg.idPrefix;
 const wrap = $(pfx + 'FilterWrap'), isi = $(pfx + 'FilterIsi');
 if (!wrap || !isi) return;
 if (typeof st.filterNilai !== 'object' || st.filterNilai === null) st.filterNilai = {};
-const kandidat = bangunKandidatFilter(st);
+const tetap = (st.cfg.filterTetap || []).map(f => ({
+k: f.k, label: f.label, nilai: f.opsi.slice(), tetap: true
+}));
+// Kolom yang sudah punya filter tetap tidak perlu ditawarkan dua kali.
+const kunciTetap = tetap.map(f => f.k);
+const kandidat = tetap.concat(
+bangunKandidatFilter(st).filter(f => kunciTetap.indexOf(f.k) < 0)).slice(0, 8);
 st.kandidatFilter = kandidat;
 if (!kandidat.length) { wrap.hidden = true; return; }
 wrap.hidden = false;
@@ -879,6 +905,7 @@ return false;
 function batalkanPaketData() {
 AppState.paketData = null;
 AppState.dataAwal = null;
+SinggahData.bersihkan();
 }
 function muatHalamanUlang() {
 if (!AppState.halamanAktif) return;
@@ -1136,6 +1163,7 @@ wadah.innerHTML = '<div class="tirai-peralihan"><span class="boot-spin"></span>'
 '<p>' + esc(pesan || 'Menyiapkan aplikasi…') + '</p></div>';
 }
 async function mulaiSesi(token, awal) {
+SinggahData.bersihkan();
 AppState.sessionToken = token;
 Simpanan.simpan('sesi', token);
 tampilkanTiraiMasuk();
@@ -1256,4 +1284,141 @@ AppState.htmlHalaman = {};
 tampilkanKerangkaAplikasi(false);
 navigateTo('login');
 }
+// ── Balon keterangan untuk tombol beriko ───────────────────
+//
+// Seluruh tombol aksi di aplikasi ini sudah memiliki aria-label demi pembaca
+// layar, jadi teksnya dipinjam saja — tidak ada markup yang perlu diubah.
+// Balonnya ditempel ke <body> dan diposisikan fixed, sebab tabel dibungkus
+// .table-wrap yang ber-overflow dan akan memotong elemen di dalamnya.
+let TIP_EL = null, TIP_TIMER = null, TIP_SASARAN = null;
+const TIP_PEMILIH = '.btn-icon[aria-label],.icon-btn[aria-label],.btn-ghost[aria-label],[data-tip]';
+
+function tipTeks(el) {
+  return (el.getAttribute('data-tip') || el.getAttribute('aria-label') || '').trim();
+}
+function tipSiapkan() {
+  if (TIP_EL) return TIP_EL;
+  TIP_EL = document.createElement('div');
+  TIP_EL.className = 'tip-balon';
+  TIP_EL.setAttribute('role', 'presentation');
+  TIP_EL.hidden = true;
+  document.body.appendChild(TIP_EL);
+  return TIP_EL;
+}
+function tipTampilkan(el) {
+  const teks = tipTeks(el);
+  if (!teks) return;
+  const balon = tipSiapkan();
+  balon.textContent = teks;
+  balon.hidden = false;
+  balon.classList.remove('tampil');
+
+  const r = el.getBoundingClientRect();
+  const b = balon.getBoundingClientRect();
+  const sela = 8;
+  let kiri = r.left + r.width / 2 - b.width / 2;
+  kiri = Math.max(8, Math.min(kiri, window.innerWidth - b.width - 8));
+  // Muncul di atas tombol; pindah ke bawah bila ruang atasnya tidak cukup.
+  let atas = r.top - b.height - sela;
+  if (atas < 8) atas = r.bottom + sela;
+  balon.style.left = Math.round(kiri) + 'px';
+  balon.style.top = Math.round(atas) + 'px';
+  requestAnimationFrame(() => balon.classList.add('tampil'));
+}
+function tipSembunyikan() {
+  clearTimeout(TIP_TIMER);
+  TIP_SASARAN = null;
+  if (!TIP_EL) return;
+  TIP_EL.classList.remove('tampil');
+  TIP_EL.hidden = true;
+}
+function tipPasang() {
+  document.addEventListener('pointerover', e => {
+    if (e.pointerType === 'touch') return;          // di layar sentuh justru mengganggu
+    const el = e.target.closest && e.target.closest(TIP_PEMILIH);
+    if (!el || el === TIP_SASARAN) return;
+    if (el.disabled) return;
+    TIP_SASARAN = el;
+    clearTimeout(TIP_TIMER);
+    TIP_TIMER = setTimeout(() => { if (TIP_SASARAN === el) tipTampilkan(el); }, 320);
+  });
+  document.addEventListener('pointerout', e => {
+    const el = e.target.closest && e.target.closest(TIP_PEMILIH);
+    if (el && el === TIP_SASARAN) tipSembunyikan();
+  });
+  // Keyboard tetap dilayani, dan balon tidak boleh tertinggal saat layar bergeser.
+  document.addEventListener('focusin', e => {
+    const el = e.target.closest && e.target.closest(TIP_PEMILIH);
+    if (el) { TIP_SASARAN = el; tipTampilkan(el); }
+  });
+  document.addEventListener('focusout', tipSembunyikan);
+  document.addEventListener('click', tipSembunyikan, true);
+  window.addEventListener('scroll', tipSembunyikan, true);
+  window.addEventListener('resize', tipSembunyikan);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') tipSembunyikan(); });
+}
+
+// ── Singgahan data: halaman yang pernah dibuka tampil seketika ─────
+//
+// Prinsip stale-while-revalidate. Kunjungan kedua ke sebuah menu langsung
+// menggambar data yang tersimpan — tanpa kerangka abu-abu, tanpa menunggu
+// server — lalu diam-diam mengambil data terbaru di latar. Bila ternyata
+// berbeda, halaman digambar ulang sekali. Mutasi apa pun tetap membuang
+// singgahan lewat batalkanPaketData(), jadi tidak pernah ada data basi
+// setelah pengguna sendiri mengubah sesuatu.
+const SinggahData = {
+  isi: {},
+  tunda: {},
+  kunci(nama, args) {
+    // Argumen pertama selalu token sesi — tidak ikut menentukan identitas data.
+    let ekor = '';
+    try { ekor = JSON.stringify(args.slice(1)); } catch (e) { ekor = ''; }
+    return nama + '|' + ekor;
+  },
+  ambil(k) { return Object.prototype.hasOwnProperty.call(this.isi, k) ? this.isi[k] : null; },
+  simpan(k, data) {
+    try { this.isi[k] = { data: data, sidik: JSON.stringify(data), waktu: Date.now() }; }
+    catch (e) { delete this.isi[k]; }        // data tak dapat dibandingkan — jangan disimpan
+    const semua = Object.keys(this.isi);
+    if (semua.length > 24) delete this.isi[semua[0]];
+  },
+  bersihkan() { this.isi = {}; this.tunda = {}; }
+};
+
+function segarkanDiLatar(kunci, namaFungsi, args) {
+  if (SinggahData.tunda[kunci]) return;
+  SinggahData.tunda[kunci] = true;
+  const halamanSaat = AppState.halamanAktif;
+  panggilDiam(namaFungsi, args)
+    .then(hasil => {
+      delete SinggahData.tunda[kunci];
+      const lama = SinggahData.ambil(kunci);
+      let sidik = '';
+      try { sidik = JSON.stringify(hasil); } catch (e) { return; }
+      if (lama && lama.sidik === sidik) return;         // tidak berubah, biarkan
+      SinggahData.simpan(kunci, hasil);
+      // Gambar ulang hanya bila pengguna masih berada di halaman yang sama.
+      if (AppState.halamanAktif !== halamanSaat) return;
+      const baru = SinggahData.ambil(kunci);
+      if (baru) baru.barusanSegar = true;
+      const init = INIT_HALAMAN[halamanSaat];
+      if (typeof init !== 'function') return;
+      try { init(); } catch (e) {}
+    })
+    .catch(() => { delete SinggahData.tunda[kunci]; });
+}
+
+/** Sama seperti panggil(), tetapi tanpa bilah kemajuan — dipakai di latar. */
+function panggilDiam(namaFungsi, args) {
+  if (!window.SIMPKL_API) return Promise.reject(new Error('Alamat API belum disetel.'));
+  return fetch(window.SIMPKL_API, {
+    method: 'POST', credentials: 'omit',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ fn: namaFungsi, args: args })
+  })
+  .then(r => { if (!r.ok) throw new Error('Server menjawab kode ' + r.status + '.'); return r.json(); })
+  .then(paket => { if (paket && paket.__galat) throw new Error(paket.__galat); return paket ? paket.hasil : null; });
+}
+
+tipPasang();
 window.__blok = 1;
