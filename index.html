@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="SIM PKL — Sistem Informasi dan Manajemen Presensi Siswa Praktik Kerja Lapangan">
+  <title>SIM PKL</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="icon" href="/favicon-16.png" sizes="16x16" type="image/png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#1C7293">
+  <meta name="apple-mobile-web-app-title" content="SIM PKL">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block" rel="stylesheet">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div id="progresGlobal" aria-hidden="true"></div>
+<div id="bootLoader" class="boot-loader" role="status" aria-label="Memuat aplikasi">
+  <span class="boot-spin"></span>
+</div>
+<div id="drawerScrim" class="drawer-scrim" onclick="tutupDrawer()" hidden></div>
+<nav id="sidebar" class="sidebar" hidden aria-label="Navigasi utama">
+  <div class="sidebar-brand">
+    <div class="brand-logo" id="brandLogo"><span class="mi">school</span></div>
+    <div class="brand-text">
+      <span class="brand-name" id="brandName">SIM PKL</span>
+      <span class="brand-desc" id="brandDesc">Manajemen Praktik Kerja</span>
+    </div>
+  </div>
+  <ul class="sidebar-nav" id="sidebarNav"></ul>
+  <div class="sidebar-foot">
+    <button class="nav-link nav-link-danger" onclick="handleLogout()">
+      <span class="mi">logout</span><span class="nav-label">Keluar</span>
+    </button>
+  </div>
+</nav>
+<header id="appHeader" class="app-header" hidden>
+  <button class="search-trigger" onclick="bukaPencarianGlobal()" aria-label="Pencarian global">
+    <span class="mi">search</span>
+    <span class="search-trigger-text">Cari siswa, guru, atau tempat PKL…</span>
+    <kbd class="kbd">Ctrl</kbd><kbd class="kbd">K</kbd>
+  </button>
+  <div class="header-right">
+    <button class="theme-switch" id="themeSwitch" onclick="toggleTema()"
+            role="switch" aria-checked="false" aria-label="Ganti mode gelap">
+      <span class="theme-track"><span class="theme-thumb"><span class="mi" id="ikonTema">light_mode</span></span></span>
+    </button>
+    <button class="icon-btn" onclick="bukaPengumumanCepat()" aria-label="Pengumuman">
+      <span class="mi">notifications</span>
+      <span class="badge-dot" id="badgeNotif" hidden></span>
+    </button>
+    <div class="avatar-menu">
+      <button class="avatar-btn" id="avatarBtn" onclick="toggleMenuProfil(event)"
+              aria-haspopup="true" aria-expanded="false" aria-label="Menu profil">
+        <span class="avatar" id="headerAvatar">?</span>
+        <span class="avatar-meta">
+          <span class="avatar-nama" id="headerNama">Pengguna</span>
+          <span class="avatar-peran" id="headerPeran">—</span>
+        </span>
+        <span class="mi avatar-caret">expand_more</span>
+      </button>
+      <div class="avatar-pop" id="avatarPop" hidden role="menu">
+        <div class="pop-head">
+          <span class="avatar avatar-lg" id="popAvatar">?</span>
+          <div>
+            <div class="pop-nama" id="popNama">Pengguna</div>
+            <div class="pop-sub" id="popSub">—</div>
+          </div>
+        </div>
+        <button class="pop-item" role="menuitem" onclick="tutupMenuProfil(); navigateTo('profil')">
+          <span class="mi">person</span> Profil Saya</button>
+        <button class="pop-item" role="menuitem" id="popPengaturan"
+                onclick="tutupMenuProfil(); navigateTo('pengaturan')" hidden>
+          <span class="mi">settings</span> Pengaturan Aplikasi</button>
+        <button class="pop-item" role="menuitem" onclick="tutupMenuProfil(); toggleTema()">
+          <span class="mi" id="popIkonTema">dark_mode</span> <span id="popLabelTema">Mode Gelap</span></button>
+        <hr class="pop-sep">
+        <button class="pop-item pop-danger" role="menuitem" onclick="tutupMenuProfil(); handleLogout()">
+          <span class="mi">logout</span> Keluar</button>
+      </div>
+    </div>
+  </div>
+</header>
+<header id="topbar" class="topbar" hidden>
+  <button class="icon-btn" id="btnKembali" onclick="kembaliKeBeranda()" hidden aria-label="Kembali">
+    <span class="mi">arrow_back</span>
+  </button>
+  <button class="icon-btn" id="btnDrawer" onclick="toggleDrawer()" aria-label="Buka menu"
+          aria-expanded="false"><span class="mi">menu</span></button>
+  <h1 class="topbar-title" id="topbarTitle">Beranda</h1>
+  <div class="topbar-actions">
+    <button class="icon-btn" onclick="bukaPencarianGlobal()" aria-label="Cari"><span class="mi">search</span></button>
+    <button class="icon-btn" onclick="toggleTema()" aria-label="Ganti tema">
+      <span class="mi" id="ikonTemaTopbar">dark_mode</span></button>
+    <button class="icon-btn" onclick="bukaPengumumanCepat()" aria-label="Pengumuman">
+      <span class="mi">notifications</span>
+      <span class="badge-dot" id="badgeNotifMobile" hidden></span>
+    </button>
+  </div>
+</header>
+<main id="mainContent" class="main-content">
+  <div id="app-container" class="app-container"></div>
+  <footer class="app-footer" id="appFooter" hidden>
+    <span class="footer-brand" id="footerBrand">SIM PKL</span>
+    <span class="footer-mid">&copy; <span id="footerYear"></span> Sistem Informasi Manajemen Praktik Kerja Lapangan</span>
+    <span class="footer-end" id="footerSekolah"></span>
+  </footer>
+</main>
+<nav id="bottomNav" class="bottom-nav" hidden aria-label="Navigasi bawah"></nav>
+<div id="cmdk" class="cmdk" hidden role="dialog" aria-modal="true" aria-label="Pencarian global">
+  <div class="modal-scrim" onclick="tutupPencarianGlobal()"></div>
+  <div class="cmdk-panel">
+    <div class="cmdk-input-wrap">
+      <span class="mi">search</span>
+      <input type="search" id="cmdkInput" class="cmdk-input" autocomplete="off"
+             placeholder="Cari siswa, guru, tempat PKL, atau halaman…" aria-label="Kata kunci pencarian">
+      <kbd class="kbd">Esc</kbd>
+    </div>
+    <div class="cmdk-results" id="cmdkResults"></div>
+  </div>
+</div>
+<div id="modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal-scrim" onclick="tutupModal()"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h2 class="modal-title" id="modalTitle">Judul</h2>
+      <button class="icon-btn" onclick="tutupModal()" aria-label="Tutup"><span class="mi">close</span></button>
+    </header>
+    <div class="modal-body" id="modalBody"></div>
+    <footer class="modal-foot" id="modalFoot"></footer>
+  </div>
+</div>
+<div id="modalPreview" class="modal modal-lg" hidden role="dialog" aria-modal="true" aria-labelledby="previewTitle">
+  <div class="modal-scrim" onclick="tutupPratinjau()"></div>
+  <div class="modal-panel" role="document">
+    <header class="modal-head">
+      <h2 class="modal-title" id="previewTitle">Pratinjau</h2>
+      <button class="icon-btn" onclick="tutupPratinjau()" aria-label="Tutup"><span class="mi">close</span></button>
+    </header>
+    <div class="modal-body preview-body" id="previewBody"></div>
+    <footer class="modal-foot">
+      <a class="btn btn-outline" id="btnUnduhPratinjau" href="#" target="_blank" rel="noopener">
+        <span class="mi">download</span> Unduh</a>
+      <button class="btn btn-primary" onclick="tutupPratinjau()">Tutup</button>
+    </footer>
+  </div>
+</div>
+<div id="busyOverlay" class="busy-overlay" hidden role="status" aria-live="assertive">
+  <div class="busy-card">
+    <div class="spinner" aria-hidden="true"></div>
+    <p id="busyText">Memproses…</p>
+  </div>
+</div>
+<div id="toastArea" class="toast-area" aria-live="polite" aria-atomic="true"></div>
+<script>
+setTimeout(function () {
+if (window.__blok === 6 || typeof tampilkanGalatFatal === 'function') return;
+var pemuat = document.getElementById('bootLoader');
+if (pemuat) pemuat.hidden = true;
+var wadah = document.getElementById('app-container');
+if (!wadah) return;
+wadah.innerHTML =
+'<div class="auth-wrap"><div class="auth-card">' +
+'<div class="alert alert-error" style="margin-bottom:16px"><span class="mi">error</span>' +
+'<div><strong>Aplikasi gagal dimuat</strong>' +
+'<p>Kode termuat ' + (window.__blok || 0) + ' dari 6 blok. ' +
+'Jalankan cekIntegritasBerkas() di editor Apps Script.</p></div></div>' +
+'<button class="btn btn-primary btn-block" onclick="location.reload()">' +
+'<span class="mi">refresh</span> Muat Ulang</button>' +
+'</div></div>';
+}, 1200);
+</script>
+<script>
+// Alamat Web app Apps Script. Frontend memanggilnya lewat fetch() tanpa cookie,
+// sehingga Google tidak pernah menulis ulang alamatnya mengikuti akun yang masuk.
+window.SIMPKL_API = 'https://script.google.com/macros/s/AKfycbxnO0GrKENLXrEOQNiTeZ4W2KaK91UUGvOZbjI2_UFlIz75BiCidWWo8NSlODvwroXppA/exec';
+</script>
+<script src="/app1.js"></script>
+<script src="/app2.js"></script>
+<script src="/app3.js"></script>
+<script src="/app4.js"></script>
+<script src="/app5.js"></script>
+<script src="/app6.js"></script>
+</body>
+</html>
