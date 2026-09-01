@@ -1,7 +1,7 @@
 # SIM PKL — Panduan Teknis
 
 Sistem Informasi & Manajemen Presensi Siswa Praktik Kerja Lapangan
-SMK HKTI 2 Purwareja Klampok · versi 3.0
+SMK HKTI 2 Purwareja Klampok · versi 3.1
 
 Dokumen ini menjelaskan aplikasi sebagaimana adanya sekarang: cara kerjanya, cara
 memasangnya dari nol, dan cara mengembangkannya. Ditulis untuk orang yang akan
@@ -37,7 +37,7 @@ Aplikasi terbagi dua bagian yang berjalan di tempat berbeda:
               │  credentials: 'omit'  ← tanpa cookie
               ▼
     ┌───────────────────┐
-    │  Apps Script      │  Kode.gs — doPost() → petaApi() → 87 fungsi
+    │  Apps Script      │  Kode.gs — doPost() → petaApi() → 88 fungsi
     └─────────┬─────────┘
               ▼
     Google Sheets (data)  +  Google Drive (berkas)
@@ -140,7 +140,7 @@ const res = await panggil('namaFungsiServer', arg1, arg2);
 menerjemahkannya:
 
 1. Membaca `{ fn, args }` dari badan permintaan.
-2. Mencocokkan `fn` dengan **daftar putih** `petaApi()` — 87 nama.
+2. Mencocokkan `fn` dengan **daftar putih** `petaApi()` — 88 nama.
 3. Menjalankan fungsinya, mengembalikan `{ hasil: … }` atau `{ __galat: "…" }`.
 
 Sebagian besar fungsi server mengembalikan bentuk seragam:
@@ -179,7 +179,7 @@ Keduanya berlaku untuk ketiga peran — alurnya memang cuma satu.
 Alamat `/exec` menerima POST dari siapa saja — itu memang perlu, dan sama dengan
 situasi sebelumnya. Pertahanannya ada di dua lapis:
 
-- **Daftar putih.** Hanya 87 nama di `petaApi()` yang bisa dijangkau. Fungsi
+- **Daftar putih.** Hanya 88 nama di `petaApi()` yang bisa dijangkau. Fungsi
   internal seperti `setupAppEnvironment`, `bacaSheet`, atau `hashPassword` tidak.
 - **Token sesi.** Setiap fungsi memeriksa sesi dan perannya sendiri. Tanpa login
   yang sah, tidak ada satu data pun yang bisa diambil.
@@ -334,6 +334,20 @@ ikut menghitungnya tanpa satu baris pun kode laporan perlu diubah.
 **Kunci pendaftaran mandiri.** Kolom `Siswa.KunciPendaftaran` menahan siswa yang
 butuh pengawasan intensif sekolah agar tidak memilih tempat sendiri;
 `ajukanPendaftaran()` menolaknya dengan alasan yang tercatat di `AlasanKunci`.
+
+**Tempat PKL yang masih jadi jalan pulang.** Selama sebuah perpindahan masih
+mungkin ditarik kembali, tempat asalnya tidak boleh dihapus — kalau dihapus,
+siswa tidak punya tempat untuk dikembalikan. `tempatMasihJadiJalanPulang_()`
+menahannya di `hapusMasterMassal()`, dan berhenti menahan begitu penempatan
+barunya sudah dipakai sehingga pembatalan memang tidak lagi mungkin.
+`batalkanPindahTempat()` juga menolak bila tempat asalnya sudah tidak ada,
+alih-alih memulihkan penempatan yang menunjuk entah ke mana.
+
+**Penempatan yatim.** Bila basis data terlanjur memuat penempatan aktif yang
+tempat PKL-nya sudah dihapus, `penempatanYatim_()` mendeteksinya dan
+`tutupPenempatanYatim()` menutupnya lewat **Pengaturan → Pemeriksa
+Penempatan**. Siswanya kembali berstatus belum ditempatkan, presensi dan jurnal
+lama tetap utuh.
 
 **Pembatalan.** `batalkanPenempatan()` menarik kembali penempatan yang baru
 dibuat, dan `batalkanPindahTempat()` mengembalikan siswa ke tempat sebelum

@@ -649,8 +649,20 @@ box.innerHTML = `<div class="alert alert-success"><span class="mi">check_circle<
 sudah cocok dengan jumlah siswa yang ditempatkan.</p></div></div>`;
 return;
 }
+const yatim = d.yatim || [];
 box.innerHTML = `
-${d.gandaSiswa.length ? `<div class="alert alert-error"><span class="mi">error</span>
+${yatim.length ? `<div class="alert alert-error"><span class="mi">link_off</span>
+<div><strong>Penempatan tanpa tempat PKL</strong>
+<p>Siswa berikut masih berstatus PKL aktif, tetapi tempat PKL-nya sudah dihapus dari daftar.
+Selama begini mereka tidak dapat presensi dan tidak dapat dihapus dari Data Siswa.</p>
+<ul style="margin:8px 0 0 18px">${yatim.map(y => `<li>${esc(y.nama)}</li>`).join('')}</ul>
+<div class="btn-row" style="margin-top:12px">
+<button class="btn btn-primary btn-sm" onclick="tutupYatim()">
+<span class="mi">link_off</span> Tutup Penempatan Ini</button></div>
+<p style="margin-top:10px;font-size:13px">Setelah ditutup, siswa kembali berstatus belum
+ditempatkan — silakan tempatkan ulang lewat menu Pendaftaran, atau hapus datanya bila memang
+tidak terpakai.</p></div></div>` : ''}
+${d.gandaSiswa.length ? `<div class="alert alert-error" style="margin-top:12px"><span class="mi">error</span>
 <div><strong>Penempatan ganda ditemukan</strong>
 <p>Siswa berikut memiliki lebih dari satu penempatan aktif. Buka menu Monitoring, lalu tutup
 penempatan yang tidak dipakai lewat perpindahan, agar presensinya tidak salah lokasi.</p>
@@ -681,5 +693,21 @@ if (res.success) { batalkanPaketData(); periksaPenempatan(); }
 } catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
 }
 
+
+async function tutupYatim() {
+const ya = await konfirmasi('Tutup Penempatan Tanpa Tempat PKL',
+'Penempatan yang tempat PKL-nya sudah dihapus akan ditutup. Siswa kembali berstatus belum ' +
+'ditempatkan, dan presensi maupun jurnal yang sudah tercatat tidak ikut dihapus. Lanjutkan?',
+'Ya, tutup', 'btn-primary');
+if (!ya) return;
+tampilkanSibuk('Menutup penempatan…');
+try {
+const res = await panggil('tutupPenempatanYatim', AppState.sessionToken);
+sembunyikanSibuk();
+toast(res.message, res.success ? 'success' : 'error', 6500);
+if (res.success) { batalkanPaketData(); periksaPenempatan(); }
+} catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
+}
+
 window.__blok = 6;
-window.__SIMPKL_EOF = '2.8';
+window.__SIMPKL_EOF = '3.0';
