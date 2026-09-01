@@ -18,7 +18,8 @@ saatFilter: () => gambarPendaftaran(),
 kolom: [
 { k: 'namaSiswa', label: 'Nama Siswa' }, { k: 'nis', label: 'NIS' },
 { k: 'kelas', label: 'Kelas' }, { k: 'namaTempat', label: 'Tempat PKL' },
-{ k: 'tanggalAjuan', label: 'Tanggal Ajuan' }, { k: 'status', label: 'Status' },
+{ k: 'tanggalAjuan', label: 'Tanggal Ajuan' }, { k: 'jalur', label: 'Jalur' },
+{ k: 'status', label: 'Status' }, { k: 'diprosesOleh', label: 'Diproses Oleh' },
 { k: 'catatan', label: 'Catatan' }
 ],
 cariField: ['namaSiswa', 'nis', 'kelas', 'namaTempat']
@@ -44,7 +45,9 @@ box.innerHTML = `<table class="data-table">
 <td><div class="td-strong">${esc(p.namaSiswa)}</div>
 <div class="td-sub">${esc(p.nis)} &middot; ${esc(p.kelas)}</div></td>
 <td><div>${esc(p.namaTempat)}</div><div class="td-sub">${esc(p.alamat)}</div>
-${p.mandiri ? '<span class="chip chip-warning" style="margin-top:6px"><span class="mi">flag</span>Pengajuan Mandiri</span>' : ''}</td>
+${p.jalur === 'Langsung'
+? '<span class="chip chip-info" style="margin-top:6px"><span class="mi">person_add</span>Penempatan Langsung</span>'
+: p.mandiri ? '<span class="chip chip-warning" style="margin-top:6px"><span class="mi">flag</span>Pengajuan Mandiri</span>' : ''}</td>
 <td class="td-num">${p.sisaKuota === null ? '—' :
 `<span class="chip ${p.sisaKuota > 0 ? 'chip-success' : 'chip-error'}">${p.sisaKuota} sisa</span>`}</td>
 <td>${tglSingkat(p.tanggalAjuan)}</td>
@@ -132,7 +135,9 @@ jamKerja: r => jamTampil(r.JamMasuk) + ' – ' + jamTampil(r.JamPulang),
 kontak: r => esc(r.NoKontak || '-') + (r.PIC ? `<div class="td-sub">${esc(r.PIC)}</div>` : ''),
 aktifTempat: r => chipStatus(String(r.Aktif) === 'Ya' ? 'Aktif' : 'Nonaktif'),
 statusPenempatan: r => `<span class="chip ${r.StatusPenempatan === 'Ditempatkan' ? 'chip-success' : 'chip-neutral'}">
-${esc(r.StatusPenempatan || 'Belum Ditempatkan')}</span>`,
+${esc(r.StatusPenempatan || 'Belum Ditempatkan')}</span>` +
+(String(r.KunciPendaftaran || '') === 'Ya'
+? `<div class="td-sub" style="margin-top:4px"><span class="mi mi-inline">lock</span> Pendaftaran ditahan</div>` : ''),
 tahap: r => r.Tahap ? esc(r.Tahap) : '<span class="td-sub">—</span>',
 tglMulai: r => tglSingkat(r.TanggalMulai),
 tglSelesai: r => tglSingkat(r.TanggalSelesai),
@@ -164,6 +169,10 @@ tombol: `<button class="btn btn-primary" onclick="bukaFormMaster('${entitas}')">
 aksi: r => `
 <button class="btn-icon" aria-label="Lihat detail"
 onclick="lihatDetailMaster('${entitas}','${esc(r.ID)}')"><span class="mi">visibility</span></button>
+${entitas === 'Siswa' ? `<button class="btn-icon${String(r.KunciPendaftaran || '') === 'Ya' ? ' danger' : ''}"
+aria-label="${String(r.KunciPendaftaran || '') === 'Ya' ? 'Buka pendaftaran mandiri' : 'Tahan pendaftaran mandiri'}"
+title="${String(r.KunciPendaftaran || '') === 'Ya' ? 'Pendaftaran mandiri ditahan — klik untuk membuka' : 'Tahan pendaftaran mandiri'}"
+onclick="bukaKunciPendaftaran('${esc(r.ID)}')"><span class="mi">${String(r.KunciPendaftaran || '') === 'Ya' ? 'lock' : 'lock_open'}</span></button>` : ''}
 <button class="btn-icon" aria-label="Ubah data"
 onclick="bukaFormMaster('${entitas}','${esc(r.ID)}')"><span class="mi">edit</span></button>
 <button class="btn-icon danger" aria-label="Hapus data"
@@ -176,6 +185,12 @@ if (entitas === 'TempatPKL') t.push(`<button class="btn btn-outline btn-xs" oncl
 <span class="mi">toggle_on</span> Ubah Status</button>`);
 if (skema.resetPassword) t.push(`<button class="btn btn-outline btn-xs" onclick="resetPasswordMassalUI('${entitas}')">
 <span class="mi">lock_reset</span> Reset Password</button>`);
+if (entitas === 'Siswa') {
+t.push(`<button class="btn btn-outline btn-xs" onclick="bukaKunciMassal(true)">
+<span class="mi">lock</span> Tahan Pendaftaran</button>`);
+t.push(`<button class="btn btn-outline btn-xs" onclick="bukaKunciMassal(false)">
+<span class="mi">lock_open</span> Buka Pendaftaran</button>`);
+}
 t.push(`<button class="btn btn-danger btn-xs" onclick="hapusMassalUI('${entitas}')">
 <span class="mi">delete</span> Hapus</button>`);
 return t.join('');
@@ -192,7 +207,11 @@ if (!row) return;
 const baris = skema.field.map(f => [f.l, f.t === 'time' ? jamTampil(row[f.k])
 : f.t === 'date' ? tglSingkat(row[f.k]) : (row[f.k] || '—')]);
 if (entitas === 'TempatPKL') baris.push(['Kuota Terisi', (row.KuotaTerisi || 0) + ' / ' + (row.KuotaTotal || 0)]);
-if (entitas === 'Siswa') baris.push(['Status Penempatan', row.StatusPenempatan || '—']);
+if (entitas === 'Siswa') {
+baris.push(['Status Penempatan', row.StatusPenempatan || '—']);
+baris.push(['Pendaftaran Mandiri', String(row.KunciPendaftaran || '') === 'Ya'
+? 'Ditahan' + (row.AlasanKunci ? ' — ' + row.AlasanKunci : '') : 'Terbuka']);
+}
 bukaModal('Detail ' + skema.judul, `<div class="list">${baris.map(([l, v]) => `
 <div class="list-item"><div class="list-main">
 <div class="data-label">${esc(l)}</div><div class="data-value">${esc(v)}</div></div></div>`).join('')}</div>`,
@@ -563,4 +582,227 @@ toast(res.message, 'success', 6000);
 }
 } catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
 }
+// ── Penempatan langsung oleh Pokja PKL ─────────────────────
+async function bukaPenempatanLangsung() {
+tampilkanSibuk('Menyiapkan data…');
+let res;
+try { res = await panggil('getOpsiPenempatanLangsung', AppState.sessionToken); }
+catch (e) { sembunyikanSibuk(); toast(e.message, 'error'); return; }
+sembunyikanSibuk();
+if (!res.success) { toast(res.message, 'error'); return; }
+if (!res.data.periode) { toast('Aktifkan periode PKL terlebih dahulu di menu Periode PKL.', 'warning', 6000); return; }
+if (!res.data.siswa.length) { toast('Semua siswa sudah memiliki penempatan PKL aktif.', 'info', 5000); return; }
+if (!res.data.tempat.length) { toast('Belum ada tempat PKL aktif yang kuotanya tersisa.', 'warning', 6000); return; }
+
+AppState.opsiTempatkan = res.data;
+AppState.pilihanTempatkan = [];
+
+bukaModal('Tempatkan Siswa Langsung', `
+<div class="alert alert-info" style="margin-bottom:16px">
+<span class="mi">info</span>
+<div><strong>Jalur khusus</strong>
+<p>Siswa ditempatkan tanpa melalui pendaftaran mandiri. Dipakai untuk kasus yang butuh
+pengawasan sekolah. Alasannya tercatat dan ikut terekspor bersama data pendaftaran.</p></div>
+</div>
+
+<div class="field">
+<label class="field-label" for="plCariSiswa">1. Pilih Siswa *</label>
+<div class="input-affix search-affix">
+<span class="mi">search</span>
+<input class="field-input" type="search" id="plCariSiswa" placeholder="Ketik nama, NIS, atau kelas…"
+autocomplete="off" oninput="gambarPilihanSiswaTempatkan()">
+</div>
+<div class="pilih-box" id="plDaftarSiswa"></div>
+<div class="field-help" id="plRingkasPilih">Belum ada siswa dipilih.</div>
+<div class="field-error" id="errPlSiswa"></div>
+</div>
+
+<div class="field">
+<label class="field-label" for="plTempat">2. Tempat PKL Tujuan *</label>
+<select class="field-input" id="plTempat" onchange="perbaruiSisaKuotaTempatkan()">
+<option value="">— Pilih tempat PKL —</option>
+${res.data.tempat.map(t => `<option value="${esc(t.id)}" data-sisa="${t.sisaKuota}">
+${esc(t.nama)} (sisa ${t.sisaKuota})</option>`).join('')}
+</select>
+<div class="field-help" id="plSisaKuota">Hanya tempat aktif dengan kuota tersisa yang ditampilkan.</div>
+<div class="field-error" id="errPlTempat"></div>
+</div>
+
+<div class="field">
+<label class="field-label" for="plGuru">3. Guru Pembimbing *</label>
+<select class="field-input" id="plGuru">
+<option value="">— Pilih guru pembimbing —</option>
+${res.data.guru.map(g => `<option value="${esc(g.id)}">${esc(g.nama)} (${esc(g.nip)})</option>`).join('')}
+</select>
+<div class="field-error" id="errPlGuru"></div>
+</div>
+
+<div class="field">
+<label class="field-label" for="plAlasan">4. Alasan Penempatan Langsung *</label>
+<textarea class="field-input" id="plAlasan" rows="3" maxlength="400"
+placeholder="Contoh: siswa dalam masa pembinaan, penempatan ditentukan sekolah agar mudah dipantau."></textarea>
+<div class="field-help">Minimal 10 karakter. Tersimpan sebagai catatan resmi.</div>
+<div class="field-error" id="errPlAlasan"></div>
+</div>`,
+[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
+{ label: '<span class="mi">person_add</span> Tempatkan', kelas: 'btn-primary', aksi: kirimPenempatanLangsung }]);
+
+gambarPilihanSiswaTempatkan();
+}
+function gambarPilihanSiswaTempatkan() {
+const box = $('plDaftarSiswa');
+if (!box) return;
+const kunci = ($('plCariSiswa') ? $('plCariSiswa').value : '').trim().toLowerCase();
+const semua = (AppState.opsiTempatkan && AppState.opsiTempatkan.siswa) || [];
+const hasil = kunci
+? semua.filter(s => (s.nama + ' ' + s.nis + ' ' + s.kelas + ' ' + s.jurusan).toLowerCase().includes(kunci))
+: semua;
+if (!hasil.length) {
+box.innerHTML = '<div class="pilih-kosong">Tidak ada siswa yang cocok.</div>';
+return;
+}
+const dipilih = AppState.pilihanTempatkan || [];
+box.innerHTML = hasil.slice(0, 60).map(s => `
+<label class="pilih-baris">
+<input type="checkbox" value="${esc(s.id)}" ${dipilih.indexOf(s.id) >= 0 ? 'checked' : ''}
+onchange="togglePilihSiswaTempatkan('${esc(s.id)}', this.checked)">
+<span class="pilih-teks">
+<span class="pilih-nama">${esc(s.nama)}
+${s.terkunci ? '<span class="mi pilih-gembok" title="Pendaftaran mandiri ditahan">lock</span>' : ''}</span>
+<span class="pilih-sub">${esc(s.nis)} &middot; ${esc(s.kelas || '-')}</span>
+</span>
+</label>`).join('') +
+(hasil.length > 60 ? `<div class="pilih-kosong">Menampilkan 60 dari ${hasil.length}. Persempit dengan pencarian.</div>` : '');
+}
+function togglePilihSiswaTempatkan(id, aktif) {
+const dipilih = AppState.pilihanTempatkan || (AppState.pilihanTempatkan = []);
+const i = dipilih.indexOf(id);
+if (aktif && i < 0) dipilih.push(id);
+if (!aktif && i >= 0) dipilih.splice(i, 1);
+const info = $('plRingkasPilih');
+if (info) info.textContent = dipilih.length ? dipilih.length + ' siswa dipilih.' : 'Belum ada siswa dipilih.';
+perbaruiSisaKuotaTempatkan();
+}
+function perbaruiSisaKuotaTempatkan() {
+const sel = $('plTempat'), info = $('plSisaKuota');
+if (!sel || !info) return;
+const opt = sel.options[sel.selectedIndex];
+const sisa = opt ? Number(opt.dataset.sisa) : NaN;
+const n = (AppState.pilihanTempatkan || []).length;
+if (!sel.value || !isFinite(sisa)) {
+info.textContent = 'Hanya tempat aktif dengan kuota tersisa yang ditampilkan.';
+info.classList.remove('field-help-danger');
+return;
+}
+const kurang = n > sisa;
+info.textContent = kurang
+? 'Kuota tinggal ' + sisa + ', sedangkan Anda memilih ' + n + ' siswa.'
+: 'Sisa kuota ' + sisa + ' &middot; dipilih ' + n + '.';
+info.classList.toggle('field-help-danger', kurang);
+}
+async function kirimPenempatanLangsung() {
+const siswaIds = AppState.pilihanTempatkan || [];
+const tempatId = $('plTempat') ? $('plTempat').value : '';
+const guruId = $('plGuru') ? $('plGuru').value : '';
+const alasan = $('plAlasan') ? $('plAlasan').value.trim() : '';
+['errPlSiswa', 'errPlTempat', 'errPlGuru', 'errPlAlasan'].forEach(id => { if ($(id)) $(id).textContent = ''; });
+
+if (!siswaIds.length) { $('errPlSiswa').textContent = 'Pilih minimal satu siswa.'; return; }
+if (!tempatId) { $('errPlTempat').textContent = 'Pilih tempat PKL tujuan.'; return; }
+if (!guruId) { $('errPlGuru').textContent = 'Pilih guru pembimbing.'; return; }
+if (alasan.length < 10) { $('errPlAlasan').textContent = 'Alasan minimal 10 karakter.'; return; }
+
+tampilkanSibuk('Menempatkan siswa…');
+try {
+const res = await panggil('tempatkanLangsung', AppState.sessionToken,
+{ siswaIds: siswaIds, tempatId: tempatId, guruId: guruId, alasan: alasan });
+sembunyikanSibuk();
+if (!res.success) { toast(res.message, 'error', 7000); return; }
+tutupModal();
+toast(res.message, 'success', 6500);
+AppState.pilihanTempatkan = [];
+batalkanPaketData();
+muatPendaftaran();
+} catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
+}
+
+// ── Kunci pendaftaran mandiri siswa ────────────────────────
+function bukaKunciPendaftaran(id) {
+const row = (AppState.dataTabel || []).find(r => r.ID === id);
+if (!row) return;
+const sedangTerkunci = String(row.KunciPendaftaran || '') === 'Ya';
+if (sedangTerkunci) {
+konfirmasi('Buka Pendaftaran Mandiri',
+`Izinkan ${row.Nama} memilih dan mendaftar tempat PKL sendiri lagi?`,
+'Ya, buka kembali', 'btn-primary').then(ya => {
+if (ya) kirimKunciPendaftaran([id], false, '');
+});
+return;
+}
+bukaModal('Tahan Pendaftaran Mandiri', `
+<div class="info-tonal"><span class="mi">person</span>
+<div><div class="info-strong">${esc(row.Nama)}</div>
+<div class="info-sub">${esc(row.NIS)} &middot; ${esc(row.Kelas || '-')}</div></div></div>
+<div class="alert alert-warning" style="margin:16px 0">
+<span class="mi">lock</span>
+<div><strong>Apa yang terjadi</strong>
+<p>Siswa tetap dapat masuk aplikasi seperti biasa, tetapi tombol pendaftaran tempat PKL
+akan menolak dengan pesan agar menghubungi Pokja PKL. Penempatannya Anda tentukan
+lewat tombol <strong>Tempatkan Langsung</strong> di menu Pendaftaran.</p></div>
+</div>
+<div class="field">
+<label class="field-label" for="kpAlasan">Alasan *</label>
+<textarea class="field-input" id="kpAlasan" rows="3" maxlength="300"
+placeholder="Contoh: masa pembinaan, penempatan ditentukan sekolah."></textarea>
+<div class="field-help">Minimal 10 karakter. Ditampilkan kepada siswa.</div>
+<div class="field-error" id="errKpAlasan"></div>
+</div>`,
+[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
+{ label: '<span class="mi">lock</span> Tahan Pendaftaran', kelas: 'btn-danger',
+aksi: () => {
+const a = $('kpAlasan').value.trim();
+if (a.length < 10) { $('errKpAlasan').textContent = 'Alasan minimal 10 karakter.'; return; }
+kirimKunciPendaftaran([id], true, a);
+} }]);
+}
+function bukaKunciMassal(kunci) {
+const ids = idTerpilih('master');
+if (!ids.length) { toast('Pilih siswa terlebih dahulu.', 'warning'); return; }
+if (!kunci) {
+konfirmasi('Buka Pendaftaran Mandiri',
+`Izinkan ${ids.length} siswa terpilih mendaftar tempat PKL sendiri lagi?`,
+'Ya, buka kembali', 'btn-primary').then(ya => { if (ya) kirimKunciPendaftaran(ids, false, ''); });
+return;
+}
+bukaModal('Tahan Pendaftaran Mandiri', `
+<div class="info-tonal"><span class="mi">group</span>
+<div><div class="info-strong">${ids.length} siswa terpilih</div>
+<div class="info-sub">Alasan yang sama akan dicatat untuk semuanya.</div></div></div>
+<div class="field" style="margin-top:16px">
+<label class="field-label" for="kpAlasan">Alasan *</label>
+<textarea class="field-input" id="kpAlasan" rows="3" maxlength="300"></textarea>
+<div class="field-help">Minimal 10 karakter.</div>
+<div class="field-error" id="errKpAlasan"></div>
+</div>`,
+[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
+{ label: '<span class="mi">lock</span> Tahan Pendaftaran', kelas: 'btn-danger',
+aksi: () => {
+const a = $('kpAlasan').value.trim();
+if (a.length < 10) { $('errKpAlasan').textContent = 'Alasan minimal 10 karakter.'; return; }
+kirimKunciPendaftaran(ids, true, a);
+} }]);
+}
+async function kirimKunciPendaftaran(ids, kunci, alasan) {
+tampilkanSibuk('Menyimpan…');
+try {
+const res = await panggil('setKunciPendaftaran', AppState.sessionToken, ids, kunci, alasan);
+sembunyikanSibuk();
+if (!res.success) { toast(res.message, 'error', 6000); return; }
+tutupModal();
+toast(res.message, 'success');
+batalkanPaketData();
+muatTabelMaster();
+} catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
+}
+
 window.__blok = 5;

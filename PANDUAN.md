@@ -1,7 +1,7 @@
 # SIM PKL — Panduan Teknis
 
 Sistem Informasi & Manajemen Presensi Siswa Praktik Kerja Lapangan
-SMK HKTI 2 Purwareja Klampok · versi 2.8
+SMK HKTI 2 Purwareja Klampok · versi 2.9
 
 Dokumen ini menjelaskan aplikasi sebagaimana adanya sekarang: cara kerjanya, cara
 memasangnya dari nol, dan cara mengembangkannya. Ditulis untuk orang yang akan
@@ -37,7 +37,7 @@ Aplikasi terbagi dua bagian yang berjalan di tempat berbeda:
               │  credentials: 'omit'  ← tanpa cookie
               ▼
     ┌───────────────────┐
-    │  Apps Script      │  Kode.gs — doPost() → petaApi() → 72 fungsi
+    │  Apps Script      │  Kode.gs — doPost() → petaApi() → 85 fungsi
     └─────────┬─────────┘
               ▼
     Google Sheets (data)  +  Google Drive (berkas)
@@ -140,7 +140,7 @@ const res = await panggil('namaFungsiServer', arg1, arg2);
 menerjemahkannya:
 
 1. Membaca `{ fn, args }` dari badan permintaan.
-2. Mencocokkan `fn` dengan **daftar putih** `petaApi()` — 72 nama.
+2. Mencocokkan `fn` dengan **daftar putih** `petaApi()` — 85 nama.
 3. Menjalankan fungsinya, mengembalikan `{ hasil: … }` atau `{ __galat: "…" }`.
 
 Sebagian besar fungsi server mengembalikan bentuk seragam:
@@ -179,7 +179,7 @@ Keduanya berlaku untuk ketiga peran — alurnya memang cuma satu.
 Alamat `/exec` menerima POST dari siapa saja — itu memang perlu, dan sama dengan
 situasi sebelumnya. Pertahanannya ada di dua lapis:
 
-- **Daftar putih.** Hanya 72 nama di `petaApi()` yang bisa dijangkau. Fungsi
+- **Daftar putih.** Hanya 85 nama di `petaApi()` yang bisa dijangkau. Fungsi
   internal seperti `setupAppEnvironment`, `bacaSheet`, atau `hashPassword` tidak.
 - **Token sesi.** Setiap fungsi memeriksa sesi dan perannya sendiri. Tanpa login
   yang sah, tidak ada satu data pun yang bisa diambil.
@@ -212,7 +212,7 @@ serta `getSpreadsheet()` (dulu `openById()` belasan kali per permintaan).
 
 ## 6. Database
 
-Spreadsheet **`DB_SIM_PKL`** di dalam folder Drive **`SIM_PKL_Data`**, 17 sheet:
+Spreadsheet **`DB_SIM_PKL`** di dalam folder Drive **`SIM_PKL_Data`**, 18 sheet:
 
 | Sheet | Isi |
 |---|---|
@@ -221,7 +221,8 @@ Spreadsheet **`DB_SIM_PKL`** di dalam folder Drive **`SIM_PKL_Data`**, 17 sheet:
 | `GuruPembimbing` | Biodata guru pembimbing |
 | `TempatPKL` | Instansi, koordinat, radius, kuota, jam & hari kerja |
 | `PendaftaranPKL` | Pengajuan siswa beserta statusnya |
-| `PenempatanPKL` | Relasi aktif siswa–tempat–guru |
+| `PenempatanPKL` | Relasi siswa–tempat–guru; satu baris per penempatan, jadi rantainya sekaligus riwayat perpindahan |
+| `PengajuanPindah` | Permintaan pindah tempat PKL dari siswa beserta keputusannya |
 | `Presensi` | Masuk, Pulang, Izin, dan Sakit — satu sheet, dibedakan kolom `Jenis` |
 | `JurnalHarian` | Jurnal kegiatan beserta review guru |
 | `LaporanAkhir` | Berkas laporan dan statusnya |
@@ -260,7 +261,9 @@ data lama saat dibaca.
 | Beranda, Profil Saya | ✅ | ✅ | ✅ |
 | Presensi, Riwayat, Jurnal, Tempat PKL, Laporan, Nilai | ✅ | — | — |
 | Monitoring, Rekap Jurnal, Rekap Laporan, Penilaian, Pengumuman | — | ✅ | ✅ |
-| Pendaftaran, Data Siswa, Guru, Tempat PKL, Periode, Sertifikat, Pengaturan | — | — | ✅ |
+| Pendaftaran & Penempatan Langsung, Data Siswa, Guru, Tempat PKL, Periode, Sertifikat, Pengaturan | — | — | ✅ |
+| Menyetujui pengajuan pindah & memindahkan siswa | — | — | ✅ |
+| Mengajukan pindah tempat PKL | ✅ | — | — |
 
 Guru hanya melihat **siswa bimbingannya**; admin melihat seluruhnya. Pembatasan
 itu dijalankan `bolehAksesSiswa()` di server — bukan sekadar disembunyikan di
@@ -304,6 +307,45 @@ untuk tanggal lampau, catatan Alpha hilang dengan sendirinya.
 | Hari berjalan, sudah lewat jam pulang | Alpha |
 | Bukan hari kerja (mengikuti kolom Hari Kerja) | Libur — tidak dihitung |
 | Di luar rentang penempatan | tidak dihitung |
+
+### Penempatan dan perpindahan
+
+Satu siswa hanya boleh memiliki **satu** baris `PenempatanPKL` berstatus `Aktif`.
+Hampir seluruh kode membaca penempatan dengan pola `find(Status === 'Aktif')` dan
+mengambil hasil pertama, jadi dua baris aktif membuat sistem salah diam-diam:
+siswa terhitung ganda di monitoring dan presensinya divalidasi ke radius yang
+keliru. Setiap perubahan penempatan karena itu berjalan di dalam satu
+`LockService`, dan **Pengaturan → Pemeriksa Penempatan** dapat mendeteksi bila
+aturan ini pernah bocor sekaligus menyelaraskan ulang kuota.
+
+Ada tiga jalan menuju penempatan:
+
+| Jalur | Pemicu | Kolom `PendaftaranPKL.Jalur` |
+|---|---|---|
+| Pendaftaran mandiri | Siswa memilih tempat, Pokja PKL menerima | `Mandiri` |
+| Penempatan langsung | Pokja PKL menempatkan sendiri lewat menu Pendaftaran | `Langsung` |
+| Perpindahan | Penempatan lama ditutup, yang baru dibuka | — |
+
+Penempatan langsung tetap menulis satu baris `PendaftaranPKL` berstatus
+`Diterima`. Itu disengaja: seluruh laporan, ekspor, dan dashboard yang sudah ada
+ikut menghitungnya tanpa satu baris pun kode laporan perlu diubah.
+
+**Kunci pendaftaran mandiri.** Kolom `Siswa.KunciPendaftaran` menahan siswa yang
+butuh pengawasan intensif sekolah agar tidak memilih tempat sendiri;
+`ajukanPendaftaran()` menolaknya dengan alasan yang tercatat di `AlasanKunci`.
+
+**Perpindahan.** `pindahkanPenempatan_()` adalah satu-satunya tempat perpindahan
+benar-benar terjadi — dipakai baik oleh perpindahan langsung Pokja PKL maupun
+oleh persetujuan pengajuan siswa. Urutannya: tutup baris lama
+(`Status: 'Pindah'`), kembalikan kuota tempat lama, ambil kuota tempat baru,
+tulis baris baru yang menunjuk `PenempatanSebelumnyaID`. Karena setiap
+penempatan adalah satu baris, **rantai baris itulah riwayatnya** — tidak ada
+sheet riwayat terpisah.
+
+Presensi dan jurnal menyimpan `PenempatanID` sejak awal, sehingga tiap catatan
+tahu ia dibuat di tempat mana. Rekap tetap menyaring berdasarkan `SiswaID`, jadi
+kehadiran satu periode utuh lintas tempat; pecahannya per tempat dihitung
+`getRiwayatPenempatan()`. Sertifikat mencetak tempat terakhir.
 
 ### Penilaian
 

@@ -632,5 +632,54 @@ document.addEventListener('DOMContentLoaded', mulaiAplikasi);
 } else {
 mulaiAplikasi();
 }
+
+// ── Pemeriksa integritas penempatan (menu Pengaturan) ──────
+async function periksaPenempatan() {
+const box = $('boxIntegritas');
+if (!box) return;
+box.innerHTML = memuatInline('Memeriksa data penempatan…');
+try {
+const res = await panggil('periksaIntegritasPenempatan', AppState.sessionToken);
+if (!res.success) { box.innerHTML = emptyState('block', 'Gagal memeriksa', res.message); return; }
+const d = res.data;
+if (d.sehat) {
+box.innerHTML = `<div class="alert alert-success"><span class="mi">check_circle</span>
+<div><strong>Semua sesuai</strong>
+<p>${d.penempatanAktif} penempatan aktif, tanpa penempatan ganda, dan seluruh kuota tempat PKL
+sudah cocok dengan jumlah siswa yang ditempatkan.</p></div></div>`;
+return;
+}
+box.innerHTML = `
+${d.gandaSiswa.length ? `<div class="alert alert-error"><span class="mi">error</span>
+<div><strong>Penempatan ganda ditemukan</strong>
+<p>Siswa berikut memiliki lebih dari satu penempatan aktif. Buka menu Monitoring, lalu tutup
+penempatan yang tidak dipakai lewat perpindahan, agar presensinya tidak salah lokasi.</p>
+<ul style="margin:8px 0 0 18px">${d.gandaSiswa.map(g =>
+`<li>${esc(g.nama)} — ${g.jumlah} penempatan aktif</li>`).join('')}</ul></div></div>` : ''}
+${d.kuotaMeleset.length ? `<div class="alert alert-warning" style="margin-top:12px">
+<span class="mi">warning</span>
+<div><strong>Kuota tidak sinkron</strong>
+<p>Angka kuota terisi berbeda dengan jumlah penempatan aktif yang sebenarnya.</p>
+<ul style="margin:8px 0 0 18px">${d.kuotaMeleset.map(k =>
+`<li>${esc(k.nama)} — tercatat ${k.tercatat}, sebenarnya ${k.sebenarnya}</li>`).join('')}</ul>
+<div class="btn-row" style="margin-top:12px">
+<button class="btn btn-primary btn-sm" onclick="selaraskanKuota()">
+<span class="mi">sync</span> Selaraskan Kuota</button></div></div></div>` : ''}`;
+} catch (err) { box.innerHTML = emptyState('error', 'Gagal memeriksa', err.message); }
+}
+async function selaraskanKuota() {
+const ya = await konfirmasi('Selaraskan Kuota',
+'Angka kuota terisi setiap tempat PKL akan dihitung ulang dari jumlah penempatan aktif. ' +
+'Data penempatan siswa tidak diubah. Lanjutkan?', 'Ya, selaraskan', 'btn-primary');
+if (!ya) return;
+tampilkanSibuk('Menyelaraskan kuota…');
+try {
+const res = await panggil('selaraskanKuotaTempat', AppState.sessionToken);
+sembunyikanSibuk();
+toast(res.message, res.success ? 'success' : 'error', 5500);
+if (res.success) { batalkanPaketData(); periksaPenempatan(); }
+} catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
+}
+
 window.__blok = 6;
 window.__SIMPKL_EOF = '2.8';

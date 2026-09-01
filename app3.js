@@ -289,15 +289,33 @@ try {
 const res = await panggilCepat('getDaftarTempatPKL', AppState.sessionToken, AppState.posisi || null);
 if (!res.success) { toast(res.message, 'error'); return; }
 AppState.dataTempat = res.data.items;
-renderStatusPendaftaran(res.data.pendaftaran);
-renderDaftarTempat(res.data.items, res.data.pendaftaran);
+AppState.dataTempatPenuh = res.data;
+renderStatusPendaftaran(res.data.pendaftaran, res.data);
+renderStatusPindah(res.data);
+renderDaftarTempat(res.data.items, res.data.pendaftaran, res.data);
 } catch (err) {
 list.innerHTML = emptyState('error', 'Gagal memuat data', err.message);
 }
 }
-function renderStatusPendaftaran(p) {
+function renderStatusPendaftaran(p, paket) {
 const box = $('boxStatusPendaftaran');
 if (!box) return;
+const d = paket || {};
+// Siswa yang sudah ditempatkan tidak perlu lagi melihat kartu pendaftaran —
+// yang relevan baginya adalah kartu tempat PKL dan pengajuan pindah.
+if (d.penempatan) {
+box.parentElement.hidden = true;
+return;
+}
+if (box.parentElement) box.parentElement.hidden = false;
+if (d.terkunci) {
+box.innerHTML = `<div class="alert alert-warning"><span class="mi">lock</span>
+<div><strong>Pendaftaran mandiri sedang ditahan</strong>
+<p>Pokja PKL menahan pendaftaran mandiri Anda${d.alasanKunci ? ' dengan alasan: ' + esc(d.alasanKunci) : ''}.
+Penempatan PKL Anda akan ditentukan langsung oleh Pokja PKL. Silakan hubungi Pokja PKL
+bila ingin menanyakan lebih lanjut.</p></div></div>`;
+return;
+}
 if (!p) {
 box.innerHTML = `<div class="alert alert-info"><span class="mi">info</span>
 <div><strong>Belum ada pendaftaran</strong>
@@ -325,7 +343,7 @@ ${p.status === 'Diproses' ? `<button class="btn btn-danger btn-sm" onclick="bata
 <span class="mi">cancel</span> Batalkan Pendaftaran</button>` : ''}
 </div>`;
 }
-function renderDaftarTempat(items, pendaftaran) {
+function renderDaftarTempat(items, pendaftaran, paket) {
 const list = $('listTempatPKL');
 if (!list) return;
 if (!items.length) {
@@ -333,9 +351,14 @@ list.innerHTML = emptyState('domain_disabled', 'Belum ada tempat PKL',
 'Pokja PKL belum menambahkan daftar instansi.');
 return;
 }
-const terkunci = pendaftaran && ['Diproses', 'Diterima'].indexOf(pendaftaran.status) >= 0;
+const d = paket || {};
+const terkunci = (d.terkunci) ||
+(pendaftaran && ['Diproses', 'Diterima'].indexOf(pendaftaran.status) >= 0);
+const sudahDitempatkan = !!d.penempatan;
+const pindahMenunggu = !!(d.pengajuanPindah && d.pengajuanPindah.status === 'Menunggu');
 list.innerHTML = items.map(t => {
 const penuh = t.sisaKuota <= 0;
+const iniTempatSaya = sudahDitempatkan && t.id === d.penempatan.tempatId;
 return `<article class="place-card">
 <div class="place-head">
 <div class="place-icon"><span class="mi">domain</span></div>
@@ -356,10 +379,16 @@ ${t.jarakKm !== null ? `<span class="meta-pill"><span class="mi">near_me</span>$
 <div class="btn-row" style="margin-top:14px">
 <button class="btn btn-outline btn-sm" onclick="lihatPetaTempat('${esc(t.id)}')">
 <span class="mi">map</span> Lihat Peta</button>
-<button class="btn btn-primary btn-sm" onclick="daftarKeTempat('${esc(t.id)}','${esc(t.nama)}')"
+${sudahDitempatkan
+? `<button class="btn btn-primary btn-sm" onclick="bukaFormPindah('${esc(t.id)}')"
+${penuh || iniTempatSaya || pindahMenunggu ? 'disabled' : ''}>
+<span class="mi">${iniTempatSaya ? 'check' : 'swap_horiz'}</span>
+${iniTempatSaya ? 'Tempat PKL Anda' : pindahMenunggu ? 'Menunggu Keputusan'
+: penuh ? 'Kuota Penuh' : 'Ajukan Pindah ke Sini'}</button>`
+: `<button class="btn btn-primary btn-sm" onclick="daftarKeTempat('${esc(t.id)}','${esc(t.nama)}')"
 ${penuh || terkunci ? 'disabled' : ''}>
 <span class="mi">how_to_reg</span>
-${terkunci ? 'Sudah Mendaftar' : penuh ? 'Kuota Penuh' : 'Daftar di Sini'}</button>
+${terkunci ? 'Sudah Mendaftar' : penuh ? 'Kuota Penuh' : 'Daftar di Sini'}</button>`}
 </div>
 </article>`;
 }).join('');
@@ -757,4 +786,128 @@ toast(res.message, res.success ? 'success' : 'error');
 if (res.success) $('formPassword').reset();
 } catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
 }
+// ── Pengajuan pindah tempat PKL (sisi siswa) ───────────────
+function renderStatusPindah(data) {
+const kartu = $('kartuPindahSaya'), box = $('boxStatusPindah');
+if (!kartu || !box) return;
+const p = data.pengajuanPindah;
+const penempatan = data.penempatan;
+
+// Kartu ini hanya relevan bagi siswa yang sudah ditempatkan.
+// Tombol "Ajukan Tempat Sendiri" hanya relevan sebelum siswa ditempatkan.
+const btnMandiri = $('btnAjukanMandiri');
+if (btnMandiri) btnMandiri.hidden = !!penempatan || !!data.terkunci;
+
+if (!penempatan) { kartu.hidden = true; return; }
+kartu.hidden = false;
+
+const menunggu = p && p.status === 'Menunggu';
+const gaya = !p ? 'info'
+: { 'Menunggu': 'warning', 'Disetujui': 'success', 'Ditolak': 'error', 'Dibatalkan': 'info' }[p.status] || 'info';
+
+box.innerHTML = `
+<div class="info-tonal"><span class="mi">domain</span>
+<div><div class="info-strong">${esc(penempatan.namaTempat)}</div>
+<div class="info-sub">Tempat PKL Anda saat ini &middot; sejak ${tglSingkat(penempatan.tanggalMulai)}</div></div></div>
+
+${p ? `<div class="alert alert-${gaya}" style="margin-top:14px">
+<span class="mi">${p.status === 'Disetujui' ? 'check_circle' : p.status === 'Ditolak' ? 'cancel'
+: p.status === 'Dibatalkan' ? 'do_not_disturb_on' : 'hourglass_top'}</span>
+<div style="flex:1">
+<strong>Pengajuan pindah ${esc(p.status)}</strong>
+<p>Tujuan: <strong>${esc(p.tempatTujuan)}</strong></p>
+<p style="margin-top:6px;font-size:13px">Diajukan ${tglSingkat(p.tanggalAjuan)}</p>
+<p style="margin-top:6px"><strong>Alasan Anda:</strong> ${esc(p.alasan)}</p>
+${p.catatan ? `<p style="margin-top:6px"><strong>Catatan Pokja:</strong> ${esc(p.catatan)}</p>` : ''}
+</div></div>` : `<p class="field-help" style="margin-top:14px">
+Bila tempat PKL Anda terasa tidak cocok atau terlalu jauh, Anda dapat mengajukan pindah.
+Pokja PKL yang memutuskan, dan presensi serta jurnal Anda yang sudah tercatat tetap aman.</p>`}
+
+<div class="btn-row" style="margin-top:14px">
+${menunggu
+? `<button class="btn btn-danger btn-sm" onclick="batalkanPindah('${esc(p.id)}')">
+<span class="mi">cancel</span> Batalkan Pengajuan</button>`
+: `<button class="btn btn-outline btn-sm" onclick="bukaFormPindah()">
+<span class="mi">swap_horiz</span> Ajukan Pindah Tempat</button>`}
+</div>`;
+}
+function bukaFormPindah(tempatId) {
+const d = AppState.dataTempatPenuh || {};
+const penempatan = d.penempatan;
+if (!penempatan) { toast('Anda belum memiliki penempatan PKL aktif.', 'warning'); return; }
+if (d.pengajuanPindah && d.pengajuanPindah.status === 'Menunggu') {
+toast('Pengajuan pindah Anda sebelumnya masih menunggu keputusan Pokja PKL.', 'warning', 6000);
+return;
+}
+const pilihan = (AppState.dataTempat || [])
+.filter(t => t.id !== penempatan.tempatId && t.aktif && t.sisaKuota > 0);
+if (!pilihan.length) {
+toast('Belum ada tempat PKL lain yang kuotanya tersisa.', 'warning', 6000);
+return;
+}
+bukaModal('Ajukan Pindah Tempat PKL', `
+<div class="info-tonal"><span class="mi">domain</span>
+<div><div class="info-strong">${esc(penempatan.namaTempat)}</div>
+<div class="info-sub">Tempat PKL Anda saat ini</div></div></div>
+
+<div class="field" style="margin-top:16px">
+<label class="field-label" for="apTempat">Tempat PKL yang Dituju *</label>
+<select class="field-input" id="apTempat">
+<option value="">— Pilih tempat PKL —</option>
+${pilihan.map(t => `<option value="${esc(t.id)}" ${t.id === tempatId ? 'selected' : ''}>
+${esc(t.nama)} (sisa ${t.sisaKuota}${t.jarakKm !== null ? ', ' + t.jarakKm + ' km' : ''})</option>`).join('')}
+</select>
+<div class="field-error" id="errApTempat"></div>
+</div>
+
+<div class="field">
+<label class="field-label" for="apAlasan">Alasan Anda Ingin Pindah *</label>
+<textarea class="field-input" id="apAlasan" rows="4" maxlength="400"
+placeholder="Jelaskan sejujurnya, misalnya jarak terlalu jauh atau bidang kerjanya tidak sesuai jurusan."></textarea>
+<div class="field-help">Minimal 10 karakter. Alasan ini dibaca Pokja PKL.</div>
+<div class="field-error" id="errApAlasan"></div>
+</div>
+
+<div class="alert alert-info">
+<span class="mi">info</span>
+<div><strong>Sebelum mengajukan</strong>
+<p>Selama pengajuan menunggu, Anda tetap presensi dan mengisi jurnal di tempat PKL sekarang
+seperti biasa. Perpindahan baru berlaku setelah Pokja PKL menyetujui.</p></div>
+</div>`,
+[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
+{ label: '<span class="mi">send</span> Kirim Pengajuan', kelas: 'btn-primary', aksi: kirimPengajuanPindah }]);
+}
+async function kirimPengajuanPindah() {
+const tempatTujuanId = $('apTempat') ? $('apTempat').value : '';
+const alasan = $('apAlasan') ? $('apAlasan').value.trim() : '';
+['errApTempat', 'errApAlasan'].forEach(id => { if ($(id)) $(id).textContent = ''; });
+if (!tempatTujuanId) { $('errApTempat').textContent = 'Pilih tempat PKL tujuan.'; return; }
+if (alasan.length < 10) { $('errApAlasan').textContent = 'Alasan minimal 10 karakter.'; return; }
+
+tampilkanSibuk('Mengirim pengajuan…');
+try {
+const res = await panggil('ajukanPindahTempat', AppState.sessionToken,
+{ tempatTujuanId: tempatTujuanId, alasan: alasan });
+sembunyikanSibuk();
+if (!res.success) { toast(res.message, 'error', 7000); return; }
+tutupModal();
+toast(res.message, 'success', 6000);
+batalkanPaketData();
+muatTempatPKL();
+} catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
+}
+async function batalkanPindah(id) {
+const ya = await konfirmasi('Batalkan Pengajuan Pindah',
+'Pengajuan pindah Anda akan dibatalkan. Anda dapat mengajukan lagi setelah ini.',
+'Ya, batalkan', 'btn-danger');
+if (!ya) return;
+tampilkanSibuk('Membatalkan…');
+try {
+const res = await panggil('batalkanPengajuanPindah', AppState.sessionToken, id);
+sembunyikanSibuk();
+toast(res.message, res.success ? 'success' : 'error');
+if (res.success) { batalkanPaketData(); muatTempatPKL(); }
+} catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
+}
+
 window.__blok = 3;

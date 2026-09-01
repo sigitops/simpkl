@@ -237,6 +237,7 @@ sembunyikanSibuk();
 if (!info.success) { toast(info.message, 'error'); return; }
 bukaModal(info.data.nama, info.data.html,
 [{ label: 'Tutup', kelas: 'btn-primary', aksi: tutupModal }]);
+muatRiwayatPenempatan(siswaId);
 try {
 const res = await panggil('getRiwayatPresensi', AppState.sessionToken, { mode: 'mingguan', siswaId: siswaId });
 const box = $('detailRiwayat');
@@ -730,4 +731,189 @@ toast(res.message, res.success ? 'success' : 'error', 5500);
 bukaKelolaKriteria();
 } catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
 }
+// ── Antrean pengajuan pindah tempat PKL (Pokja PKL) ────────
+async function muatAntreanPindah() {
+const kartu = $('kartuPindah'), panel = $('panelPindah');
+if (!kartu || !panel) return;
+try {
+const res = await panggilCepat('getAntreanPindah', AppState.sessionToken);
+if (!res.success || !res.data || !res.data.length) { kartu.hidden = true; return; }
+kartu.hidden = false;
+$('badgePindah').textContent = res.data.length;
+AppState.dataPindah = res.data;
+panel.innerHTML = res.data.map(p => {
+const halangan = !p.tujuanAktif ? 'Tempat tujuan sedang tidak menerima siswa.'
+: p.sisaKuota <= 0 ? 'Kuota tempat tujuan sudah penuh.' : '';
+return `
+<article class="review-card">
+<div class="review-head">
+<div class="list-lead ${halangan ? 'danger' : 'warn'}"><span class="mi">swap_horiz</span></div>
+<div style="flex:1;min-width:0">
+<div class="list-title">${esc(p.nama)}</div>
+<div class="list-sub">${esc(p.nis)} &middot; ${esc(p.kelas || '-')} &middot; diajukan ${tglSingkat(p.tanggalAjuan)}</div>
+</div>
+${chipStatus('Menunggu')}
+</div>
+<div class="pindah-alur">
+<span class="pindah-titik">${esc(p.tempatAsal)}</span>
+<span class="mi pindah-panah">arrow_forward</span>
+<span class="pindah-titik pindah-tujuan">${esc(p.tempatTujuan)}
+<span class="chip ${p.sisaKuota > 0 ? 'chip-success' : 'chip-error'}">${p.sisaKuota} sisa</span></span>
+</div>
+<div class="data-label" style="margin-top:12px">Alasan Siswa</div>
+<div class="list-text">${esc(p.alasan)}</div>
+${halangan ? `<div class="alert alert-warning" style="margin-top:12px">
+<span class="mi">warning</span><div><strong>Belum dapat disetujui</strong><p>${esc(halangan)}</p></div></div>` : ''}
+<div class="btn-row" style="margin-top:16px">
+<button class="btn btn-success btn-sm" onclick="prosesPindah('${esc(p.id)}','Disetujui')"
+${halangan ? 'disabled' : ''}><span class="mi">check</span> Setujui &amp; Pindahkan</button>
+<button class="btn btn-danger btn-sm" onclick="prosesPindah('${esc(p.id)}','Ditolak')">
+<span class="mi">close</span> Tolak</button>
+</div>
+</article>`;
+}).join('');
+} catch (err) { kartu.hidden = true; }
+}
+function prosesPindah(id, keputusan) {
+const p = (AppState.dataPindah || []).find(x => x.id === id);
+const setuju = keputusan === 'Disetujui';
+bukaModal(setuju ? 'Setujui Perpindahan' : 'Tolak Pengajuan Pindah', `
+${p ? `<div class="info-tonal"><span class="mi">person</span>
+<div><div class="info-strong">${esc(p.nama)}</div>
+<div class="info-sub">${esc(p.tempatAsal)} &rarr; ${esc(p.tempatTujuan)}</div></div></div>` : ''}
+${setuju ? `
+<div class="alert alert-info" style="margin:16px 0">
+<span class="mi">info</span>
+<div><strong>Yang akan terjadi</strong>
+<p>Penempatan lama ditutup hari ini dan penempatan baru dibuka. Kuota kedua tempat
+menyesuaikan otomatis. Presensi dan jurnal yang sudah tercatat tetap utuh dan tetap
+terhitung dalam rekap satu periode.</p></div>
+</div>
+<div class="field">
+<label class="field-label" for="pnGuru">Guru Pembimbing</label>
+<select class="field-input" id="pnGuru"><option value="">Memuat…</option></select>
+<div class="field-help">Kosongkan bila guru pembimbingnya tetap sama.</div>
+</div>` : ''}
+<div class="field">
+<label class="field-label" for="pnCatatan">${setuju ? 'Catatan (opsional)' : 'Alasan Penolakan *'}</label>
+<textarea class="field-input" id="pnCatatan" rows="3" maxlength="400"
+placeholder="${setuju ? 'Catatan untuk arsip.' : 'Jelaskan agar siswa memahami keputusannya.'}"></textarea>
+<div class="field-error" id="errPnCatatan"></div>
+</div>`,
+[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
+{ label: setuju ? '<span class="mi">check</span> Setujui &amp; Pindahkan' : '<span class="mi">close</span> Tolak',
+kelas: setuju ? 'btn-success' : 'btn-danger',
+aksi: async () => {
+const c = $('pnCatatan').value.trim();
+const guru = $('pnGuru') ? $('pnGuru').value : '';
+if (!setuju && !c) { $('errPnCatatan').textContent = 'Alasan penolakan wajib diisi.'; return; }
+tutupModal();
+tampilkanSibuk(setuju ? 'Memindahkan siswa…' : 'Menyimpan keputusan…');
+try {
+const res = await panggil('prosesPengajuanPindah', AppState.sessionToken, id, keputusan, guru, c);
+sembunyikanSibuk();
+toast(res.message, res.success ? 'success' : 'error', 6500);
+if (res.success) { batalkanPaketData(); muatAntreanPindah(); muatTabelMonitoring(); }
+} catch (e) { sembunyikanSibuk(); toast(e.message, 'error'); }
+} }]);
+if (setuju) muatOpsiGuruKeSelect('pnGuru');
+}
+
+// ── Perpindahan langsung oleh Pokja PKL dari detail siswa ──
+async function bukaPindahTempat(siswaId) {
+tampilkanSibuk('Menyiapkan pilihan…');
+let res;
+try { res = await panggil('getOpsiPindah', AppState.sessionToken, siswaId); }
+catch (e) { sembunyikanSibuk(); toast(e.message, 'error'); return; }
+sembunyikanSibuk();
+if (!res.success) { toast(res.message, 'error', 6000); return; }
+if (!res.data.tempat.length) {
+toast('Tidak ada tempat PKL lain yang aktif dan kuotanya tersisa.', 'warning', 6000);
+return;
+}
+const d = res.data;
+bukaModal('Pindah Tempat PKL', `
+<div class="info-tonal"><span class="mi">person</span>
+<div><div class="info-strong">${esc(d.namaSiswa)}</div>
+<div class="info-sub">Sekarang di ${esc(d.tempatSekarang)} &middot; dibimbing ${esc(d.guruSekarang)}</div></div></div>
+
+<div class="field" style="margin-top:16px">
+<label class="field-label" for="ptTempat">Tempat PKL Tujuan *</label>
+<select class="field-input" id="ptTempat">
+<option value="">— Pilih tempat PKL —</option>
+${d.tempat.map(t => `<option value="${esc(t.id)}">${esc(t.nama)} (sisa ${t.sisaKuota})</option>`).join('')}
+</select>
+<div class="field-error" id="errPtTempat"></div>
+</div>
+
+<div class="field">
+<label class="field-label" for="ptGuru">Guru Pembimbing</label>
+<select class="field-input" id="ptGuru">
+<option value="">— Tetap ${esc(d.guruSekarang)} —</option>
+${d.guru.map(g => `<option value="${esc(g.id)}">${esc(g.nama)} (${esc(g.nip)})</option>`).join('')}
+</select>
+<div class="field-help">Kosongkan bila guru pembimbingnya tidak berubah.</div>
+</div>
+
+<div class="field">
+<label class="field-label" for="ptAlasan">Alasan Perpindahan *</label>
+<textarea class="field-input" id="ptAlasan" rows="3" maxlength="400"
+placeholder="Contoh: jarak tempat PKL terlalu jauh dari rumah siswa."></textarea>
+<div class="field-help">Minimal 10 karakter. Tersimpan sebagai riwayat perpindahan.</div>
+<div class="field-error" id="errPtAlasan"></div>
+</div>
+
+<div class="alert alert-info">
+<span class="mi">history</span>
+<div><strong>Data lama tetap aman</strong>
+<p>Presensi dan jurnal yang sudah tercatat di ${esc(d.tempatSekarang)} tidak dihapus dan tetap
+terhitung dalam rekap satu periode. Radius presensi mengikuti tempat baru mulai hari ini.</p></div>
+</div>`,
+[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
+{ label: '<span class="mi">swap_horiz</span> Pindahkan', kelas: 'btn-primary',
+aksi: () => kirimPindahTempat(siswaId) }]);
+}
+async function kirimPindahTempat(siswaId) {
+const tempatTujuanId = $('ptTempat') ? $('ptTempat').value : '';
+const guruBaruId = $('ptGuru') ? $('ptGuru').value : '';
+const alasan = $('ptAlasan') ? $('ptAlasan').value.trim() : '';
+['errPtTempat', 'errPtAlasan'].forEach(id => { if ($(id)) $(id).textContent = ''; });
+if (!tempatTujuanId) { $('errPtTempat').textContent = 'Pilih tempat PKL tujuan.'; return; }
+if (alasan.length < 10) { $('errPtAlasan').textContent = 'Alasan minimal 10 karakter.'; return; }
+
+tampilkanSibuk('Memindahkan siswa…');
+try {
+const res = await panggil('pindahTempatPKL', AppState.sessionToken,
+{ siswaId: siswaId, tempatTujuanId: tempatTujuanId, guruBaruId: guruBaruId, alasan: alasan });
+sembunyikanSibuk();
+if (!res.success) { toast(res.message, 'error', 7000); return; }
+tutupModal();
+toast(res.message, 'success', 6500);
+batalkanPaketData();
+muatTabelMonitoring();
+muatAntreanPindah();
+} catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
+}
+
+// ── Riwayat penempatan pada modal detail siswa ─────────────
+async function muatRiwayatPenempatan(siswaId) {
+const box = $('detailRiwayatTempat');
+if (!box) return;
+try {
+const res = await panggil('getRiwayatPenempatan', AppState.sessionToken, siswaId);
+if (!res.success || !res.data || res.data.length <= 1) { box.hidden = true; return; }
+box.hidden = false;
+box.innerHTML = `<div class="info-eyebrow" style="margin-bottom:8px">
+Riwayat Tempat PKL (${res.data.length} penempatan)</div>
+<ol class="jejak-pindah">${res.data.map(r => `
+<li class="jejak-item ${r.status === 'Aktif' ? 'jejak-aktif' : ''}">
+<div class="jejak-nama">${esc(r.tempat)}
+<span class="chip ${r.status === 'Aktif' ? 'chip-success' : 'chip-neutral'}">${esc(r.status)}</span></div>
+<div class="jejak-sub">${tglSingkat(r.tanggalMulai)} – ${r.status === 'Aktif' ? 'sekarang' : tglSingkat(r.tanggalSelesai)}
+&middot; ${r.hariHadir} hari hadir &middot; ${esc(r.guru)}</div>
+${r.alasan ? `<div class="jejak-alasan">${esc(r.alasan)}${r.oleh ? ' — ' + esc(r.oleh) : ''}</div>` : ''}
+</li>`).join('')}</ol>`;
+} catch (e) { box.hidden = true; }
+}
+
 window.__blok = 4;
