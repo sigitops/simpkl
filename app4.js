@@ -121,10 +121,14 @@ const label = Object.keys(d.statusPresensi);
 const nilai = label.map(k => d.statusPresensi[k]);
 const warna = label.map(k => k === 'Hadir' ? w.sukses : k === 'Telat' ? w.warning
 : k === 'Izin' ? w.primary : k === 'Sakit' ? w.ungu
-: k === 'Alpha' ? w.error : w.grid);
+: k === 'Alpha' ? w.error : w.netral);
 AppState.grafik.statusHariIni = new Chart(c2, {
 type: 'doughnut',
-data: { labels: label, datasets: [{ data: nilai, backgroundColor: warna, borderWidth: 0 }] },
+// Celah 2px sewarna permukaan memisahkan potongan yang bersebelahan. Pada warna
+// yang lembut, batas inilah yang menjaga tiap potongan tetap terbaca sebagai
+// bagian tersendiri — tanpa itu warna berdekatan cenderung melebur.
+data: { labels: label, datasets: [{ data: nilai, backgroundColor: warna,
+borderColor: w.permukaan, borderWidth: 2 }] },
 options: { responsive: true, maintainAspectRatio: false, cutout: '62%',
 plugins: { legend: { position: 'bottom', labels: { color: w.teks, usePointStyle: true, padding: 14 } } } }
 });

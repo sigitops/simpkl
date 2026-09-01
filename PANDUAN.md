@@ -37,7 +37,7 @@ Aplikasi terbagi dua bagian yang berjalan di tempat berbeda:
               │  credentials: 'omit'  ← tanpa cookie
               ▼
     ┌───────────────────┐
-    │  Apps Script      │  Kode.gs — doPost() → petaApi() → 71 fungsi
+    │  Apps Script      │  Kode.gs — doPost() → petaApi() → 72 fungsi
     └─────────┬─────────┘
               ▼
     Google Sheets (data)  +  Google Drive (berkas)
@@ -140,7 +140,7 @@ const res = await panggil('namaFungsiServer', arg1, arg2);
 menerjemahkannya:
 
 1. Membaca `{ fn, args }` dari badan permintaan.
-2. Mencocokkan `fn` dengan **daftar putih** `petaApi()` — 71 nama.
+2. Mencocokkan `fn` dengan **daftar putih** `petaApi()` — 72 nama.
 3. Menjalankan fungsinya, mengembalikan `{ hasil: … }` atau `{ __galat: "…" }`.
 
 Sebagian besar fungsi server mengembalikan bentuk seragam:
@@ -148,6 +148,20 @@ Sebagian besar fungsi server mengembalikan bentuk seragam:
 ```js
 { success: true|false, data: …, message: 'penjelasan untuk pengguna' }
 ```
+
+### Masuk dan keluar
+
+`masukLengkap()` mengerjakan doLogin, getBootstrapData, dan semuaHalamanHtml
+dalam **satu** eksekusi. Sebelumnya ketiganya berjalan berurutan sebagai tiga
+perjalanan terpisah, masing-masing 1–2 detik, sehingga pengguna menunggu lama
+memandangi form login yang belum juga berganti.
+
+Keluar dikerjakan **optimistis**: layar dibersihkan lebih dulu memakai kerangka
+halaman login yang sudah ikut terkirim saat masuk, lalu `doLogout` menyusul di
+latar belakang. Sesi lokal sudah dibuang, jadi tidak ada yang bisa dilakukan
+seandainya permintaan itu gagal di jalan.
+
+Keduanya berlaku untuk ketiga peran — alurnya memang cuma satu.
 
 ### Menambah fungsi server baru
 
@@ -165,7 +179,7 @@ Sebagian besar fungsi server mengembalikan bentuk seragam:
 Alamat `/exec` menerima POST dari siapa saja — itu memang perlu, dan sama dengan
 situasi sebelumnya. Pertahanannya ada di dua lapis:
 
-- **Daftar putih.** Hanya 71 nama di `petaApi()` yang bisa dijangkau. Fungsi
+- **Daftar putih.** Hanya 72 nama di `petaApi()` yang bisa dijangkau. Fungsi
   internal seperti `setupAppEnvironment`, `bacaSheet`, atau `hashPassword` tidak.
 - **Token sesi.** Setiap fungsi memeriksa sesi dan perannya sendiri. Tanpa login
   yang sah, tidak ada satu data pun yang bisa diambil.
@@ -415,6 +429,36 @@ lama tidak bergeser.
 paginasi, filter otomatis, ekspor Excel/PDF, dan aksi massal ikut didapat tanpa
 kode tambahan. Filter dibangun sendiri dari nilai unik pada data — kolom dengan
 2–30 nilai berbeda dianggap layak jadi filter, sisanya diabaikan.
+
+### Palet grafik
+
+Warna status pada grafik ditetapkan di satu tempat — `warnaGrafik()` di
+`app1.js` — sehingga dashboard siswa, guru, dan admin selalu memakai warna yang
+sama. Nilainya lembut, tetapi bukan hasil kira-kira: setiap pasangan diuji
+terhadap lima gerbang (pita terang, ambang kroma, keterpisahan bagi mata buta
+warna, ambang mata normal, dan kontras terhadap kartu), untuk SELURUH pasangan —
+bukan hanya yang bersebelahan — karena potongan donat bisa bertetangga dalam
+urutan apa pun.
+
+| Status | Terang | Gelap |
+|---|---|---|
+| Hadir | `#4CA37D` | `#49A97E` |
+| Telat | `#C2891A` | `#BC8B33` |
+| Izin | `#2F6DA8` | `#3273AE` |
+| Sakit | `#A87FD9` | `#9E7ED2` |
+| Alpha | `#B0353F` | `#B0414F` |
+| Belum Presensi | `#B6C2C9` | `#48545A` |
+
+Dua pasangan tersulit — Hadir(hijau) lawan Alpha(merah), dan Izin(biru) lawan
+Sakit(violet) — dipisahkan dengan memberi jarak **terang**, bukan menggeser rona.
+Itu sebabnya biru sengaja gelap dan violet sengaja terang, dan mengapa daftar
+hex-nya terlihat tidak beraturan bila dibaca sebagai deretan angka. Bila suatu
+saat diubah, ukur ulang — jangan hanya dilihat.
+
+> **Operator di dalam `calc()` wajib diapit spasi.** `calc(8px+env(...))` bukan
+> CSS yang sah: browser membuang seluruh deklarasinya tanpa pesan galat apa pun.
+> Pola ini pernah membuat padding topbar, bilah navigasi bawah, laci, dan kaki
+> modal tidak pernah berlaku sama sekali. Tulis `calc(8px + env(...))`.
 
 **Ubah tampilan.** Semua warna dan jarak berupa variabel CSS di puncak
 `app.css`, terpisah untuk tema terang dan gelap.

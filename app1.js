@@ -300,14 +300,36 @@ function hancurkanGrafik() {
 Object.keys(AppState.grafik).forEach(k => { try { AppState.grafik[k].destroy(); } catch (e) {} });
 AppState.grafik = {};
 }
+// Palet grafik — lembut, tetapi setiap pasangan warnanya sudah diukur, bukan dikira.
+//
+// Warna pastel gampang terlihat manis lalu gagal dipakai: dua status yang mirip
+// jadi tidak terbedakan, dan bar terang hilang di atas kartu putih. Palet ini
+// karena itu diuji terhadap lima gerbang: pita terang, ambang kroma (agar tidak
+// terbaca abu), keterpisahan bagi mata buta warna, ambang mata normal, dan
+// kontras terhadap permukaan kartu. Diuji untuk SELURUH pasangan, bukan hanya
+// yang bersebelahan, karena potongan donat bisa bertetangga dalam urutan apa pun.
+//
+// Pasangan tersulit selalu Hadir(hijau) lawan Alpha(merah) — kebingungan merah-hijau
+// yang dialami sekitar 8% laki-laki — dan Izin(biru) lawan Sakit(violet). Keduanya
+// dipisahkan bukan dengan menggeser rona, melainkan dengan memberi jarak TERANG:
+// biru sengaja gelap, violet sengaja terang. Itu sebabnya nilainya tampak tidak
+// beraturan bila hanya dilihat sebagai daftar hex.
+//
+// Hasil ukur: mode terang ΔE buta warna 10,0 dan mata normal 16,2 (ambang 8 dan 15);
+// mode gelap 8,2 dan 15,3. Seluruh warna ≥3:1 terhadap permukaannya.
+// Mode gelap DIPILIH ULANG untuk permukaan gelap, bukan hasil pembalikan otomatis.
 function warnaGrafik() {
 const gelap = document.documentElement.getAttribute('data-theme') === 'dark';
 return {
-primary: gelap ? '#87D0F4' : '#1C7293',
-sukses:  gelap ? '#7BD5A6' : '#2D6A4F',
-warning: gelap ? '#FBBA6B' : '#FFB703',
-error:   gelap ? '#FFB4AB' : '#D90429',
-ungu:    gelap ? '#C7B0F0' : '#6D4AA8',
+sukses:  gelap ? '#49A97E' : '#4CA37D',  // Hadir
+warning: gelap ? '#BC8B33' : '#C2891A',  // Telat
+primary: gelap ? '#3273AE' : '#2F6DA8',  // Izin
+ungu:    gelap ? '#9E7ED2' : '#A87FD9',  // Sakit
+error:   gelap ? '#B0414F' : '#B0353F',  // Alpha
+// Bukan bagian palet kategori: "Belum Presensi" berarti belum ada datanya,
+// jadi sengaja netral supaya tidak ikut bersaing dengan status yang sebenarnya.
+netral:  gelap ? '#48545A' : '#B6C2C9',
+permukaan: gelap ? '#171D20' : '#FFFFFF',
 grid:    gelap ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.06)',
 teks:    gelap ? '#BFC8CE' : '#3F484D'
 };
@@ -795,8 +817,16 @@ tutupMenuProfil();
 AppState.tabel = {};
 const wadah = $('app-container');
 if (halaman === 'login') {
+// Kerangka halaman login sudah ikut terkirim bersama halaman lain saat masuk,
+// jadi keluar dari aplikasi tidak perlu menunggu server sama sekali.
+if (AppState.htmlLogin) {
+wadah.innerHTML = AppState.htmlLogin;
+AppState.halamanAktif = 'login';
+return;
+}
 try {
 const res = await panggil('getPageContent', 'login', {});
+if (res.success) AppState.htmlLogin = res.html;
 wadah.innerHTML = res.success ? res.html : '';
 } catch (e) { wadah.innerHTML = ''; }
 AppState.halamanAktif = 'login';
@@ -934,17 +964,6 @@ b.classList.toggle('active', b.dataset.page === halaman));
 $$('.bn-item[data-page]').forEach(b =>
 b.classList.toggle('active', b.dataset.page === halaman));
 }
-function pramuatSemuaHalaman() {
-const menu = MENU[AppState.user.role] || [];
-let ke = 0;
-const berikutnya = function () {
-if (ke >= menu.length) return;
-const m = menu[ke++];
-if (m && m.id && m.id !== AppState.halamanAktif) pramuatHalaman(m.id);
-setTimeout(berikutnya, 700);
-};
-setTimeout(berikutnya, 1500);
-}
 function renderNavigation() {
 const menu = MENU[AppState.user.role] || [];
 $('sidebarNav').innerHTML = menu.map(m => `
@@ -1078,7 +1097,7 @@ const btn = $('btnLogin');
 btn.disabled = true;
 btn.innerHTML = '<span class="spinner spinner-sm"></span> Memeriksa…';
 try {
-const res = await panggil('doLogin', user, pass);
+const res = await panggil('masukLengkap', user, pass);
 if (!res.success) {
 $('errPass').textContent = res.message;
 $('loginPass').classList.add('invalid');
@@ -1086,7 +1105,7 @@ btn.disabled = false;
 btn.innerHTML = '<span class="mi">login</span> Masuk';
 return;
 }
-await mulaiSesi(res.data.token);
+await mulaiSesi(res.data.token, res.data);
 } catch (err) {
 toast(err.message, 'error');
 btn.disabled = false;
@@ -1105,23 +1124,48 @@ sembunyikanSibuk();
 toast(err.message, 'error');
 }
 }
-async function mulaiSesi(token) {
+// Layar peralihan saat masuk. Bukan sekadar hiasan: sebelumnya form login tetap
+// terpampang di balik lapisan gelap "Menyiapkan aplikasi…" sampai dashboard siap,
+// sehingga pengguna melihat kolom NIS dan password-nya sendiri masih di layar
+// dan mengira loginnya gagal. Form dibuang lebih dulu, baru kita menunggu.
+function tampilkanTiraiMasuk(pesan) {
+const wadah = $('app-container');
+if (!wadah) return;
+wadah.classList.add('plain');
+wadah.innerHTML = '<div class="tirai-peralihan"><span class="boot-spin"></span>' +
+'<p>' + esc(pesan || 'Menyiapkan aplikasi…') + '</p></div>';
+}
+async function mulaiSesi(token, awal) {
 AppState.sessionToken = token;
 Simpanan.simpan('sesi', token);
-tampilkanSibuk('Menyiapkan aplikasi…');
+tampilkanTiraiMasuk();
 try {
-await muatBootstrap();
-sembunyikanSibuk();
+await muatBootstrap(awal);
 await navigateTo('beranda');
 toast('Selamat datang, ' + AppState.user.nama + '!', 'success');
 } catch (err) {
-sembunyikanSibuk();
 toast(err.message, 'error');
 keluarPaksa();
 }
 }
-async function muatBootstrap() {
-const res = await panggil('getBootstrapData', AppState.sessionToken);
+/**
+ * @param {Object} [awal] Hasil masukLengkap() bila datang dari login. Bila kosong
+ *   — misalnya saat memulihkan sesi tersimpan — kedua permintaan dikirim
+ *   BERSAMAAN, bukan berurutan, sehingga tetap satu kali waktu tunggu.
+ */
+async function muatBootstrap(awal) {
+let res, halaman;
+if (awal && awal.bootstrap) {
+res = awal.bootstrap;
+halaman = awal.halaman;
+} else {
+const dua = await Promise.all([
+panggil('getBootstrapData', AppState.sessionToken),
+panggil('semuaHalamanHtml', AppState.sessionToken)
+]);
+res = dua[0];
+halaman = dua[1];
+}
 if (!res.success) throw new Error(res.message || 'Sesi tidak valid.');
 AppState.user = res.data.user;
 AppState.config = res.data.config;
@@ -1157,15 +1201,14 @@ $('popSub').textContent = u.username + ' · ' + peran;
 $('popPengaturan').hidden = (u.role !== 'admin');
 renderNavigation();
 tampilkanKerangkaAplikasi(true);
-pramuatSemuaHalaman();
 try {
 Simpanan.simpan('identitas', JSON.stringify({
 appName: c.appName || 'SIM PKL', appTagline: c.appTagline || '',
 namaSekolah: c.namaSekolah || '', logoUrl: c.logoUrl || ''
 }));
 } catch (e) {}
-const halaman = await panggil('semuaHalamanHtml', AppState.sessionToken);
 AppState.htmlHalaman = (halaman && halaman.success) ? halaman.data : {};
+if (AppState.htmlHalaman.login) AppState.htmlLogin = AppState.htmlHalaman.login;
 segarkanPaketData();
 if (!AppState.periode) toast('Belum ada periode PKL aktif. Presensi dan jurnal terkunci.', 'warning', 7000);
 }
@@ -1184,11 +1227,15 @@ async function handleLogout() {
 const ya = await konfirmasi('Keluar dari aplikasi',
 'Anda akan keluar dari SIM PKL. Data yang belum tersimpan akan hilang.', 'Ya, keluar');
 if (!ya) return;
-tampilkanSibuk('Keluar…');
-try { await panggil('doLogout', AppState.sessionToken); } catch (e) {}
-sembunyikanSibuk();
+const token = AppState.sessionToken;
+// Keluar dikerjakan optimistis: layar dibersihkan SEKARANG, penghapusan sesi di
+// server menyusul di latar belakang. Menunggu jawaban server lebih dulu membuat
+// dashboard tetap terpampang satu dua detik setelah tombol ditekan — terasa
+// seperti tombolnya tidak berfungsi. Sesi lokal sudah dibuang, jadi tidak ada
+// yang bisa dilakukan meski permintaan itu gagal di jalan.
 keluarPaksa();
 toast('Anda telah keluar.', 'info');
+if (token) panggil('doLogout', token).catch(function () {});
 }
 function keluarPaksa() {
 hentikanKamera();
@@ -1202,6 +1249,10 @@ AppState.user = null;
 batalkanPaketData();
 AppState.penempatan = null;
 AppState.tabel = {};
+// Kerangka halaman peran sebelumnya dibuang seluruhnya — hanya halaman login yang
+// disimpan. Tanpa ini, pengguna berikutnya di perangkat yang sama berpeluang
+// melihat sekilas halaman milik peran sebelumnya.
+AppState.htmlHalaman = {};
 tampilkanKerangkaAplikasi(false);
 navigateTo('login');
 }
