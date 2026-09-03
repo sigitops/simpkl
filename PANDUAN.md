@@ -1,7 +1,7 @@
 # SIM PKL — Panduan Teknis
 
 Sistem Informasi & Manajemen Presensi Siswa Praktik Kerja Lapangan
-SMK HKTI 2 Purwareja Klampok · versi 3.6
+SMK HKTI 2 Purwareja Klampok · versi 3.7
 
 Dokumen ini menjelaskan aplikasi sebagaimana adanya sekarang: cara kerjanya, cara
 memasangnya dari nol, dan cara mengembangkannya. Ditulis untuk orang yang akan
@@ -276,6 +276,40 @@ Empat lapis, dari yang paling dekat ke pengguna:
 Dua hal berikut sengaja di-memo karena dulu terbukti menghabiskan puluhan detik:
 `getTZ()` dan `offsetZonaMs()` (dulu satu panggilan layanan **per sel tanggal**),
 serta `getSpreadsheet()` (dulu `openById()` belasan kali per permintaan).
+
+### Kunci pengalihan sekali pakai (v3.7)
+
+Modal detail siswa menggantung di "Memuat detail…", dan Console menunjukkan
+`getRiwayatPresensi` dan `getRiwayatPenempatan` sama-sama gagal **404 pada satu
+`user_content_key` yang sama**.
+
+Sebabnya bukan salah satu fungsi itu. `/exec` tidak menjawab POST secara
+langsung: ia membalas 302 ke
+`script.googleusercontent.com/macros/echo?user_content_key=…`, dan kunci itu
+**sekali pakai**. Peramban boleh menyinggah pengalihan; ketika dua POST berangkat
+nyaris bersamaan ke alamat yang sama persis, keduanya dapat mengikuti pengalihan
+tersinggah yang sama — satu memakai kuncinya, satu lagi menerima 404. Percobaan
+ulangnya lalu menabrak CORS, karena Google menjawab dengan halaman galatnya
+sendiri yang memang tidak berheader CORS.
+
+Dua lapis penangkalnya:
+
+| Lapis | Cara kerja |
+|---|---|
+| **Alamat unik per permintaan** | Setiap POST menambahkan `?_p=<nomor><waktu>` dan `cache: 'no-store'`. Tidak ada dua permintaan beralamat sama, jadi tidak ada pengalihan yang bisa dipakai berdua |
+| **Penggabungan permintaan** | Pembacaan yang berangkat dalam hentakan yang sama (jendela 8 ms) disatukan menjadi satu `panggilBanyak()`. Modal detail yang tadinya dua permintaan kini satu |
+
+`panggilBanyak(token, daftar)` menjalankan sampai 12 pembacaan dalam **satu**
+eksekusi. Karena memo per eksekusi, sheet yang sama hanya dibaca sekali — paket
+berisi tiga pembacaan hampir selalu lebih murah daripada tiga perjalanan
+terpisah. **Hanya pembacaan yang boleh dipaketkan**; `AWALAN_BOLEH_PAKET` di
+server menolak sisanya, karena klien sengaja tidak pernah mengulang penulisan
+dan membungkusnya di dalam paket akan menyelundupkannya melewati aturan itu.
+
+Klien juga tahan terhadap pasangan versi yang tidak seimbang: bila `web/`
+ter-deploy lebih dulu daripada `Kode.gs`, server menolak `panggilBanyak`, klien
+menyetel `PAKET_DIDUKUNG = false` dan mengirim permintaannya satu per satu —
+aplikasi tetap berjalan, hanya kehilangan penggabungannya.
 
 ### Aturan beban server (v3.6) — dibayar dengan satu kemunduran nyata
 
@@ -609,6 +643,7 @@ jadi salah.
 
 | Gejala | Penyebab & solusi |
 |---|---|
+| Modal atau panel menggantung, Console menyebut 404 pada `user_content_key` | Dua POST berebut satu kunci pengalihan sekali pakai. Sejak v3.7 setiap permintaan beralamat unik dan pembacaan yang bersamaan digabung — lihat §4 |
 | Panel gagal dengan **"Server menjawab kode 404"** | Gangguan sesaat pada lompatan redirect Apps Script. Sejak v3.5 permintaannya diulang otomatis. Bila menetap, periksa apakah `SIMPKL_API` menunjuk `/exec` penerapan yang masih ada |
 | **/api/gas** menjawab 404 | Fungsi proxy tidak terbangun. Berkas `api/gas.js` harus memakai `module.exports`, bukan `export default` (repo ini tanpa package.json, jadi Vercel menjalankannya sebagai CommonJS). Periksa juga folder `api/` benar-benar ikut terdorong ke GitHub — buka `/api/gas` di peramban, jawabannya harus `{"siap":true,…}` |
 | Console menyebut **CORS** | Sejak v3.4 ditangani sendiri: permintaan diulang, lalu dialihkan otomatis ke `/api/gas`. Bila tetap gagal, endpoint memang sedang mati — periksa **Executions** di editor Apps Script. Untuk memaksa proxy permanen, ubah `window.SIMPKL_API` di `index.html` menjadi `'/api/gas'` |

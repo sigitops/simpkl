@@ -436,9 +436,95 @@ function proxyTersedia() {
 // Hanya pembacaan yang digabung; penulisan tidak pernah, karena dua penekanan
 // tombol Simpan memang dua kehendak yang berbeda.
 const SEDANG_TERBANG = {};
+let NOMOR_PERMINTAAN = 0;
 function kunciTerbang(namaFungsi, args) {
   try { return namaFungsi + '|' + JSON.stringify((args || []).slice(1)); }
   catch (e) { return ''; }
+}
+
+// ── PENGGABUNG PERMINTAAN ──────────────────────────────────────────────────
+//
+// Pembacaan yang berangkat dalam hentakan yang sama disatukan menjadi SATU
+// perjalanan lewat panggilBanyak(). Contoh nyatanya adalah modal detail siswa:
+// ia meminta riwayat penempatan dan riwayat presensi berturut-turut tanpa jeda,
+// dan dua permintaan yang berangkat bersamaan itulah yang saling merebut kunci
+// pengalihan Apps Script sampai salah satunya menerima 404.
+//
+// Menyatukannya bukan sekadar menghindari tabrakan: di sisi server, sheet yang
+// sama hanya dibaca sekali berkat memo per eksekusi, jadi paket berisi tiga
+// pembacaan hampir selalu lebih cepat daripada tiga perjalanan terpisah.
+const JEDA_KUMPUL_MS = 8;
+let ANTREAN_PAKET = [];
+let PEWAKTU_PAKET = null;
+// Klien baru bisa saja berpasangan dengan Kode.gs versi lama yang belum mengenal
+// panggilBanyak — misalnya ketika Vercel sudah ter-deploy tetapi Apps Script
+// belum dibuatkan versi barunya. Begitu terdeteksi, penggabungan dimatikan untuk
+// seterusnya dan aplikasi berjalan seperti sebelumnya, bukan berhenti bekerja.
+let PAKET_DIDUKUNG = true;
+
+/** Hanya pembacaan milik sesi ini yang boleh dipaketkan. */
+function bolehDipaketkan(namaFungsi, args, opsi) {
+  if (!PAKET_DIDUKUNG) return false;
+  if (opsi && opsi.tanpaPaket) return false;
+  if (namaFungsi === 'panggilBanyak') return false;
+  if (FUNGSI_BERAT.indexOf(namaFungsi) !== -1) return false;
+  if (AMAN_ULANG_KHUSUS.indexOf(namaFungsi) !== -1) return false;   // fungsi masuk
+  if (!AWALAN_AMAN_ULANG.some(a => namaFungsi.indexOf(a) === 0)) return false;
+  // Argumen pertama wajib token sesi yang sedang berlaku: itulah yang membuat
+  // paketnya sah di server, sekaligus menyaring panggilan berbentuk lain
+  // seperti getPageContent(namaHalaman, …).
+  return !!AppState.sessionToken && args && args[0] === AppState.sessionToken;
+}
+
+function jadwalkanPaket(namaFungsi, args) {
+  return new Promise((selesai, gagal) => {
+    ANTREAN_PAKET.push({ fn: namaFungsi, args: args, selesai: selesai, gagal: gagal });
+    if (PEWAKTU_PAKET) return;
+    PEWAKTU_PAKET = setTimeout(kirimPaket, JEDA_KUMPUL_MS);
+  });
+}
+
+function kirimPaket() {
+  PEWAKTU_PAKET = null;
+  const isi = ANTREAN_PAKET;
+  ANTREAN_PAKET = [];
+  if (!isi.length) return;
+
+  // Sendirian? Tidak ada gunanya dibungkus.
+  if (isi.length === 1) {
+    kirimSatu(isi[0].fn, isi[0].args, { tanpaPaket: true }).then(isi[0].selesai, isi[0].gagal);
+    return;
+  }
+  const satuPerSatu = () => isi.forEach(b =>
+    kirimSatu(b.fn, b.args, { tanpaPaket: true }).then(b.selesai, b.gagal));
+
+  const daftar = isi.map(b => ({ fn: b.fn, args: b.args }));
+  kirimSatu('panggilBanyak', [AppState.sessionToken, daftar], { tanpaPaket: true })
+    .then(jawab => {
+      const bagian = (jawab && jawab.success && Array.isArray(jawab.data)) ? jawab.data : null;
+      if (!bagian || bagian.length !== isi.length) {
+        PAKET_DIDUKUNG = false;
+        console.warn('Server belum mengenal panggilBanyak — penggabungan permintaan dimatikan.');
+        satuPerSatu();
+        return;
+      }
+      isi.forEach((b, i) => {
+        const satu = bagian[i];
+        if (satu && satu.__galat) b.gagal(new Error(satu.__galat));
+        else b.selesai(satu ? satu.hasil : null);
+      });
+    })
+    .catch(err => {
+      // Gangguan transport memang milik bersama: setiap penunggu menerima galat
+      // yang sama lengkap dengan penandanya. Tetapi penolakan dari SERVER —
+      // "Fungsi panggilBanyak tidak tersedia" pada penerapan lama — bukan
+      // kegagalan permintaan aslinya, jadi permintaannya dikirim ulang sendiri.
+      if (iniGalatJaringan(err)) { isi.forEach(b => b.gagal(err)); return; }
+      PAKET_DIDUKUNG = false;
+      console.warn('Paket permintaan ditolak server (' + err.message +
+        '). Penggabungan dimatikan, permintaan dikirim satu per satu.');
+      satuPerSatu();
+    });
 }
 
 /**
@@ -450,11 +536,25 @@ function kirimKeServer(namaFungsi, args, opsi) {
   if (!window.SIMPKL_API) {
     return Promise.reject(new Error('Alamat API belum disetel. Periksa window.SIMPKL_API di index.html.'));
   }
-  const batasUlang = opsi.ulang === false ? 0
-    : (amanDiulang(namaFungsi) ? JEDA_ULANG.length : 0);
-
   const kunciGabung = amanDiulang(namaFungsi) ? kunciTerbang(namaFungsi, args) : '';
   if (kunciGabung && SEDANG_TERBANG[kunciGabung]) return SEDANG_TERBANG[kunciGabung];
+
+  const perjalanan = bolehDipaketkan(namaFungsi, args, opsi)
+    ? jadwalkanPaket(namaFungsi, args)
+    : kirimSatu(namaFungsi, args, opsi);
+
+  if (!kunciGabung) return perjalanan;
+  SEDANG_TERBANG[kunciGabung] = perjalanan;
+  const lepas = () => { delete SEDANG_TERBANG[kunciGabung]; };
+  perjalanan.then(lepas, lepas);
+  return perjalanan;
+}
+
+/** Satu permintaan, satu perjalanan — lengkap dengan batas waktu dan pengulangan. */
+function kirimSatu(namaFungsi, args, opsi) {
+  opsi = opsi || {};
+  const batasUlang = opsi.ulang === false ? 0
+    : (amanDiulang(namaFungsi) || namaFungsi === 'panggilBanyak' ? JEDA_ULANG.length : 0);
 
   const sekali = (alamat) => {
     // AbortController tidak ada di peramban yang sangat tua; di sana kita cukup
@@ -465,15 +565,33 @@ function kirimKeServer(namaFungsi, args, opsi) {
     if (pembatal) pewaktu = setTimeout(() => { try { pembatal.abort(); } catch (e) {} }, batas);
     const bersihkan = () => { if (pewaktu) clearTimeout(pewaktu); };
 
+    // ALAMAT DIBUAT UNIK SETIAP KALI. Ini bukan kerapian, ini perbaikan bug.
+    //
+    // /exec tidak menjawab POST secara langsung: ia membalas 302 ke
+    // script.googleusercontent.com/macros/echo?user_content_key=…, dan kunci itu
+    // SEKALI PAKAI. Peramban boleh menyinggah pengalihan, dan ketika dua
+    // permintaan berangkat nyaris bersamaan ke alamat yang sama persis, keduanya
+    // dapat mengikuti pengalihan tersinggah yang sama — yang satu memakai
+    // kuncinya, yang lain menerima 404 untuk kunci yang sudah hangus.
+    //
+    // Itu persis yang terlihat di lapangan: getRiwayatPresensi dan
+    // getRiwayatPenempatan gagal 404 pada satu user_content_key yang sama, lalu
+    // percobaan ulangnya menabrak CORS karena Google menjawab dengan halaman
+    // galatnya sendiri. Dengan penanda unik, tidak ada dua permintaan yang
+    // beralamat sama, jadi tidak ada pengalihan yang bisa dipakai berdua.
+    const unik = alamat + (alamat.indexOf('?') >= 0 ? '&' : '?') +
+      '_p=' + (++NOMOR_PERMINTAAN) + Date.now().toString(36);
+
     const permintaan = {
       method: 'POST',
       credentials: 'omit',
+      cache: 'no-store',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ fn: namaFungsi, args: args })
     };
     if (pembatal) permintaan.signal = pembatal.signal;
 
-    return fetch(alamat, permintaan).then(r => {
+    return fetch(unik, permintaan).then(r => {
       bersihkan();
       // 5xx dan 429 adalah gangguan sesaat di sisi Google.
       //
@@ -529,7 +647,7 @@ function kirimKeServer(namaFungsi, args, opsi) {
     return new Promise(r => setTimeout(r, jeda)).then(() => coba(sisa - 1, keTampil + 1));
   });
 
-  const perjalanan = coba(batasUlang, 0)
+  return coba(batasUlang, 0)
     .catch(err => {
       // Pengalihan ke proxy hanya untuk pembacaan, dengan alasan yang sama
       // seperti pengulangan: penyimpanan data yang gagal di tengah jalan bisa
@@ -544,12 +662,6 @@ function kirimKeServer(namaFungsi, args, opsi) {
       if (paket && paket.__galat) throw new Error(paket.__galat);
       return paket ? paket.hasil : null;
     });
-
-  if (!kunciGabung) return perjalanan;
-  SEDANG_TERBANG[kunciGabung] = perjalanan;
-  const lepas = () => { delete SEDANG_TERBANG[kunciGabung]; };
-  perjalanan.then(lepas, lepas);
-  return perjalanan;
 }
 
 function panggil(namaFungsi, ...args) {

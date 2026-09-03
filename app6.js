@@ -746,4 +746,4 @@ if (res.success) { batalkanPaketData(); periksaPenempatan(); }
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '3.6';
+window.__SIMPKL_EOF = '3.7';
