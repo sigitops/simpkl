@@ -608,6 +608,10 @@ window.addEventListener('beforeunload', () => { hentikanKamera(); hentikanPantau
 let BOOT_SEDANG_JALAN = false;
 async function mulaiAplikasi() {
 if (BOOT_SEDANG_JALAN) return;
+// Diperiksa sebelum apa pun tergambar. Meneruskan boot dengan CSS atau JS
+// versi lama hanya menghasilkan layar yang salah tapi meyakinkan.
+if (jagaVersiAset()) return;
+bersihkanKerangkaLama();
 BOOT_SEDANG_JALAN = true;
 // Splash dimunculkan lagi supaya percobaan ulang terlihat sedang bekerja dan
 // supaya penjaga galat global tahu aplikasi masih dalam tahap boot.
@@ -1153,4 +1157,4 @@ await muatJadwalShift();
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '3.9';
+window.__SIMPKL_EOF = '4.0';

@@ -141,3 +141,30 @@
   .jadwal-meter{flex:1 1 100%;min-width:0}
   .js-avatar{display:none}
 }
+
+
+/* ── RANGKA KARTU KPI ───────────────────────────────────────────────────────
+   Kotaknya adalah .kpi-card yang sama dengan kartu jadinya, jadi tingginya
+   selalu sama tanpa satu pun angka piksel yang harus dirawat berpasangan.
+   Yang dipucatkan hanya isinya. */
+.kpi-kosong{pointer-events:none}
+.kpi-kosong .kpi-icon,
+.kpi-kosong .kpi-val,
+.kpi-kosong .kpi-lbl{
+  background:linear-gradient(90deg,var(--surface-container) 25%,var(--surface-hover) 50%,var(--surface-container) 75%);
+  background-size:200% 100%;animation:shimmer 1.4s infinite;
+  border-radius:var(--r-sm);color:transparent}
+.kpi-kosong .kpi-icon{border-radius:var(--r-lg)}
+.kpi-kosong .kpi-val{width:52px}
+.kpi-kosong .kpi-lbl{margin-top:2px}
+
+/* Daftar analisis otomatis biasanya berisi tiga butir setinggi 150 px. Tanpa
+   ruang yang dicadangkan, tabel dan footer di bawahnya ikut bergeser setiap
+   kali datanya tiba. */
+.insight-list{min-height:150px}
+
+
+/* Cap versi berkas ini, dibaca versiCss() di app1.js. Penanda ini juga menjadi
+   tanda akhir berkas: bila app.css yang dipegang peramban lebih tua daripada
+   index.html, capnya tidak akan sama dan boot memuat ulang sekali. */
+:root{--versi-aset:"4.0"}

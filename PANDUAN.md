@@ -1,7 +1,7 @@
 # SIM PKL — Panduan Teknis
 
 Sistem Informasi & Manajemen Presensi Siswa Praktik Kerja Lapangan
-SMK HKTI 2 Purwareja Klampok · versi 3.9
+SMK HKTI 2 Purwareja Klampok · versi 4.0
 
 Dokumen ini menjelaskan aplikasi sebagaimana adanya sekarang: cara kerjanya, cara
 memasangnya dari nol, dan cara mengembangkannya. Ditulis untuk orang yang akan
@@ -276,6 +276,157 @@ Empat lapis, dari yang paling dekat ke pengguna:
 Dua hal berikut sengaja di-memo karena dulu terbukti menghabiskan puluhan detik:
 `getTZ()` dan `offsetZonaMs()` (dulu satu panggilan layanan **per sel tanggal**),
 serta `getSpreadsheet()` (dulu `openById()` belasan kali per permintaan).
+
+## Cap versi aset (v4.0)
+
+Ini bukan optimasi. Ini penjaga terhadap satu jenis kegagalan yang paling sulit
+dikenali dari layar, karena gejalanya menunjuk ke tempat yang sepenuhnya salah.
+
+Kejadiannya begini. `Kode.gs` v3.9 disebarkan; markup halaman Jadwal Shift
+berubah — tombol Ekspor baru, kepala kartu baru dengan `.jadwal-bulan` dan meter
+progres. `app.css` dan `app6.js` v3.9 juga sudah tayang di Vercel; ini sudah
+diperiksa dengan mengambil kedua berkasnya langsung dari URL-nya. Tetapi peramban
+pengguna tidak punya satu pun alasan untuk mengambilnya ulang: alamatnya sama
+persis dengan kemarin, `/app.css`, tanpa embel-embel apa pun.
+
+Yang tergambar akhirnya **markup baru di atas CSS lama**, dan laporan yang masuk
+berbunyi: "tombol Ekspor belum muncul" dan "filter bulan jadi terlalu lebar".
+Keduanya benar sebagai pengamatan dan menyesatkan sebagai diagnosis:
+
+- Tombol Ekspor memang ada di HTML, tetapi `hidden`. Yang membukanya adalah
+  `gambarKisiJadwal()` di `app6.js` — versi lama tidak mengenalnya.
+- Filter bulan melebar karena `.jadwal-bulan{display:flex}` dan
+  `.jadwal-input-bulan{width:auto}` ada di CSS baru. Tanpa keduanya, `<input
+  type="month">` mewarisi `.field-input{width:100%}` dan kedua tombol panah
+  terlempar ke baris atas dan bawahnya.
+
+Tidak satu pun dari keduanya adalah bug di halaman Jadwal Shift. Petunjuk yang
+sebenarnya ada di tempat lain: nama siswa masih HURUF BESAR, tidak ada lingkaran
+inisial, tidak ada lencana `2/22`, legenda kehilangan butir "belum dijadwalkan",
+dan sel yang terisi tidak berwarna — semuanya bagian dari berkas frontend v3.9
+yang tidak pernah sampai.
+
+**Karena itu setiap berkas frontend kini membawa capnya sendiri:**
+
+| Berkas | Cap | Dibaca oleh |
+|---|---|---|
+| `index.html` | `window.SIMPKL_VERSI` | acuan; alamatnya tanpa `?v=` sehingga selalu divalidasi ulang ke server |
+| `app*.js` | `window.__SIMPKL_EOF` | ditulis blok kode terakhir (`app6.js`) |
+| `app.css` | `--versi-aset` pada `:root` | `versiCss()` di `app1.js` |
+| `Kode.gs` | `APP_VERSI` | kunci singgahan server |
+
+`jagaVersiAset()` berjalan sebagai baris pertama `mulaiAplikasi()`, sebelum apa
+pun tergambar. Bila salah satu cap berbeda dari acuan, halaman dimuat ulang
+**paling banyak sekali** — dijaga `sessionStorage`, jadi mustahil berputar. Bila
+sesudah satu kali muat ulang capnya masih berbeda, penyebabnya ada di penyebaran
+(Vercel belum terbit), bukan di cache, dan pengguna diberi tahu apa adanya alih-
+alih dibiarkan menebak.
+
+**Aturan rilis, dan ini wajib:** setiap kali `app.css` atau salah satu `app*.js`
+berubah, naikkan `APP_VERSI` di `Kode.gs` lalu samakan keempat capnya, termasuk
+`?v=` pada ketujuh tag aset di `index.html`. `uji/uji-versi.js` menolak rilis yang
+capnya tidak seragam — ia membaca `APP_VERSI` sebagai acuan dan membandingkan
+sisanya, jadi tidak ada yang perlu diingat, cukup jalankan ujinya.
+
+Singgahan yang ikut membawa versi:
+
+- `kerangka_<peran>_<versi>` dan `htmlLogin_<versi>` di localStorage. Kerangka
+  halaman dirakit oleh `Kode.gs`; sesudah rilis baru ia bukan sekadar usang, ia
+  bisa memakai kelas CSS dan memanggil fungsi yang sudah tidak ada.
+  `bersihkanKerangkaLama()` membuang milik versi lama saat boot.
+- `hal_<APP_VERSI>_<peran>_<halaman>_<versiData>` dan
+  `awal_<APP_VERSI>_<halaman>_<akun>_<versiData>` di CacheService.
+  `versiData()` hanya naik ketika **data** ditulis — ia tidak menangkap perubahan
+  yang datang dari **kode**, dan itulah lubang yang ditutup `APP_VERSI`.
+
+`vercel.json` mengirim `Cache-Control: public, max-age=0, must-revalidate` untuk
+seluruh berkas. Pola `source` sebelumnya `"/(.*)\\.(js|css)"` — regex yang
+tampak benar tetapi bukan sintaks path-to-regexp yang dipakai Vercel. Sekarang
+`"/(.*)"`, yang tidak mungkin salah dibaca.
+
+---
+
+## CLS dan INP (v4.0)
+
+Dua angka Chrome yang keduanya berasal dari kode kita sendiri, bukan dari jaringan.
+
+**CLS 0,18 — halaman melompat sendiri.** Kerangka beranda mengirim empat kotak
+abu-abu setinggi 96 px di dalam `.kpi-grid` tanpa kelas kolom, sedangkan
+`renderKPI()` kemudian menggambar **delapan** kartu di dalam `.kpi-x4`. Di ponsel
+kerangkanya 224 px dan isinya 456 px: begitu data tiba, dua grafik, analisis
+otomatis, dan tabel kehadiran di bawahnya melompat 232 px sekaligus.
+
+`skKpi()` sekarang memakai kotak `.kpi-card` yang **sama** dengan kartu jadinya —
+bukan kotak setinggi sekian piksel — sehingga tingginya dihitung CSS yang sama di
+lebar layar mana pun, dan tidak ada satu pun angka piksel yang harus dirawat di
+dua tempat. Teks label ikut ditulis lalu disembunyikan dengan `color:transparent`,
+karena kotak kosong selalu satu baris sedangkan label sungguhan membungkus dua
+sampai tiga baris di layar sempit. Sisa selisihnya 19 px, dari 232 px.
+
+> Bila suatu saat ada kartu KPI ditambah di `app4.js`, `jumlahKpi` di
+> `buildBerandaMonitoring()` wajib ikut. `uji/uji-cls.js` menghitung keduanya dan
+> menolak bila berbeda, lalu mengukur tinggi keduanya sungguhan di tiga lebar layar.
+
+**INP 640 md — ketukan yang lambat direspons.** 527 md di antaranya adalah
+*penundaan presentasi*: waktu ketika layar belum berubah sama sekali padahal jari
+sudah diangkat. Sebabnya `void wadah.offsetWidth` — trik baku me-restart animasi
+CSS, yang bekerja justru **karena** ia memaksa peramban menghitung tata letak saat
+itu juga. Yang dihitung adalah seluruh halaman yang baru disuntikkan, dan
+penghitungan itu terjadi di dalam penangan klik.
+
+`mainkanMasuk()` menggantinya: kelas animasinya ditambahkan pada
+`requestAnimationFrame` berikutnya. Animasinya sama persis — penghitungan gaya
+tetap terjadi di antara dua bingkai — tanpa menahan bingkai yang sedang berjalan.
+
+---
+
+## Satu perjalanan untuk memulihkan sesi (v4.0)
+
+Rekaman jaringan dari lapangan, membuka aplikasi dengan sesi tersimpan:
+
+```
+exec?_p=8mtl6pecf    302   8,80 dtk    ← getBootstrapData
+echo?user_content_key=…  200   551 md
+exec?_p=9mtl6pmci    302   1,99 dtk    ← getDashboardMonitoring
+exec?_p=10mtl6po75   302   9,98 dtk    ← semuaHalamanHtml (latar)
+```
+
+Angka `echo` yang hanya 400–550 md membuktikan jaringannya sehat: hampir seluruh
+waktu habis di **eksekusi** Apps Script, bukan di perjalanannya.
+
+Selisih 8,80 dan 1,99 detik juga bukan kebetulan. Eksekusi pertama menanggung
+biaya "bangun" — memuat dan mengompilasi berkas skrip 330 KB, membuka
+spreadsheet, mengisi memo — sedangkan yang kedua menumpang instans yang sudah
+hangat. Jadi dua perjalanan tidak berbiaya dua kali; ia berbiaya **satu kali
+bangun ditambah dua kali antre**, dan Apps Script mengantrekan eksekusi milik
+pengguna yang sama.
+
+`pulihKilat(token, adaKerangka)` menggabungkan keduanya, persis seperti
+`masukKilat()` untuk login: satu eksekusi membawa `bootstrap`, kerangka beranda,
+dan datanya sekaligus. Bila klien sudah memegang kerangka tersinggah, ia
+mengirim `adaKerangka: true` dan server tidak merakit belasan halaman lagi.
+
+Panggilan ketiga — `semuaHalamanHtml` 9,98 detik — dipendekkan dari arah lain.
+Tujuh halaman dipindahkan ke `HALAMAN_SERAGAM` sesudah tiap perakitnya diperiksa
+satu per satu: `monitoring`, `rekap-jurnal`, `rekap-laporan`, `penilaian`,
+`pengumuman`, dan `profil` hanya bercabang pada `sesi.role`, sedangkan
+`buildJadwalShift()` tidak menerima argumen sama sekali. Kunci singgahnya sudah
+memuat peran, jadi bercabang pada peran aman; yang tidak aman adalah menyentuh
+`sesi.nama`, `sesi.refId`, atau `sesi.foto` — dan itulah sebabnya `beranda` tetap
+di luar. Untuk Pokja PKL, 13 dari 15 halaman kini datang dari cache.
+
+> Syarat masuk `HALAMAN_SERAGAM` bukan lagi "perakitnya tidak menerima sesi",
+> melainkan yang lebih tepat: **tidak memakai apa pun dari sesi selain
+> `sesi.role`**. `uji/uji-kilat.js` membaca tubuh tiap perakitnya dan menolak
+> yang melanggar, jadi daftarnya tidak perlu dirawat manual lagi.
+
+**Kemiringan penyebaran ditangani ke dua arah.** Bila `Kode.gs` masih lama dan
+belum mengenal `pulihKilat`, klien menerima `__galat` "tidak tersedia" — dan sesi
+pengguna **tidak boleh** dianggap batal karenanya. Jalur lama
+(`getBootstrapData` + `semuaHalamanHtml`) masih ada dan tetap dipakai, hanya
+dengan satu perjalanan tambahan. Diuji di `uji/uji-boot.js`.
+
+---
 
 ## Shift kerja (v3.8)
 

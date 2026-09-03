@@ -11,6 +11,69 @@ return String(teks == null ? '' : teks)
 .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+// ── PENJAGA VERSI ASET ─────────────────────────────────────────────────────
+//
+// Satu kelas kegagalan yang mahal justru karena tidak terlihat seperti
+// kegagalan: Kode.gs sudah versi baru, tetapi peramban masih memegang
+// app.css / app*.js versi lama dari cache-nya sendiri. Markup baru lalu
+// tergambar tanpa aturan gaya dan tanpa fungsi pendampingnya, dan yang dilihat
+// pengguna bukan "berkas basi" melainkan "tombol Ekspor hilang" dan "filter
+// bulan melebar penuh" — dua gejala yang menuntun ke tempat yang salah.
+//
+// Karena itu tiap berkas kini membawa capnya sendiri:
+//   index.html → window.SIMPKL_VERSI      (acuan; URL-nya tanpa ?v= sehingga
+//                                          selalu divalidasi ulang ke server)
+//   app*.js    → window.__SIMPKL_EOF      (ditulis blok kode terakhir)
+//   app.css    → --versi-aset pada :root
+//
+// Bila salah satu cap berbeda dari acuan, berkas itulah yang tertinggal. URL
+// asetnya sekarang membawa ?v=, jadi satu kali muat ulang sudah cukup untuk
+// menariknya. Muat ulang dijaga sessionStorage supaya tidak mungkin berputar:
+// bila sesudah sekali muat ulang capnya masih berbeda, penyebabnya ada di
+// penyebaran (Vercel belum terbit), bukan di cache — dan pengguna diberi tahu
+// apa adanya alih-alih dibiarkan menebak.
+function versiCss() {
+try {
+return String(getComputedStyle(document.documentElement)
+.getPropertyValue('--versi-aset') || '').replace(/[^0-9.]/g, '');
+} catch (e) { return ''; }
+}
+
+/** @return {string} Nama berkas yang tertinggal, atau '' bila semuanya sepadan. */
+function versiAsetBasi() {
+const acuan = String(window.SIMPKL_VERSI || '');
+if (!acuan) return '';
+const js = String(window.__SIMPKL_EOF || '');
+const css = versiCss();
+if (js && js !== acuan) return 'app*.js';
+if (css && css !== acuan) return 'app.css';
+return '';
+}
+
+/** @return {boolean} true bila halaman sedang dimuat ulang dan boot harus berhenti. */
+function jagaVersiAset() {
+const basi = versiAsetBasi();
+if (!basi) {
+try { sessionStorage.removeItem('muatUlangAset'); } catch (e) {}
+return false;
+}
+const acuan = String(window.SIMPKL_VERSI || '');
+let sudah = '';
+try { sudah = sessionStorage.getItem('muatUlangAset') || ''; } catch (e) {}
+if (sudah !== acuan) {
+try { sessionStorage.setItem('muatUlangAset', acuan); } catch (e) {}
+console.warn('Berkas ' + basi + ' masih versi lama. Memuat ulang sekali.');
+location.reload();
+return true;
+}
+console.warn('Berkas ' + basi + ' tetap tertinggal sesudah satu kali muat ulang.');
+setTimeout(function () {
+toast('Berkas ' + basi + ' di perangkat ini masih versi lama. Tutup lalu buka ' +
+'kembali tab, atau tekan Ctrl+Shift+R.', 'warning', 9000);
+}, 1500);
+return false;
+}
+
 // Layar galat fatal punya DUA wajah, dan membedakannya penting.
 //
 // Sebelumnya hanya ada satu: apa pun penyebabnya, pengguna diberi tahu "Blok
@@ -360,7 +423,7 @@ const GALAT_LAMBAT = 'lambat';
 const BATAS_WAKTU_MS = 45000;
 const BATAS_WAKTU_BERAT_MS = 100000;
 const FUNGSI_BERAT = ['semuaHalamanHtml', 'paketDataAwal', 'masukKilat', 'masukLengkap',
-  'imporMasterMassal', 'terbitkanSertifikatMassal', 'imporSiswaMassal'];
+  'pulihKilat', 'imporMasterMassal', 'terbitkanSertifikatMassal', 'imporSiswaMassal'];
 const JEDA_ULANG = [400, 1200, 2600];
 
 /** Menandai galat yang berasal dari transport, bukan dari logika aplikasi. */
@@ -388,7 +451,11 @@ const AWALAN_AMAN_ULANG = ['get', 'cari', 'periksa', 'html', 'hitung', 'rekap',
 // baru. Percobaan kedua paling banter menyisakan satu token yang tidak terpakai
 // dan kedaluwarsa sendiri — jauh lebih ringan daripada memaksa pengguna
 // mengetik ulang password karena satu paket hilang di jalan.
-const AMAN_ULANG_KHUSUS = ['doLogin', 'masukKilat', 'masukLengkap', 'doLoginGoogle'];
+// pulihKilat hanya membaca — ia tidak membuat sesi baru sekali pun — jadi
+// mengulangnya sepenuhnya aman, sementara gagal di percobaan pertama berarti
+// pengguna terlempar ke form login padahal sesinya masih sah.
+const AMAN_ULANG_KHUSUS = ['doLogin', 'masukKilat', 'masukLengkap', 'doLoginGoogle',
+  'pulihKilat'];
 function amanDiulang(namaFungsi) {
   const n = String(namaFungsi || '');
   if (AMAN_ULANG_KHUSUS.indexOf(n) !== -1) return true;
@@ -1316,10 +1383,14 @@ gambarUlangSemuaGrafik();
 // Kerangkanya karena itu disimpan di localStorage, dan bila belum pernah
 // tersimpan sekali pun, ada cadangan bawaan di bawah ini yang sepenuhnya
 // berfungsi — id kolomnya sama persis dengan yang dipakai handleLogin().
+/** Kunci kerangka login ikut membawa versi, dengan alasan sama seperti kunciKerangka(). */
+function kunciHtmlLogin() {
+  return 'htmlLogin_' + String(window.SIMPKL_VERSI || '0');
+}
 function simpanHtmlLogin(html) {
   if (!html) return;
   AppState.htmlLogin = html;
-  Simpanan.simpan('htmlLogin', html);
+  Simpanan.simpan(kunciHtmlLogin(), html);
 }
 
 /** Memeriksa versi terbaru kerangka login tanpa membuat pengguna menunggu. */
@@ -1401,7 +1472,7 @@ if (halaman === 'login') {
 // kerangkanya disimpan juga di localStorage dan masih ada cadangan bawaan,
 // jadi form login SELALU ada sesuatu untuk digambar.
 AppState.halamanAktif = 'login';
-const tersimpan = AppState.htmlLogin || Simpanan.ambil('htmlLogin');
+const tersimpan = AppState.htmlLogin || Simpanan.ambil(kunciHtmlLogin());
 if (tersimpan) {
 AppState.htmlLogin = tersimpan;
 wadah.innerHTML = tersimpan;
@@ -1426,9 +1497,7 @@ AppState.dataSiap = AppState.dataSiap || {};
 AppState.dataSiap[halaman] = true;
 AppState.__kerangkaTampil = html;
 wadah.innerHTML = html;
-wadah.classList.remove('halaman-masuk');
-void wadah.offsetWidth;
-wadah.classList.add('halaman-masuk');
+mainkanMasuk(wadah);
 selesaikanNavigasi(halaman);
 return;
 }
@@ -1445,9 +1514,7 @@ AppState.htmlHalaman[halaman] = res.html;
 AppState.__kerangkaTampil = res.html;
 AppState.dataAwal = res.dataAwal || null;
 wadah.innerHTML = res.html;
-wadah.classList.remove('halaman-masuk');
-void wadah.offsetWidth;
-wadah.classList.add('halaman-masuk');
+mainkanMasuk(wadah);
 selesaikanNavigasi(halaman);
 } catch (err) {
 wadah.innerHTML = emptyState('wifi_off', 'Gagal memuat halaman',
@@ -1551,6 +1618,26 @@ segarkanPaketData().then(function () {
 sembunyikanSibuk();
 navigateTo(AppState.halamanAktif, { dataSegar: !AppState.paketData });
 });
+}
+/**
+ * Menyalakan ulang animasi masuk TANPA memaksa tata letak dihitung serentak.
+ *
+ * Pola sebelumnya `void wadah.offsetWidth` adalah trik baku untuk me-restart
+ * animasi CSS, dan trik itu bekerja justru KARENA ia memaksa peramban menghitung
+ * tata letak saat itu juga. Persoalannya, yang dihitung adalah seluruh halaman
+ * yang baru saja disuntikkan, dan penghitungan itu terjadi di dalam penangan
+ * klik. Ongkosnya masuk utuh ke INP: satu ketukan terukur 640 md dengan 527 md
+ * di antaranya berupa penundaan presentasi — waktu ketika layar belum berubah
+ * sama sekali padahal jari sudah diangkat.
+ *
+ * Menunda penambahan kelas ke bingkai berikutnya menghasilkan animasi yang sama
+ * (penghitungan gaya tetap terjadi di antara dua bingkai) tanpa menahan bingkai
+ * yang sedang berjalan.
+ */
+function mainkanMasuk(wadah) {
+if (!wadah) return;
+wadah.classList.remove('halaman-masuk');
+requestAnimationFrame(function () { wadah.classList.add('halaman-masuk'); });
 }
 function selesaikanNavigasi(halaman) {
 AppState.halamanAktif = halaman;
@@ -1877,31 +1964,54 @@ sebagian = !!awal.sebagian;
 // dataAwal, sehingga dashboard tergambar TANPA satu pun permintaan tambahan.
 if (awal.dataBeranda) AppState.paketData = { beranda: awal.dataBeranda };
 } else {
-// Memulihkan sesi tersimpan. Kerangka halaman yang tersinggah dari sesi
-// sebelumnya dipakai lebih dulu supaya layar langsung tergambar; versi
-// terbarunya menyusul di latar. Tanpa ini, membuka aplikasi selalu menunggu
-// dua permintaan sekaligus, dan yang kedua — merakit belasan kerangka
-// halaman — justru yang paling lama.
+// Memulihkan sesi tersimpan — SATU perjalanan, bukan dua.
+//
+// Dahulu jalur ini mengirim getBootstrapData, menunggunya selesai, lalu
+// membiarkan dashboard meminta datanya sendiri. Pada rekaman jaringan yang
+// dilaporkan pengguna kedua permintaan itu berdurasi 8,80 dan 1,99 detik.
+// Selisihnya bukan kebetulan: eksekusi pertama menanggung biaya "bangun"
+// Apps Script, yang kedua menumpang instans yang sudah hangat. Karena Apps
+// Script mengantrekan eksekusi milik pengguna yang sama, dua perjalanan
+// berbiaya satu kali bangun ditambah dua kali antre.
+//
+// pulihKilat() membawa keduanya sekaligus, persis seperti masukKilat() untuk
+// login. Kerangka halaman yang tersinggah dari sesi sebelumnya tetap dipakai
+// lebih dulu; bila sudah ada, server tidak perlu merakitnya lagi.
 const tersinggah = kerangkaTersinggah();
-if (tersinggah) {
-res = await panggil('getBootstrapData', AppState.sessionToken);
+let kilat;
+try {
+kilat = await panggil('pulihKilat', AppState.sessionToken, !!tersinggah);
+} catch (e) {
+// Berkas web/ bisa ter-deploy lebih dulu daripada Kode.gs — persis kejadian
+// yang membuat halaman Jadwal Shift tampil separuh. Bila Apps Script belum
+// mengenal pulihKilat, sesi pengguna TIDAK boleh dianggap batal; jalur lama
+// masih ada dan tetap bekerja, hanya dengan satu perjalanan tambahan.
+if (!/tidak tersedia/i.test(e && e.message || '')) throw e;
+console.warn('Kode.gs belum mengenal pulihKilat. Memakai jalur lama.');
+const bootLama = await panggil('getBootstrapData', AppState.sessionToken);
+kilat = { success: bootLama.success, message: bootLama.message,
+  data: { bootstrap: bootLama, halaman: null, berandaHtml: null, dataBeranda: null } };
+}
+if (!kilat.success) throw new Error(kilat.message || 'Sesi tidak valid.');
+res = kilat.data.bootstrap;
+// Data beranda ikut terbawa, jadi navigateTo('beranda') menyerahkannya sebagai
+// dataAwal dan dashboard tergambar tanpa satu pun permintaan tambahan.
+if (kilat.data.dataBeranda) AppState.paketData = { beranda: kilat.data.dataBeranda };
+
 // Kerangka tersinggah hanya boleh dipakai bila peran sesi ini benar-benar sama
 // dengan peran yang menyimpannya. Bila peran seseorang diubah di Pengaturan,
 // kerangka lamanya harus dibuang, bukan dipakai sekejap lalu diperbaiki.
 const peranKini = res && res.success && res.data && res.data.user && res.data.user.role;
-if (peranKini && peranKini === Simpanan.ambil('peranTerakhir')) {
-halaman = { success: true, data: tersinggah };
+if (tersinggah && peranKini && peranKini === Simpanan.ambil('peranTerakhir')) {
+// Beranda diambil dari jawaban baru, bukan dari singgahan: sapaan dan label
+// periodenya dirakit di server dan akan salah bila dipakai dari sesi kemarin.
+const peta = Object.assign({}, tersinggah);
+if (kilat.data.berandaHtml) peta.beranda = kilat.data.berandaHtml;
+halaman = { success: true, data: peta };
 sebagian = true;
 } else {
-halaman = await panggil('semuaHalamanHtml', AppState.sessionToken);
-}
-} else {
-const dua = await Promise.all([
-panggil('getBootstrapData', AppState.sessionToken),
-panggil('semuaHalamanHtml', AppState.sessionToken)
-]);
-res = dua[0];
-halaman = dua[1];
+halaman = kilat.data.halaman ||
+  await panggil('semuaHalamanHtml', AppState.sessionToken);
 }
 }
 if (!res.success) throw new Error(res.message || 'Sesi tidak valid.');
@@ -1969,7 +2079,28 @@ if (!AppState.periode) toast('Belum ada periode PKL aktif. Presensi dan jurnal t
 function kunciKerangka() {
 const peran = (AppState.user && AppState.user.role) ||
   String(Simpanan.ambil('peranTerakhir') || '');
-return peran ? 'kerangka_' + peran : '';
+// Versi ikut masuk kunci. Kerangka halaman dirakit oleh Kode.gs, jadi setelah
+// rilis baru kerangka lama bukan sekadar usang — ia bisa memakai kelas CSS dan
+// memanggil fungsi yang sudah tidak ada. Dengan versi di kunci, kerangka lama
+// tidak pernah terbaca lagi, tanpa perlu daftar pembatalan yang harus dirawat.
+return peran ? 'kerangka_' + peran + '_' + String(window.SIMPKL_VERSI || '0') : '';
+}
+/**
+ * Membuang kerangka milik versi lama. Tanpa ini localStorage menumpuk satu
+ * salinan per rilis, dan tiap salinan berukuran ratusan kilobyte.
+ */
+function bersihkanKerangkaLama() {
+const kini = '_' + String(window.SIMPKL_VERSI || '0');
+try {
+for (let i = localStorage.length - 1; i >= 0; i--) {
+const k = localStorage.key(i);
+if (!k) continue;
+const kerangka = k.indexOf('kerangka_') === 0;
+const login = k.indexOf('htmlLogin') === 0;
+if (!kerangka && !login) continue;
+if (k.slice(-kini.length) !== kini) localStorage.removeItem(k);
+}
+} catch (e) {}
 }
 function simpanKerangka(peta) {
 if (!peta || !AppState.user) return;
