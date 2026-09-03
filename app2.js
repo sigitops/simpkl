@@ -18,6 +18,7 @@ const INIT_HALAMAN = {
 'kelola-guru':      () => muatTabelMaster(),
 'kelola-periode':   () => muatTabelMaster(),
 'sertifikat':       () => initSertifikat(),
+'jadwal-shift':     () => initJadwalShift(),
 'pengaturan':       () => muatPengaturan(),
 'login':            () => {}
 };
@@ -228,6 +229,7 @@ $('btnKirimPresensi').disabled = true;
 $('btnKamera').disabled = true;
 return;
 }
+renderBannerShift(d.penempatan);
 renderBannerIzin(d.izin);
 if (d.izin && d.izin.status !== 'Ditolak') {
 $('btnKirimPresensi').disabled = true;
@@ -243,6 +245,32 @@ renderRiwayatSingkat();
 cobaNyalakanKameraOtomatis();
 } catch (err) { toast(err.message, 'error'); }
 }
+/**
+ * Shift hari ini ditampilkan menonjol karena penilaian Telat bergantung padanya.
+ * Siswa yang tidak tahu ia kebagian shift siang akan mengira dirinya terlambat
+ * padahal belum, atau sebaliknya merasa aman padahal sudah lewat.
+ */
+function renderBannerShift(p) {
+const box = $('bannerShift');
+if (!box) return;
+if (!p || !p.pakaiShift) { box.hidden = true; box.innerHTML = ''; return; }
+box.hidden = false;
+box.innerHTML = p.shiftHariIni
+? `<div class="alert alert-info">
+<span class="mi">schedule</span>
+<div><strong>Shift hari ini: ${esc(p.shiftHariIni.nama)}</strong>
+<p>${jamTampil(p.shiftHariIni.jamMasuk)} – ${jamTampil(p.shiftHariIni.jamPulang)}.
+Presensi masuk setelah ${jamTampil(p.shiftHariIni.jamMasuk)} dihitung terlambat.</p></div>
+</div>`
+: `<div class="alert alert-warning">
+<span class="mi">help_outline</span>
+<div><strong>Shift hari ini belum dijadwalkan</strong>
+<p>Sementara ini jam kerja bawaan ${jamTampil(p.jamMasukTempat)} – ${jamTampil(p.jamPulangTempat)}
+yang dipakai. Anda tetap dapat presensi seperti biasa — beri tahu Pokja PKL agar
+jadwalnya dilengkapi.</p></div>
+</div>`;
+}
+
 function pilihJenisPresensi(jenis, tombol) {
 AppState.jenisPresensi = jenis;
 $$('.tab-btn[data-jenis]').forEach(b => b.classList.toggle('active', b === tombol));

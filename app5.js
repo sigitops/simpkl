@@ -130,11 +130,118 @@ res.data.map(g => `<option value="${esc(g.id)}" ${terpilih === g.id ? 'selected'
 ${esc(g.nama)} (${esc(g.nip)})</option>`).join('');
 } catch (e) {}
 }
+// ── PENGATUR SHIFT KERJA (dibuka dari baris Tempat PKL) ────────────────────
+async function bukaAturShift(tempatId) {
+tampilkanSibuk('Memuat pengaturan shift…');
+try {
+const res = await panggil('getDefinisiShift', AppState.sessionToken, tempatId);
+sembunyikanSibuk();
+if (!res.success) { toast(res.message, 'error'); return; }
+AppState.shiftDiedit = { tempatId: tempatId, daftar: res.data.daftar.slice(), aktif: res.data.pakaiShift };
+if (!AppState.shiftDiedit.daftar.length) {
+// Tiga shift adalah pola yang paling sering dipakai; menyodorkannya lebih
+// dulu menghemat tiga kali klik "Tambah" bagi mayoritas pengguna.
+AppState.shiftDiedit.daftar = [
+{ kode: 'P', nama: 'Pagi', jamMasuk: '06:00', jamPulang: '14:00' },
+{ kode: 'S', nama: 'Siang', jamMasuk: '14:00', jamPulang: '22:00' }
+];
+}
+bukaModal('Shift Kerja — ' + res.data.namaInstansi, htmlFormShift(res.data),
+[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
+{ label: '<span class="mi">save</span> Simpan', kelas: 'btn-primary', aksi: simpanShiftUI }]);
+gambarBarisShift();
+} catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
+}
+
+function htmlFormShift(d) {
+return `
+<label class="pilih-baris" style="border:1px solid var(--outline-variant);
+       border-radius:var(--r-md);margin-bottom:14px">
+<input type="checkbox" id="shAktif" ${AppState.shiftDiedit.aktif ? 'checked' : ''}
+       onchange="toggleFormShift(this.checked)">
+<span class="pilih-teks"><span class="pilih-nama">Tempat ini menerapkan sistem shift</span>
+<span class="pilih-sub">Bila dimatikan, jam kerja kembali memakai satu rentang
+${esc(jamTampil(d.jamMasukTempat))} – ${esc(jamTampil(d.jamPulangTempat))}.</span></span>
+</label>
+
+<div id="shBadan" ${AppState.shiftDiedit.aktif ? '' : 'hidden'}>
+<div class="alert alert-info" style="margin-bottom:14px">
+<span class="mi">info</span>
+<div><strong>Kode dipakai di kisi jadwal</strong>
+<p>Buat sesingkat mungkin — satu huruf paling nyaman dibaca pada kisi bulanan.
+Shift yang melewati tengah malam belum didukung pada tahap ini.</p></div>
+</div>
+<div id="shDaftar"></div>
+<button class="btn btn-outline btn-sm" onclick="tambahBarisShift()">
+<span class="mi">add</span> Tambah Shift</button>
+<div class="field-error" id="errShift" style="margin-top:10px"></div>
+</div>`;
+}
+
+function toggleFormShift(aktif) {
+const b = $('shBadan');
+if (b) b.hidden = !aktif;
+}
+
+function gambarBarisShift() {
+const box = $('shDaftar');
+if (!box) return;
+const d = AppState.shiftDiedit.daftar;
+box.innerHTML = d.map((s, i) => `
+<div class="shift-baris">
+<input class="field-input" value="${esc(s.kode || '')}" maxlength="4" placeholder="Kode"
+       aria-label="Kode shift ${i + 1}" oninput="setelBarisShift(${i},'kode',this.value)">
+<input class="field-input" value="${esc(s.nama || '')}" maxlength="40" placeholder="Nama shift"
+       aria-label="Nama shift ${i + 1}" oninput="setelBarisShift(${i},'nama',this.value)">
+<input class="field-input" type="time" value="${esc(s.jamMasuk || '')}"
+       aria-label="Jam masuk shift ${i + 1}" onchange="setelBarisShift(${i},'jamMasuk',this.value)">
+<input class="field-input" type="time" value="${esc(s.jamPulang || '')}"
+       aria-label="Jam pulang shift ${i + 1}" onchange="setelBarisShift(${i},'jamPulang',this.value)">
+<button class="btn-icon danger" aria-label="Hapus shift ${i + 1}" title="Hapus shift"
+        onclick="hapusBarisShift(${i})"><span class="mi">delete</span></button>
+</div>`).join('') || '<p class="field-help">Belum ada shift. Tambahkan minimal satu.</p>';
+}
+
+function setelBarisShift(i, kunci, nilai) {
+const d = AppState.shiftDiedit.daftar;
+if (d[i]) d[i][kunci] = nilai;
+}
+function tambahBarisShift() {
+AppState.shiftDiedit.daftar.push({ kode: '', nama: '', jamMasuk: '', jamPulang: '' });
+gambarBarisShift();
+}
+function hapusBarisShift(i) {
+AppState.shiftDiedit.daftar.splice(i, 1);
+gambarBarisShift();
+}
+
+async function simpanShiftUI() {
+const aktif = $('shAktif').checked;
+const err = $('errShift');
+if (err) err.textContent = '';
+tampilkanSibuk('Menyimpan shift…');
+try {
+const res = await panggil('simpanDefinisiShift', AppState.sessionToken,
+AppState.shiftDiedit.tempatId, aktif, AppState.shiftDiedit.daftar);
+sembunyikanSibuk();
+if (!res.success) {
+if (err) err.textContent = res.message; else toast(res.message, 'error', 7000);
+return;
+}
+tutupModal();
+toast(res.message, 'success', 7000);
+batalkanPaketData();
+muatTabelMaster();
+} catch (e) { sembunyikanSibuk(); toast(e.message, 'error'); }
+}
+
 let SKEMA_MASTER = {};
 const RENDER_KOLOM = {
 kuota: r => { const t = Number(r.KuotaTotal) || 0, i = Number(r.KuotaTerisi) || 0;
 return `<span class="chip ${i < t ? 'chip-success' : 'chip-error'}">${i} / ${t}</span>`; },
-jamKerja: r => jamTampil(r.JamMasuk) + ' – ' + jamTampil(r.JamPulang),
+jamKerja: r => String(r.PakaiShift) === 'Ya'
+? `<span class="chip chip-info"><span class="mi">schedule</span>Sistem shift</span>`
+: jamTampil(r.JamMasuk) + ' – ' + jamTampil(r.JamPulang),
 kontak: r => esc(r.NoKontak || '-') + (r.PIC ? `<div class="td-sub">${esc(r.PIC)}</div>` : ''),
 aktifTempat: r => chipStatus(String(r.Aktif) === 'Ya' ? 'Aktif' : 'Nonaktif'),
 statusPenempatan: r => `<span class="chip ${r.StatusPenempatan === 'Ditempatkan' ? 'chip-success' : 'chip-neutral'}">
@@ -172,6 +279,9 @@ tombol: `<button class="btn btn-primary" onclick="bukaFormMaster('${entitas}')">
 aksi: r => `
 <button class="btn-icon" aria-label="Lihat detail"
 onclick="lihatDetailMaster('${entitas}','${esc(r.ID)}')"><span class="mi">visibility</span></button>
+${entitas === 'TempatPKL' ? `<button class="btn-icon" aria-label="Atur shift kerja"
+title="Atur shift kerja"
+onclick="bukaAturShift('${esc(r.ID)}')"><span class="mi">schedule</span></button>` : ''}
 ${entitas === 'Siswa' ? `<button class="btn-icon${String(r.KunciPendaftaran || '') === 'Ya' ? ' danger' : ''}"
 aria-label="${String(r.KunciPendaftaran || '') === 'Ya' ? 'Buka pendaftaran mandiri' : 'Tahan pendaftaran mandiri'}"
 title="${String(r.KunciPendaftaran || '') === 'Ya' ? 'Pendaftaran mandiri ditahan — klik untuk membuka' : 'Tahan pendaftaran mandiri'}"

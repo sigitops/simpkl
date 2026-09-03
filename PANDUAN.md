@@ -1,7 +1,7 @@
 # SIM PKL — Panduan Teknis
 
 Sistem Informasi & Manajemen Presensi Siswa Praktik Kerja Lapangan
-SMK HKTI 2 Purwareja Klampok · versi 3.7
+SMK HKTI 2 Purwareja Klampok · versi 3.8
 
 Dokumen ini menjelaskan aplikasi sebagaimana adanya sekarang: cara kerjanya, cara
 memasangnya dari nol, dan cara mengembangkannya. Ditulis untuk orang yang akan
@@ -276,6 +276,58 @@ Empat lapis, dari yang paling dekat ke pengguna:
 Dua hal berikut sengaja di-memo karena dulu terbukti menghabiskan puluhan detik:
 `getTZ()` dan `offsetZonaMs()` (dulu satu panggilan layanan **per sel tanggal**),
 serta `getSpreadsheet()` (dulu `openById()` belasan kali per permintaan).
+
+## Shift kerja (v3.8)
+
+Sebagian DUDIKA bekerja dengan shift yang jadwalnya ditentukan perusahaan tiap
+bulan tanpa pola tetap. Tahap pertama fitur ini mendukung shift yang **selesai di
+hari yang sama**; shift lintas tengah malam sengaja ditolak dengan pesan yang
+jelas, bukan diterima lalu salah menghitung diam-diam.
+
+### Aturan yang tidak boleh dilanggar
+
+> **Tanggal yang jadwalnya belum diisi tidak pernah memblokir presensi, dan tidak
+> pernah membuat siswa ditandai Alpha lebih cepat.**
+
+Yang lalai dalam kasus itu adalah pengisian data, bukan siswanya. Bila jadwal
+kosong, sistem memakai jam kerja bawaan tempat PKL dan tetap menerima presensi;
+kekosongannya dilaporkan ke Pokja PKL lewat peringatan di dashboard. Seluruh
+keputusan itu terpusat di satu fungsi, `jamKerjaEfektif(tempat, siswaId, tanggal)`,
+supaya presensi, monitoring, dan perhitungan Alpha tidak mungkin berbeda pendapat.
+
+### Bentuk datanya
+
+| Sheet | Isi |
+|---|---|
+| `ShiftTempat` | Definisi shift satu tempat: `Kode`, `Nama`, `JamMasuk`, `JamPulang`, `Urutan` |
+| `JadwalShift` | **Satu baris = satu siswa × satu bulan**, dengan kolom `T01`…`T31` berisi kode shift |
+| `TempatPKL.PakaiShift` | `Ya`/`Tidak`. Bawaannya `Tidak`, jadi tempat yang sudah ada tidak berubah sama sekali |
+
+Bentuk satu-baris-per-bulan itu dipilih dengan sengaja. Satu baris per siswa per
+tanggal terdengar paling lurus, tetapi enam siswa selama satu periode sudah
+ratusan baris dan seratus siswa menjadi belasan ribu — padahal seluruh sheet
+dibaca utuh setiap eksekusi. Dengan `T01..T31`, enam siswa selama lima bulan
+hanya 30 baris, bentuknya sama dengan jadwal bulanan yang memang dibagikan
+perusahaan, dan tetap terbaca bila dibuka langsung di spreadsheet.
+
+### Yang menyambung ke presensi
+
+`getPenempatanSiswa()` mengembalikan `jamMasuk`/`jamPulang` yang **berlaku hari
+ini**, bukan jam bawaan tempat. Karena `submitPresensi()` sudah memakai kedua
+nilai itu untuk menilai Telat, presensi mengikuti shift tanpa perlu tahu apa pun
+tentang shift. Jam bawaan tempat tetap tersedia terpisah sebagai
+`jamMasukTempat`/`jamPulangTempat` untuk ditampilkan di halaman Tempat PKL.
+
+Hak akses: Pokja PKL mengatur semua; guru pembimbing hanya siswa bimbingannya —
+diperiksa di server lewat `siswaBershift(sesi)`, bukan sekadar disembunyikan di
+antarmuka.
+
+### Belum dikerjakan (tahap dua)
+
+Salin jadwal bulan lalu, impor Excel jadwal, dan rekap kehadiran per shift.
+Tahap satu sudah membuat fiturnya terpakai; tahap dua membuatnya nyaman.
+
+---
 
 ### Kunci pengalihan sekali pakai (v3.7)
 

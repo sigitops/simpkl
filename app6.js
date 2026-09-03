@@ -745,5 +745,284 @@ if (res.success) { batalkanPaketData(); periksaPenempatan(); }
 } catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
 }
 
+
+// ══════════════════════════════════════════════════════════
+// JADWAL SHIFT
+//
+// Kisi bulanan: baris siswa, kolom tanggal. Perubahan dikumpulkan dulu di
+// memori dan baru dikirim saat tombol Simpan ditekan — satu perjalanan server
+// untuk tiga puluh sel, bukan tiga puluh perjalanan.
+// ══════════════════════════════════════════════════════════
+const Jadwal = { data: null, ubah: {}, bulan: '' };
+
+function bulanIniIso() {
+const d = new Date();
+return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+}
+
+function initJadwalShift() {
+const inp = $('jsBulan');
+if (inp && !inp.value) inp.value = Jadwal.bulan || bulanIniIso();
+muatJadwalShift();
+}
+
+function geserBulanJadwal(arah) {
+const inp = $('jsBulan');
+if (!inp) return;
+const p = String(inp.value || bulanIniIso()).split('-');
+const d = new Date(Number(p[0]), Number(p[1]) - 1 + arah, 1);
+inp.value = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+muatJadwalShift();
+}
+
+async function muatJadwalShift() {
+const kotak = $('jsKisi');
+if (!kotak) return;
+const bulan = ($('jsBulan') || {}).value || bulanIniIso();
+if (Object.keys(Jadwal.ubah).length && bulan !== Jadwal.bulan) {
+const lanjut = await konfirmasi('Perubahan belum disimpan',
+'Ada perubahan jadwal yang belum disimpan. Berpindah bulan akan membuangnya. Lanjutkan?',
+'Ya, buang perubahan', 'btn-danger');
+if (!lanjut) { $('jsBulan').value = Jadwal.bulan; return; }
+}
+Jadwal.ubah = {};
+Jadwal.bulan = bulan;
+setelTombolSimpanJadwal();
+kotak.innerHTML = memuatInline('Mengambil jadwal…');
+try {
+const res = await panggilCepat('getJadwalShift', AppState.sessionToken, bulan);
+if (!res.success) { kotak.innerHTML = emptyState('block', 'Tidak dapat memuat', res.message); return; }
+Jadwal.data = res.data;
+gambarKisiJadwal();
+} catch (err) {
+kotak.innerHTML = emptyState('wifi_off', 'Gagal memuat jadwal', err.message);
+}
+}
+
+function gambarKisiJadwal() {
+const kotak = $('jsKisi');
+const d = Jadwal.data;
+if (!kotak || !d) return;
+
+if (!d.siswa.length) {
+kotak.innerHTML = emptyState('event_busy', 'Belum ada siswa bershift',
+'Jadwal hanya berlaku untuk siswa yang ditempatkan di tempat PKL dengan sistem shift aktif. ' +
+'Aktifkan sistem shift lewat menu Tempat PKL terlebih dahulu.');
+setelRingkasJadwal();
+return;
+}
+
+const hari = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+const kepala = [];
+for (let i = 1; i <= d.jumlahHari; i++) {
+const tgl = new Date(d.bulan + '-' + ('0' + i).slice(-2) + 'T00:00:00Z');
+const hd = tgl.getUTCDay();
+kepala.push('<th class="js-tgl' + (hd === 0 || hd === 6 ? ' js-pekan' : '') + '">' +
+'<span class="js-hari">' + hari[hd] + '</span><span class="js-angka">' + i + '</span></th>');
+}
+
+const baris = d.siswa.map(function (s) {
+const opsi = d.shiftPerTempat[s.tempatId] || [];
+const setHari = s.hariKerja || '';
+const sel = [];
+for (let i = 1; i <= d.jumlahHari; i++) {
+const kol = 'T' + ('0' + i).slice(-2);
+const nilai = kunciUbah(s.siswaId, kol) in Jadwal.ubah
+  ? Jadwal.ubah[kunciUbah(s.siswaId, kol)] : (s.isi[kol] || '');
+const tgl = new Date(d.bulan + '-' + ('0' + i).slice(-2) + 'T00:00:00Z');
+const akhirPekan = tgl.getUTCDay() === 0 || tgl.getUTCDay() === 6;
+const kerja = hariKerjaKlien(tgl.getUTCDay(), setHari);
+sel.push('<td class="js-sel' + (akhirPekan ? ' js-pekan' : '') +
+  (kerja && !nilai ? ' js-kosong' : '') + '">' +
+  '<select class="js-pilih" aria-label="Shift ' + esc(s.nama) + ' tanggal ' + i + '"' +
+  (d.bolehUbah ? '' : ' disabled') +
+  ' onchange="ubahSelJadwal(\'' + esc(s.siswaId) + '\',\'' + kol + '\',this.value)">' +
+  '<option value=""' + (nilai ? '' : ' selected') + '>–</option>' +
+  opsi.map(function (o) {
+    return '<option value="' + esc(o.kode) + '"' + (nilai === o.kode ? ' selected' : '') + '>' +
+      esc(o.kode) + '</option>';
+  }).join('') +
+  '</select></td>');
+}
+return '<tr><th class="js-nama"><div class="td-strong">' + esc(s.nama) + '</div>' +
+  '<div class="td-sub">' + esc(s.kelas) + ' · ' + esc(s.tempat) + '</div></th>' +
+  sel.join('') + '</tr>';
+});
+
+// Legenda kode shift supaya kolom sesempit ini tetap terbaca.
+const semuaShift = {};
+Object.keys(d.shiftPerTempat).forEach(function (t) {
+(d.shiftPerTempat[t] || []).forEach(function (o) {
+  semuaShift[o.kode] = o.nama + ' · ' + o.jamMasuk + '–' + o.jamPulang;
+});
+});
+const legenda = Object.keys(semuaShift).map(function (k) {
+return '<span class="js-legenda"><b>' + esc(k) + '</b> ' + esc(semuaShift[k]) + '</span>';
+}).join('');
+
+kotak.innerHTML =
+'<div class="js-legenda-bar">' + legenda + '</div>' +
+'<div class="table-wrap js-gulir"><table class="data-table js-kisi">' +
+'<thead><tr><th class="js-nama">Siswa</th>' + kepala.join('') + '</tr></thead>' +
+'<tbody>' + baris.join('') + '</tbody></table></div>';
+setelRingkasJadwal();
+}
+
+/** Meniru hariKerjaPada() di server untuk penandaan sel kosong. */
+function hariKerjaKlien(hariAngka, teksHariKerja) {
+const t = String(teksHariKerja || '').toLowerCase();
+if (!t || t === '-') return hariAngka >= 1 && hariAngka <= 5;
+const nama = ['minggu', 'senin', 'selasa', 'rabu', 'kamis', 'jumat', 'sabtu'];
+if (t.indexOf('setiap hari') >= 0 || t.indexOf('senin-minggu') >= 0) return true;
+if (t.indexOf('-') > 0) {
+const sisi = t.split('-').map(function (x) { return x.trim(); });
+const a = nama.indexOf(sisi[0]), b = nama.indexOf(sisi[1]);
+if (a >= 0 && b >= 0) return a <= b ? (hariAngka >= a && hariAngka <= b)
+                                    : (hariAngka >= a || hariAngka <= b);
+}
+return t.indexOf(nama[hariAngka]) >= 0;
+}
+
+function kunciUbah(siswaId, kol) { return siswaId + '|' + kol; }
+
+function ubahSelJadwal(siswaId, kol, kode) {
+const d = Jadwal.data;
+if (!d) return;
+const s = d.siswa.find(function (x) { return x.siswaId === siswaId; });
+const semula = s ? (s.isi[kol] || '') : '';
+const k = kunciUbah(siswaId, kol);
+if (String(kode || '') === semula) delete Jadwal.ubah[k];
+else Jadwal.ubah[k] = String(kode || '');
+setelTombolSimpanJadwal();
+setelRingkasJadwal();
+}
+
+function setelTombolSimpanJadwal() {
+const btn = $('btnSimpanJadwal');
+if (!btn) return;
+const n = Object.keys(Jadwal.ubah).length;
+btn.disabled = n === 0;
+btn.innerHTML = '<span class="mi">save</span> ' + (n ? 'Simpan ' + n + ' Perubahan' : 'Simpan Perubahan');
+}
+
+function setelRingkasJadwal() {
+const el = $('jsRingkas');
+const d = Jadwal.data;
+if (!el || !d) return;
+const belum = d.ringkas.belumDiisi - Object.keys(Jadwal.ubah).filter(function (k) {
+return !!Jadwal.ubah[k];
+}).length;
+const sisa = Math.max(0, belum);
+el.innerHTML = d.ringkas.totalHariKerja
+? '<span class="chip ' + (sisa ? 'chip-warning' : 'chip-success') + '">' +
+  '<span class="mi">' + (sisa ? 'error_outline' : 'check_circle') + '</span>' +
+  (sisa ? sisa + ' hari kerja belum dijadwalkan' : 'Seluruh hari kerja sudah dijadwalkan') + '</span>'
+: '';
+}
+
+async function simpanPerubahanJadwal() {
+const kunci = Object.keys(Jadwal.ubah);
+if (!kunci.length) return;
+const perubahan = kunci.map(function (k) {
+const p = k.split('|');
+return { siswaId: p[0], tanggal: p[1], kode: Jadwal.ubah[k] };
+});
+tampilkanSibuk('Menyimpan ' + perubahan.length + ' perubahan…');
+try {
+const res = await panggil('simpanJadwalShift', AppState.sessionToken, Jadwal.bulan, perubahan);
+sembunyikanSibuk();
+if (!res.success) { toast(res.message, 'error', 6500); return; }
+toast(res.message, 'success', 6000);
+Jadwal.ubah = {};
+batalkanPaketData();
+lupakanKunci('getJadwalShift', [AppState.sessionToken, Jadwal.bulan]);
+await muatJadwalShift();
+} catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
+}
+
+function bukaIsiMassalShift() {
+const d = Jadwal.data;
+if (!d || !d.siswa.length) { toast('Belum ada siswa bershift untuk dijadwalkan.', 'warning'); return; }
+const semuaShift = {};
+Object.keys(d.shiftPerTempat).forEach(function (t) {
+(d.shiftPerTempat[t] || []).forEach(function (o) { semuaShift[o.kode] = o.nama; });
+});
+const hariNama = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+bukaModal('Isi Jadwal Massal', `
+<p class="field-help" style="margin-bottom:16px">Mengisi banyak tanggal sekaligus.
+Yang sudah terisi dapat dilewati agar penyesuaian manual Anda tidak tertimpa.</p>
+
+<div class="field">
+<label class="field-label">Siswa</label>
+<div class="pilih-box" id="imSiswa" style="max-height:200px">
+${d.siswa.map(s => `<label class="pilih-baris">
+<input type="checkbox" value="${esc(s.siswaId)}" checked>
+<span class="pilih-teks"><span class="pilih-nama">${esc(s.nama)}</span>
+<span class="pilih-sub">${esc(s.kelas)} &middot; ${esc(s.tempat)}</span></span>
+</label>`).join('')}
+</div>
+</div>
+
+<div class="grid-2">
+<div class="field">
+<label class="field-label" for="imDari">Dari tanggal</label>
+<input class="field-input" id="imDari" type="number" min="1" max="${d.jumlahHari}" value="1">
+</div>
+<div class="field">
+<label class="field-label" for="imSampai">Sampai tanggal</label>
+<input class="field-input" id="imSampai" type="number" min="1" max="${d.jumlahHari}" value="${d.jumlahHari}">
+</div>
+</div>
+
+<div class="field">
+<label class="field-label">Hanya pada hari</label>
+<div class="chip-pilih" id="imHari">
+${hariNama.map((h, i) => `<label class="chip-pilih-item">
+<input type="checkbox" value="${i}"${i >= 1 && i <= 5 ? ' checked' : ''}><span>${h}</span></label>`).join('')}
+</div>
+<p class="field-help">Kosongkan seluruhnya untuk mengenai semua hari.</p>
+</div>
+
+<div class="field">
+<label class="field-label" for="imKode">Shift</label>
+<select class="field-input" id="imKode">
+${Object.keys(semuaShift).map(k => `<option value="${esc(k)}">${esc(k)} — ${esc(semuaShift[k])}</option>`).join('')}
+<option value="">Kosongkan (hapus jadwal)</option>
+</select>
+</div>
+
+<label class="pilih-baris" style="margin-top:4px">
+<input type="checkbox" id="imLewati" checked>
+<span>Lewati tanggal yang sudah terisi</span>
+</label>
+<div class="field-error" id="errIsiMassal"></div>`,
+[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
+{ label: '<span class="mi">grid_on</span> Isi Sekarang', kelas: 'btn-primary', aksi: kirimIsiMassal }]);
+}
+
+async function kirimIsiMassal() {
+const siswaIds = $$('#imSiswa input:checked').map(function (i) { return i.value; });
+if (!siswaIds.length) { $('errIsiMassal').textContent = 'Pilih minimal satu siswa.'; return; }
+const dari = Number($('imDari').value) || 1;
+const sampai = Number($('imSampai').value) || Jadwal.data.jumlahHari;
+if (dari > sampai) { $('errIsiMassal').textContent = 'Rentang tanggal terbalik.'; return; }
+const hari = $$('#imHari input:checked').map(function (i) { return Number(i.value); });
+
+tampilkanSibuk('Mengisi jadwal…');
+try {
+const res = await panggil('isiMassalJadwal', AppState.sessionToken, {
+bulan: Jadwal.bulan, siswaIds: siswaIds, dari: dari, sampai: sampai,
+hari: hari, kode: $('imKode').value, lewatiTerisi: $('imLewati').checked });
+sembunyikanSibuk();
+if (!res.success) { $('errIsiMassal').textContent = res.message; return; }
+tutupModal();
+toast(res.message, 'success', 6000);
+Jadwal.ubah = {};
+batalkanPaketData();
+lupakanKunci('getJadwalShift', [AppState.sessionToken, Jadwal.bulan]);
+await muatJadwalShift();
+} catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
+}
+
 window.__blok = 6;
-window.__SIMPKL_EOF = '3.7';
+window.__SIMPKL_EOF = '3.8';

@@ -3,3 +3,57 @@
 .camera-actions .btn-balik{flex:0 0 auto;min-width:0;padding:10px 14px}
 .camera-actions .btn-balik .mi{margin:0}
 .tirai-peralihan{min-height:70vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:var(--on-surface-muted);font-size:14px}
+
+/* ── KISI JADWAL SHIFT ──────────────────────────────────────────────────────
+   Tiga puluh satu kolom di satu layar hanya mungkin bila setiap kolomnya
+   sempit. Yang menjaganya tetap terbaca bukan lebar kolom, melainkan kolom
+   nama yang membeku di kiri saat kisi digulir mendatar — tanpa itu pengguna
+   kehilangan jejak baris siapa yang sedang diisinya. */
+.js-legenda-bar{display:flex;flex-wrap:wrap;gap:8px 16px;margin-bottom:12px;
+  font-size:12.5px;color:var(--on-surface-muted)}
+.js-legenda b{display:inline-block;min-width:20px;padding:1px 6px;margin-right:6px;
+  border-radius:var(--r-sm);background:var(--primary-soft);color:var(--primary-deep);
+  font-weight:700;text-align:center}
+[data-theme="dark"] .js-legenda b{color:var(--primary)}
+.js-gulir{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.js-kisi{min-width:max-content;border-collapse:separate;border-spacing:0}
+.js-kisi th,.js-kisi td{padding:0;border-bottom:1px solid var(--outline-variant)}
+.js-kisi th.js-nama{position:sticky;left:0;z-index:2;min-width:180px;max-width:180px;
+  padding:8px 12px;text-align:left;background:var(--surface-card);
+  border-right:1px solid var(--outline-variant);white-space:normal}
+.js-kisi thead th.js-nama{z-index:3}
+.js-kisi thead th{position:sticky;top:0;z-index:1;background:var(--surface-card)}
+.js-tgl{width:44px;min-width:44px;padding:6px 2px;text-align:center;line-height:1.15}
+.js-hari{display:block;font-size:10.5px;font-weight:600;color:var(--on-surface-muted);
+  text-transform:uppercase;letter-spacing:.04em}
+.js-angka{display:block;font-size:13px;font-weight:700;color:var(--on-surface)}
+.js-pekan{background:var(--surface-container-low)}
+.js-sel{text-align:center}
+/* Tanggal kerja yang belum dijadwalkan diberi tanda halus, bukan warna merah:
+   ini pengingat bagi pengisi, bukan kesalahan siswa. */
+.js-kosong{box-shadow:inset 0 -3px 0 var(--warning-bg)}
+.js-pilih{width:100%;height:38px;padding:0 2px;border:none;background:transparent;
+  color:var(--on-surface);font-family:inherit;font-size:13px;font-weight:600;
+  text-align:center;text-align-last:center;cursor:pointer;appearance:none;-webkit-appearance:none}
+.js-pilih:hover{background:var(--surface-hover)}
+.js-pilih:focus-visible{outline:2px solid var(--primary);outline-offset:-2px;border-radius:var(--r-sm)}
+.js-pilih:disabled{cursor:default;color:var(--on-surface-muted)}
+.jadwal-ringkas{margin-left:auto}
+.chip-pilih{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.chip-pilih-item{position:relative;cursor:pointer}
+.chip-pilih-item input{position:absolute;opacity:0;width:0;height:0}
+.chip-pilih-item span{display:inline-block;padding:7px 14px;border:1px solid var(--outline);
+  border-radius:var(--r-full);font-size:13px;font-weight:600;color:var(--on-surface-variant);
+  background:var(--surface-card);transition:background .12s ease,border-color .12s ease,color .12s ease}
+.chip-pilih-item input:checked+span{background:var(--primary-soft);border-color:var(--primary);
+  color:var(--primary-deep)}
+[data-theme="dark"] .chip-pilih-item input:checked+span{color:var(--primary)}
+.chip-pilih-item input:focus-visible+span{outline:2px solid var(--primary);outline-offset:2px}
+/* Baris shift di dalam form Tempat PKL */
+.shift-baris{display:grid;grid-template-columns:70px 1fr 110px 110px 40px;gap:8px;
+  align-items:center;margin-bottom:8px}
+.shift-baris .field-input{margin:0}
+@media (max-width:640px){
+  .shift-baris{grid-template-columns:1fr 1fr;gap:6px}
+  .js-kisi th.js-nama{min-width:130px;max-width:130px;padding:8px}
+}
