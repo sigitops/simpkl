@@ -1,7 +1,7 @@
 # SIM PKL — Panduan Teknis
 
 Sistem Informasi & Manajemen Presensi Siswa Praktik Kerja Lapangan
-SMK HKTI 2 Purwareja Klampok · versi 3.8
+SMK HKTI 2 Purwareja Klampok · versi 3.9
 
 Dokumen ini menjelaskan aplikasi sebagaimana adanya sekarang: cara kerjanya, cara
 memasangnya dari nol, dan cara mengembangkannya. Ditulis untuk orang yang akan
@@ -284,6 +284,39 @@ bulan tanpa pola tetap. Tahap pertama fitur ini mendukung shift yang **selesai d
 hari yang sama**; shift lintas tengah malam sengaja ditolak dengan pesan yang
 jelas, bukan diterima lalu salah menghitung diam-diam.
 
+### Jebakan zona waktu 1899 (v3.9)
+
+Jam shift yang diketik 08:00 tersimpan lalu terbaca kembali sebagai **07:52**.
+Rantainya panjang tetapi setiap matanya masuk akal:
+
+1. `pastikanSheet()` memaksa kolom sensitif menjadi format teks, tetapi ia
+   mencari kolomnya dengan membaca ulang baris header lewat `getLastColumn()`.
+   Pada sheet yang **baru saja dibuat**, Apps Script belum tentu sudah menyusul
+   penulisan header, sehingga `getLastColumn()` sempat menjawab 1, `indexOf()`
+   gagal, dan format teks tidak pernah terpasang. Sheet lama tidak terkena
+   karena headernya memang sudah ada sejak awal.
+2. Tanpa format teks, "08:00" tersimpan sebagai **nilai waktu**, dan Sheets
+   memakai tanggal dasar **1899-12-30** untuk itu.
+3. Pada tahun setua itu, zona Asia/Jakarta belum memakai +07:00 melainkan waktu
+   matahari setempat **+07:07:12**. `jamLokal()` yang menghitung dengan offset
+   modern karena itu meleset tepat tujuh menit dua belas detik — dan detiknya
+   terpotong menjadi 07:52.
+
+Perbaikannya di dua tempat sekaligus. `pastikanSheet()` tidak lagi bertanya
+kepada Sheets tentang susunan kolom melainkan memakai daftar yang baru saja
+ditulisnya sendiri; dan `jamLokal()` menyerahkan konversi tanggal pra-1970
+kepada `Utilities.formatDate()` yang mengenal sejarah zona waktu, sambil tetap
+memakai aritmetika cepat untuk tanggal masa kini yang jumlahnya ribuan.
+
+`bulanBaris()` menambal masalah yang sama pada kolom `Bulan` di `JadwalShift`:
+"2026-09" yang terlanjur tersimpan sebagai tanggal tetap dikenali, sehingga
+jadwal yang sudah diisi tidak hilang tanpa jejak.
+
+> **Pelajaran untuk kolom baru mana pun:** setiap kolom yang isinya *menyerupai*
+> angka, tanggal, atau jam — nomor HP, NIS, jam kerja, "2026-09" — wajib masuk
+> `KOLOM_TEKS`. Dan jangan pernah menanyakan susunan kolom kepada Sheets tepat
+> sesudah menulisnya.
+
 ### Aturan yang tidak boleh dilanggar
 
 > **Tanggal yang jadwalnya belum diisi tidak pernah memblokir presensi, dan tidak
@@ -321,6 +354,16 @@ tentang shift. Jam bawaan tempat tetap tersedia terpisah sebagai
 Hak akses: Pokja PKL mengatur semua; guru pembimbing hanya siswa bimbingannya —
 diperiksa di server lewat `siswaBershift(sesi)`, bukan sekadar disembunyikan di
 antarmuka.
+
+### Ekspor jadwal
+
+Tombol Ekspor di halaman Jadwal Shift menumpang `eksporTabel()` yang sama dengan
+menu lain lewat argumen ketiganya, `paketLangsung`. Kisi jadwal bukan tabel
+`buatTabel()`, jadi `paketEksporJadwal()` menyusun sendiri `{ nama, judul, baris }`
+— tetapi penulis Excel, gaya cetak PDF, penamaan berkas, dan pesan galatnya tetap
+satu jalur dengan menu lain. `tombolEkspor(idPrefix, fnEkspor)` menerima nama
+fungsi penangannya supaya tampilan bukan-tabel tidak perlu membangun menunya
+sendiri.
 
 ### Belum dikerjakan (tahap dua)
 

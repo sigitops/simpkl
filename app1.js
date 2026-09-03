@@ -1056,10 +1056,19 @@ return (v == null || v === '') ? '' : String(v);
 }))
 };
 }
-async function eksporTabel(prefix, format) {
+/**
+ * @param {string} prefix Awalan tabel yang dibangun buatTabel().
+ * @param {string} format 'xlsx' atau 'pdf'.
+ * @param {Object} [paketLangsung] Data siap ekspor { nama, judul, baris } untuk
+ *   tampilan yang BUKAN tabel buatTabel — misalnya kisi Jadwal Shift. Dengan
+ *   jalan masuk ini, kisi tersebut memakai penulis Excel, gaya cetak, dan pesan
+ *   yang sama persis dengan menu lain, alih-alih membangun ekspornya sendiri
+ *   yang cepat atau lambat akan menyimpang perilakunya.
+ */
+async function eksporTabel(prefix, format, paketLangsung) {
 const menu = $(prefix + 'EksporMenu');
 if (menu) menu.hidden = true;
-const paket = barisUntukEkspor(prefix);
+const paket = paketLangsung || barisUntukEkspor(prefix);
 if (!paket.baris.length) { toast('Tidak ada data untuk diekspor.', 'warning'); return; }
 const berkas = paket.nama.replace(/[^A-Za-z0-9]+/g, '_') + '_' +
 new Date().toISOString().slice(0, 10);
@@ -1101,10 +1110,11 @@ paket.baris.map(b => '<tr>' + b.map(c => '<td>' + esc(c) + '</td>').join('') + '
 w.document.close(); w.focus();
 setTimeout(() => { try { w.print(); } catch (e) {} }, 350);
 };
-if (AppState.gayaCetak) { tulis(AppState.gayaCetak); return; }
+const tambah = paket.gayaTambahan || '';
+if (AppState.gayaCetak) { tulis(AppState.gayaCetak + tambah); return; }
 panggil('gayaCetakTabel', AppState.sessionToken)
-.then(res => { AppState.gayaCetak = (res && res.success) ? res.data : ''; tulis(AppState.gayaCetak); })
-.catch(() => tulis(''));
+.then(res => { AppState.gayaCetak = (res && res.success) ? res.data : ''; tulis(AppState.gayaCetak + tambah); })
+.catch(() => tulis(tambah));
 }
 function renderKolom(k, row) {
 const fn = (typeof k.render === 'string') ? RENDER_KOLOM[k.render] : k.render;

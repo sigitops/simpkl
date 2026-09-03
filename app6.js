@@ -805,6 +805,8 @@ const d = Jadwal.data;
 if (!kotak || !d) return;
 
 if (!d.siswa.length) {
+const wadahKosong = $('jsEksporWrap');
+if (wadahKosong) wadahKosong.hidden = true;
 kotak.innerHTML = emptyState('event_busy', 'Belum ada siswa bershift',
 'Jadwal hanya berlaku untuk siswa yang ditempatkan di tempat PKL dengan sistem shift aktif. ' +
 'Aktifkan sistem shift lewat menu Tempat PKL terlebih dahulu.');
@@ -813,11 +815,21 @@ return;
 }
 
 const hari = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+// Tanggal hari ini ditandai supaya mata langsung menemukan kolom yang paling
+// sering dicari — pada kisi selebar tiga puluh satu kolom, itu menghemat lebih
+// banyak waktu daripada hiasan mana pun.
+const kunciHariIni = new Date().getFullYear() + '-' +
+  ('0' + (new Date().getMonth() + 1)).slice(-2) + '-' +
+  ('0' + new Date().getDate()).slice(-2);
+
 const kepala = [];
 for (let i = 1; i <= d.jumlahHari; i++) {
-const tgl = new Date(d.bulan + '-' + ('0' + i).slice(-2) + 'T00:00:00Z');
+const iso = d.bulan + '-' + ('0' + i).slice(-2);
+const tgl = new Date(iso + 'T00:00:00Z');
 const hd = tgl.getUTCDay();
-kepala.push('<th class="js-tgl' + (hd === 0 || hd === 6 ? ' js-pekan' : '') + '">' +
+kepala.push('<th class="js-tgl' + (hd === 0 || hd === 6 ? ' js-pekan' : '') +
+(iso === kunciHariIni ? ' js-kini' : '') + '"' +
+(iso === kunciHariIni ? ' aria-current="date"' : '') + '>' +
 '<span class="js-hari">' + hari[hd] + '</span><span class="js-angka">' + i + '</span></th>');
 }
 
@@ -825,18 +837,29 @@ const baris = d.siswa.map(function (s) {
 const opsi = d.shiftPerTempat[s.tempatId] || [];
 const setHari = s.hariKerja || '';
 const sel = [];
+let terisiBaris = 0, perluBaris = 0;
 for (let i = 1; i <= d.jumlahHari; i++) {
 const kol = 'T' + ('0' + i).slice(-2);
+const iso = d.bulan + '-' + ('0' + i).slice(-2);
 const nilai = kunciUbah(s.siswaId, kol) in Jadwal.ubah
   ? Jadwal.ubah[kunciUbah(s.siswaId, kol)] : (s.isi[kol] || '');
-const tgl = new Date(d.bulan + '-' + ('0' + i).slice(-2) + 'T00:00:00Z');
+const diubah = kunciUbah(s.siswaId, kol) in Jadwal.ubah;
+const tgl = new Date(iso + 'T00:00:00Z');
 const akhirPekan = tgl.getUTCDay() === 0 || tgl.getUTCDay() === 6;
 const kerja = hariKerjaKlien(tgl.getUTCDay(), setHari);
+if (kerja) { perluBaris++; if (nilai) terisiBaris++; }
+// Warna sel mengikuti urutan shift, bukan kodenya, supaya sekolah bebas
+// memberi nama apa pun tanpa kehilangan pembedaan visualnya.
+const urut = opsi.findIndex(function (o) { return o.kode === nilai; });
 sel.push('<td class="js-sel' + (akhirPekan ? ' js-pekan' : '') +
-  (kerja && !nilai ? ' js-kosong' : '') + '">' +
+  (iso === kunciHariIni ? ' js-kini' : '') +
+  (nilai ? ' js-terisi js-warna-' + ((urut % 4) + 1) : '') +
+  (diubah ? ' js-diubah' : '') +
+  (kerja && !nilai ? ' js-kosong' : '') + '"' +
+  (kerja ? ' data-kerja="1"' : '') + ' data-tempat="' + esc(s.tempatId) + '">' +
   '<select class="js-pilih" aria-label="Shift ' + esc(s.nama) + ' tanggal ' + i + '"' +
   (d.bolehUbah ? '' : ' disabled') +
-  ' onchange="ubahSelJadwal(\'' + esc(s.siswaId) + '\',\'' + kol + '\',this.value)">' +
+  ' onchange="ubahSelJadwal(\'' + esc(s.siswaId) + '\',\'' + kol + '\',this.value,this)">' +
   '<option value=""' + (nilai ? '' : ' selected') + '>–</option>' +
   opsi.map(function (o) {
     return '<option value="' + esc(o.kode) + '"' + (nilai === o.kode ? ' selected' : '') + '>' +
@@ -844,21 +867,31 @@ sel.push('<td class="js-sel' + (akhirPekan ? ' js-pekan' : '') +
   }).join('') +
   '</select></td>');
 }
-return '<tr><th class="js-nama"><div class="td-strong">' + esc(s.nama) + '</div>' +
-  '<div class="td-sub">' + esc(s.kelas) + ' · ' + esc(s.tempat) + '</div></th>' +
-  sel.join('') + '</tr>';
+const lengkap = perluBaris > 0 && terisiBaris === perluBaris;
+return '<tr><th class="js-nama">' +
+  '<div class="js-nama-baris"><span class="js-avatar">' + esc(inisialNama(s.nama)) + '</span>' +
+  '<span class="js-nama-teks"><span class="js-nama-utama">' + esc(s.nama) + '</span>' +
+  '<span class="js-nama-kaki"><span class="js-nama-sub">' + esc(s.kelas) + ' · ' + esc(s.tempat) +
+  '</span><span class="js-hitung' + (lengkap ? ' lengkap' : '') +
+  '" title="Hari kerja yang sudah terjadwal">' + terisiBaris + '/' + perluBaris + '</span></span>' +
+  '</span></div></th>' + sel.join('') + '</tr>';
 });
 
 // Legenda kode shift supaya kolom sesempit ini tetap terbaca.
 const semuaShift = {};
 Object.keys(d.shiftPerTempat).forEach(function (t) {
-(d.shiftPerTempat[t] || []).forEach(function (o) {
-  semuaShift[o.kode] = o.nama + ' · ' + o.jamMasuk + '–' + o.jamPulang;
+(d.shiftPerTempat[t] || []).forEach(function (o, i) {
+  semuaShift[o.kode] = { teks: o.nama + ' · ' + o.jamMasuk + '–' + o.jamPulang, urut: (i % 4) + 1 };
 });
 });
 const legenda = Object.keys(semuaShift).map(function (k) {
-return '<span class="js-legenda"><b>' + esc(k) + '</b> ' + esc(semuaShift[k]) + '</span>';
-}).join('');
+return '<span class="js-legenda"><b class="js-warna-' + semuaShift[k].urut + '">' + esc(k) +
+  '</b> ' + esc(semuaShift[k].teks) + '</span>';
+}).join('') +
+'<span class="js-legenda js-legenda-kosong"><b>–</b> belum dijadwalkan</span>';
+
+const wadahEkspor = $('jsEksporWrap');
+if (wadahEkspor) wadahEkspor.hidden = false;
 
 kotak.innerHTML =
 '<div class="js-legenda-bar">' + legenda + '</div>' +
@@ -883,18 +916,47 @@ if (a >= 0 && b >= 0) return a <= b ? (hariAngka >= a && hariAngka <= b)
 return t.indexOf(nama[hariAngka]) >= 0;
 }
 
+function inisialNama(nama) {
+const bagian = String(nama || '?').trim().split(/\s+/);
+return ((bagian[0] || '?').charAt(0) + (bagian.length > 1 ? bagian[1].charAt(0) : '')).toUpperCase();
+}
+
 function kunciUbah(siswaId, kol) { return siswaId + '|' + kol; }
 
-function ubahSelJadwal(siswaId, kol, kode) {
+function ubahSelJadwal(siswaId, kol, kode, elemen) {
 const d = Jadwal.data;
 if (!d) return;
 const s = d.siswa.find(function (x) { return x.siswaId === siswaId; });
 const semula = s ? (s.isi[kol] || '') : '';
 const k = kunciUbah(siswaId, kol);
-if (String(kode || '') === semula) delete Jadwal.ubah[k];
-else Jadwal.ubah[k] = String(kode || '');
+const berubah = String(kode || '') !== semula;
+if (berubah) Jadwal.ubah[k] = String(kode || '');
+else delete Jadwal.ubah[k];
+
+// Selnya dicat ulang di tempat, bukan lewat gambar ulang seluruh kisi.
+// Menggambar ulang tiga puluh satu kolom kali sekian siswa pada setiap
+// perubahan bukan hanya boros — ia juga merebut fokus dari kotak yang baru
+// saja disentuh pengguna, sehingga pengisian berturut-turut jadi tersendat.
+const sel = elemen && elemen.parentElement;
+if (sel) catSelJadwal(sel, String(kode || ''), berubah);
+
 setelTombolSimpanJadwal();
 setelRingkasJadwal();
+}
+
+/** Menyesuaikan kelas satu sel kisi tanpa menggambar ulang apa pun. */
+function catSelJadwal(sel, kode, belumDisimpan) {
+const d = Jadwal.data;
+for (let i = 1; i <= 4; i++) sel.classList.remove('js-warna-' + i);
+sel.classList.remove('js-terisi', 'js-kosong', 'js-diubah');
+if (kode) {
+const opsi = (d && d.shiftPerTempat[sel.dataset.tempat]) || [];
+const urut = opsi.findIndex(function (o) { return o.kode === kode; });
+sel.classList.add('js-terisi', 'js-warna-' + ((Math.max(0, urut) % 4) + 1));
+} else if (sel.dataset.kerja === '1') {
+sel.classList.add('js-kosong');
+}
+if (belumDisimpan) sel.classList.add('js-diubah');
 }
 
 function setelTombolSimpanJadwal() {
@@ -905,19 +967,85 @@ btn.disabled = n === 0;
 btn.innerHTML = '<span class="mi">save</span> ' + (n ? 'Simpan ' + n + ' Perubahan' : 'Simpan Perubahan');
 }
 
+/**
+ * Kemajuan pengisian ditampilkan sebagai batang, bukan sekadar angka.
+ *
+ * Angka "42 hari kerja belum dijadwalkan" tidak memberi tahu apakah itu banyak
+ * atau sedikit; batang yang terisi separuh langsung menjawabnya tanpa dibaca.
+ */
 function setelRingkasJadwal() {
-const el = $('jsRingkas');
+const el = $('jsMeter');
 const d = Jadwal.data;
 if (!el || !d) return;
-const belum = d.ringkas.belumDiisi - Object.keys(Jadwal.ubah).filter(function (k) {
-return !!Jadwal.ubah[k];
-}).length;
-const sisa = Math.max(0, belum);
-el.innerHTML = d.ringkas.totalHariKerja
-? '<span class="chip ' + (sisa ? 'chip-warning' : 'chip-success') + '">' +
-  '<span class="mi">' + (sisa ? 'error_outline' : 'check_circle') + '</span>' +
-  (sisa ? sisa + ' hari kerja belum dijadwalkan' : 'Seluruh hari kerja sudah dijadwalkan') + '</span>'
-: '';
+const ditambah = Object.keys(Jadwal.ubah).filter(function (k) { return !!Jadwal.ubah[k]; }).length;
+const dikosongkan = Object.keys(Jadwal.ubah).filter(function (k) { return !Jadwal.ubah[k]; }).length;
+const total = d.ringkas.totalHariKerja;
+const belum = Math.max(0, Math.min(total, d.ringkas.belumDiisi - ditambah + dikosongkan));
+const terisi = total - belum;
+if (!total) { el.innerHTML = ''; return; }
+const persen = Math.round(terisi / total * 100);
+el.innerHTML =
+'<div class="meter-teks"><span class="meter-angka">' + persen + '%</span>' +
+'<span class="meter-label">' + terisi + ' dari ' + total + ' hari kerja terjadwal</span></div>' +
+'<div class="meter-bar" role="progressbar" aria-valuenow="' + persen + '" aria-valuemin="0" aria-valuemax="100">' +
+'<span class="meter-isi' + (belum ? '' : ' penuh') + '" style="width:' + persen + '%"></span></div>';
+}
+
+// ── EKSPOR JADWAL ──────────────────────────────────────────────────────────
+//
+// Sengaja menumpang eksporTabel() alih-alih menulis pengekspor sendiri, supaya
+// berkas Excel, gaya cetak PDF, nama berkas, dan pesan galatnya sama persis
+// dengan menu lain. Yang berbeda hanya bentuk datanya, dan itulah yang disusun
+// di sini.
+function paketEksporJadwal() {
+const d = Jadwal.data;
+if (!d || !d.siswa.length) return null;
+const hari = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+const judul = ['Nama Siswa', 'NIS', 'Kelas', 'Tempat PKL'];
+for (let i = 1; i <= d.jumlahHari; i++) {
+const t = new Date(d.bulan + '-' + ('0' + i).slice(-2) + 'T00:00:00Z');
+judul.push(i + '\n' + hari[t.getUTCDay()]);
+}
+judul.push('Terjadwal');
+
+const baris = d.siswa.map(function (s) {
+const sel = [s.nama, s.nis, s.kelas, s.tempat];
+let terisi = 0, perlu = 0;
+for (let i = 1; i <= d.jumlahHari; i++) {
+const kol = 'T' + ('0' + i).slice(-2);
+const k = kunciUbah(s.siswaId, kol);
+const nilai = (k in Jadwal.ubah) ? Jadwal.ubah[k] : (s.isi[kol] || '');
+const t = new Date(d.bulan + '-' + ('0' + i).slice(-2) + 'T00:00:00Z');
+if (hariKerjaKlien(t.getUTCDay(), s.hariKerja)) { perlu++; if (nilai) terisi++; }
+sel.push(nilai || '');
+}
+sel.push(terisi + '/' + perlu);
+return sel;
+});
+
+const bln = new Date(d.bulan + '-01T00:00:00Z')
+.toLocaleDateString('id-ID', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+return {
+nama: 'Jadwal Shift ' + bln,
+judul: judul, baris: baris,
+// Tiga puluh satu kolom tidak muat dengan padding bawaan; keterangan shift
+// ikut dicetak supaya lembarannya dapat dibaca tanpa membuka aplikasi.
+gayaTambahan:
+'table{font-size:9px;table-layout:fixed}' +
+'th,td{padding:3px 2px;text-align:center;word-break:normal}' +
+'th:nth-child(-n+4),td:nth-child(-n+4){text-align:left;padding:4px 6px}' +
+'th:first-child,td:first-child{width:15%}' +
+'th:nth-child(4),td:nth-child(4){width:14%}' +
+'.sub{margin-bottom:8px}'
+};
+}
+
+function eksporJadwalShift(format) {
+const paket = paketEksporJadwal();
+const menu = $('jsEksporMenu');
+if (menu) menu.hidden = true;
+if (!paket) { toast('Belum ada jadwal untuk diekspor.', 'warning'); return; }
+eksporTabel('js', format, paket);
 }
 
 async function simpanPerubahanJadwal() {
@@ -1025,4 +1153,4 @@ await muatJadwalShift();
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '3.8';
+window.__SIMPKL_EOF = '3.9';

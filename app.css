@@ -4,6 +4,28 @@
 .camera-actions .btn-balik .mi{margin:0}
 .tirai-peralihan{min-height:70vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:var(--on-surface-muted);font-size:14px}
 
+/* ── HALAMAN JADWAL SHIFT ───────────────────────────────────────────────────
+   Kepala kartu memisahkan dua hal yang dikerjakan pengguna di sini: memilih
+   bulan (kiri) dan melihat sejauh mana pengisiannya (kanan). Keduanya menetap
+   di tempatnya sehingga mata tidak perlu mencarinya ulang tiap ganti bulan. */
+.jadwal-kepala{display:flex;align-items:center;justify-content:space-between;
+  gap:20px;flex-wrap:wrap;padding:16px 20px;
+  border-bottom:1px solid var(--outline-variant);
+  background:linear-gradient(180deg,var(--surface-container-low),transparent)}
+.jadwal-bulan{display:flex;align-items:center;gap:6px}
+.jadwal-input-bulan{width:auto;min-width:150px;font-weight:650;font-size:14.5px;
+  height:40px;padding:0 12px}
+.jadwal-badan{padding-top:16px}
+.jadwal-meter{display:flex;flex-direction:column;gap:6px;min-width:220px;flex:0 1 300px}
+.meter-teks{display:flex;align-items:baseline;gap:8px}
+.meter-angka{font-size:17px;font-weight:700;color:var(--on-surface);
+  font-variant-numeric:tabular-nums}
+.meter-label{font-size:12.5px;color:var(--on-surface-muted)}
+.meter-bar{height:6px;border-radius:var(--r-full);background:var(--outline-variant);overflow:hidden}
+.meter-isi{display:block;height:100%;border-radius:var(--r-full);background:var(--warning);
+  transition:width .25s ease,background-color .25s ease}
+.meter-isi.penuh{background:var(--success)}
+
 /* ── KISI JADWAL SHIFT ──────────────────────────────────────────────────────
    Tiga puluh satu kolom di satu layar hanya mungkin bila setiap kolomnya
    sempit. Yang menjaganya tetap terbaca bukan lebar kolom, melainkan kolom
@@ -18,7 +40,7 @@
 .js-gulir{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .js-kisi{min-width:max-content;border-collapse:separate;border-spacing:0}
 .js-kisi th,.js-kisi td{padding:0;border-bottom:1px solid var(--outline-variant)}
-.js-kisi th.js-nama{position:sticky;left:0;z-index:2;min-width:180px;max-width:180px;
+.js-kisi th.js-nama{position:sticky;left:0;z-index:2;min-width:212px;max-width:212px;
   padding:8px 12px;text-align:left;background:var(--surface-card);
   border-right:1px solid var(--outline-variant);white-space:normal}
 .js-kisi thead th.js-nama{z-index:3}
@@ -55,5 +77,67 @@
 .shift-baris .field-input{margin:0}
 @media (max-width:640px){
   .shift-baris{grid-template-columns:1fr 1fr;gap:6px}
-  .js-kisi th.js-nama{min-width:130px;max-width:130px;padding:8px}
+  .js-kisi th.js-nama{min-width:150px;max-width:150px;padding:8px}
+}
+
+
+/* ── PENYEMPURNAAN KISI JADWAL SHIFT ────────────────────────────────────────
+   Warna sel mengikuti URUTAN shift, bukan namanya, sehingga sekolah bebas
+   menamai shiftnya apa pun tanpa kehilangan pembedaan visual. Warnanya sengaja
+   lembut: yang perlu menonjol adalah huruf kodenya, bukan latar belakangnya. */
+.js-warna-1{--js-latar:var(--warning-bg);--js-tinta:var(--warning)}
+.js-warna-2{--js-latar:var(--info-bg);--js-tinta:var(--primary-deep)}
+.js-warna-3{--js-latar:var(--success-bg);--js-tinta:var(--success)}
+.js-warna-4{--js-latar:rgba(126,87,194,.14);--js-tinta:#5E35B1}
+[data-theme="dark"] .js-warna-2{--js-tinta:var(--primary)}
+[data-theme="dark"] .js-warna-4{--js-tinta:#B39DDB}
+.js-terisi{background:var(--js-latar)}
+.js-terisi .js-pilih{color:var(--js-tinta);font-weight:700}
+.js-legenda b.js-warna-1,.js-legenda b.js-warna-2,
+.js-legenda b.js-warna-3,.js-legenda b.js-warna-4{
+  background:var(--js-latar);color:var(--js-tinta)}
+.js-legenda-kosong b{background:var(--surface-container);color:var(--on-surface-muted)}
+
+/* Sel yang baru diubah dan belum disimpan diberi tanda supaya pengguna tahu
+   persis apa yang akan terkirim saat menekan Simpan. */
+.js-diubah{position:relative}
+.js-diubah::after{content:'';position:absolute;top:3px;right:3px;width:6px;height:6px;
+  border-radius:50%;background:var(--primary);pointer-events:none}
+
+/* Kolom hari ini — penanda paling sering dicari pada kisi selebar ini. */
+.js-kisi th.js-kini{background:var(--primary-soft);color:var(--primary-deep)}
+[data-theme="dark"] .js-kisi th.js-kini{color:var(--primary)}
+.js-kisi th.js-kini .js-hari,.js-kisi th.js-kini .js-angka{color:inherit}
+.js-kisi td.js-kini{box-shadow:inset 1px 0 0 var(--primary),inset -1px 0 0 var(--primary)}
+.js-kisi tbody tr:last-child td.js-kini{box-shadow:inset 1px 0 0 var(--primary),
+  inset -1px 0 0 var(--primary),inset 0 -1px 0 var(--primary)}
+
+/* Identitas siswa: inisial + nama + kemajuan barisnya sendiri. */
+/* Nama siswa TIDAK ikut aturan huruf kapital milik sel kepala tabel. Kolom ini
+   memang sebuah <th> agar dapat membeku di kiri, tetapi isinya nama orang —
+   dan nama orang yang dikapitalkan seluruhnya jauh lebih lambat dibaca. */
+.js-kisi tbody th.js-nama{text-transform:none;letter-spacing:normal}
+.js-nama-baris{display:flex;align-items:center;gap:10px}
+.js-nama-utama{font-size:13.5px;font-weight:650;line-height:1.25;color:var(--on-surface);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.js-nama-kaki{display:flex;align-items:center;gap:6px;min-width:0}
+.js-nama-sub{font-size:11.5px;line-height:1.3;color:var(--on-surface-muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.js-avatar{flex:0 0 30px;width:30px;height:30px;border-radius:50%;
+  display:grid;place-content:center;background:var(--primary-soft);
+  color:var(--primary-deep);font-size:11.5px;font-weight:700;letter-spacing:.02em}
+[data-theme="dark"] .js-avatar{color:var(--primary)}
+.js-nama-teks{display:flex;flex-direction:column;min-width:0;flex:1}
+.js-hitung{flex:none;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:var(--r-full);
+  background:var(--surface-container);color:var(--on-surface-muted);
+  font-variant-numeric:tabular-nums}
+.js-hitung.lengkap{background:var(--success-bg);color:var(--success)}
+
+.js-kisi tbody tr:hover th.js-nama,.js-kisi tbody tr:hover td{background:var(--surface-hover)}
+.js-kisi tbody tr:hover td.js-terisi{background:var(--js-latar)}
+
+@media (max-width:640px){
+  .jadwal-kepala{padding:14px}
+  .jadwal-meter{flex:1 1 100%;min-width:0}
+  .js-avatar{display:none}
 }
