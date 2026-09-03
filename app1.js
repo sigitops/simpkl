@@ -341,7 +341,26 @@ setTimeout(() => { bar.classList.remove('jalan', 'tuntas'); }, 260);
 // browser membuka koneksi baru — dan setiap permintaan diberi batas waktu agar
 // tidak pernah menggantung selamanya.
 const GALAT_JARINGAN = 'jaringan';
-const BATAS_WAKTU_MS = 25000;
+const GALAT_LAMBAT = 'lambat';
+
+// Batas waktu 25 detik ternyata terlalu galak untuk Apps Script.
+//
+// Merakit kerangka belasan halaman atau menarik data seluruh menu memang bisa
+// memakan lebih dari itu pada instans yang baru bangun. Yang terjadi kemudian
+// bukan sekadar satu permintaan gagal: permintaan itu DIBATALKAN, diulang, dan
+// setiap pengulangan menjalankan ulang seluruh pekerjaan server dari nol.
+// Karena Apps Script mengantrekan eksekusi milik pengguna yang sama, antreannya
+// justru makin panjang — permintaan yang sebenarnya akan selesai di detik ke-30
+// tidak pernah punya kesempatan. Itulah pemutar yang berputar selamanya.
+//
+// Dua koreksi: batasnya dinaikkan dan dibedakan menurut beratnya pekerjaan, dan
+// kehabisan waktu TIDAK LAGI diulang. Kehabisan waktu berarti server masih
+// bekerja; mengirim permintaan kedua hanya menambah beban yang justru menjadi
+// sebab kegagalannya.
+const BATAS_WAKTU_MS = 45000;
+const BATAS_WAKTU_BERAT_MS = 100000;
+const FUNGSI_BERAT = ['semuaHalamanHtml', 'paketDataAwal', 'masukKilat', 'masukLengkap',
+  'imporMasterMassal', 'terbitkanSertifikatMassal', 'imporSiswaMassal'];
 const JEDA_ULANG = [400, 1200, 2600];
 
 /** Menandai galat yang berasal dari transport, bukan dari logika aplikasi. */
@@ -350,7 +369,14 @@ function galatJaringan(pesan) {
   e.jenis = GALAT_JARINGAN;
   return e;
 }
-function iniGalatJaringan(e) { return !!(e && e.jenis === GALAT_JARINGAN); }
+/** Server masih bekerja, hanya belum selesai. Tidak boleh diulang. */
+function galatLambat(pesan) {
+  const e = new Error(pesan);
+  e.jenis = GALAT_LAMBAT;
+  return e;
+}
+function iniGalatJaringan(e) { return !!(e && (e.jenis === GALAT_JARINGAN || e.jenis === GALAT_LAMBAT)); }
+function bolehDiulang(e) { return !!(e && e.jenis === GALAT_JARINGAN); }
 
 // Mengulang permintaan hanya aman bila permintaannya tidak mengubah data:
 // percobaan kedua atas "simpanPresensi" bisa menghasilkan dua baris presensi
@@ -401,6 +427,20 @@ function proxyTersedia() {
     location.protocol.indexOf('http') === 0;
 }
 
+// Permintaan kembar yang sedang berjalan digabung menjadi satu.
+//
+// Halaman yang menggambar ulang, penyegaran senyap, dan pramuat bisa meminta
+// pembacaan yang sama nyaris bersamaan. Setiap permintaan berarti satu eksekusi
+// Apps Script, dan eksekusi milik pengguna yang sama diantre — jadi permintaan
+// kembar bukan hanya mubazir, ia memperlambat permintaan yang sedang ditunggu.
+// Hanya pembacaan yang digabung; penulisan tidak pernah, karena dua penekanan
+// tombol Simpan memang dua kehendak yang berbeda.
+const SEDANG_TERBANG = {};
+function kunciTerbang(namaFungsi, args) {
+  try { return namaFungsi + '|' + JSON.stringify((args || []).slice(1)); }
+  catch (e) { return ''; }
+}
+
 /**
  * Satu-satunya pintu keluar aplikasi ke server. panggil() dan panggilDiam()
  * sama-sama memakainya supaya keduanya tidak pernah lagi berbeda perilaku.
@@ -413,12 +453,16 @@ function kirimKeServer(namaFungsi, args, opsi) {
   const batasUlang = opsi.ulang === false ? 0
     : (amanDiulang(namaFungsi) ? JEDA_ULANG.length : 0);
 
+  const kunciGabung = amanDiulang(namaFungsi) ? kunciTerbang(namaFungsi, args) : '';
+  if (kunciGabung && SEDANG_TERBANG[kunciGabung]) return SEDANG_TERBANG[kunciGabung];
+
   const sekali = (alamat) => {
     // AbortController tidak ada di peramban yang sangat tua; di sana kita cukup
     // berjalan tanpa batas waktu ketimbang gagal sama sekali.
     let pembatal = null, pewaktu = null;
     try { pembatal = new AbortController(); } catch (e) { pembatal = null; }
-    if (pembatal) pewaktu = setTimeout(() => { try { pembatal.abort(); } catch (e) {} }, BATAS_WAKTU_MS);
+    const batas = FUNGSI_BERAT.indexOf(namaFungsi) !== -1 ? BATAS_WAKTU_BERAT_MS : BATAS_WAKTU_MS;
+    if (pembatal) pewaktu = setTimeout(() => { try { pembatal.abort(); } catch (e) {} }, batas);
     const bersihkan = () => { if (pewaktu) clearTimeout(pewaktu); };
 
     const permintaan = {
@@ -466,7 +510,8 @@ function kirimKeServer(namaFungsi, args, opsi) {
       // fetch() hanya menolak untuk kegagalan transport: CORS, DNS, koneksi
       // putus, atau batas waktu kita sendiri.
       if (err && err.name === 'AbortError') {
-        throw galatJaringan('Server tidak menjawab dalam ' + (BATAS_WAKTU_MS / 1000) + ' detik.');
+        throw galatLambat('Server belum selesai dalam ' + Math.round(batas / 1000) +
+          ' detik. Permintaan dihentikan agar tidak menambah beban.');
       }
       throw galatJaringan(navigator.onLine === false
         ? 'Perangkat sedang tidak terhubung ke internet.'
@@ -477,20 +522,20 @@ function kirimKeServer(namaFungsi, args, opsi) {
   const alamatUtama = proxySedangDipakai() && proxyTersedia() ? ALAMAT_PROXY : window.SIMPKL_API;
 
   const coba = (sisa, keTampil) => sekali(alamatUtama).catch(err => {
-    if (sisa <= 0 || !iniGalatJaringan(err)) throw err;
+    if (sisa <= 0 || !bolehDiulang(err)) throw err;
     const jeda = JEDA_ULANG[keTampil] + Math.floor(Math.random() * 250);
     console.warn('Permintaan "' + namaFungsi + '" gagal (' + err.message +
       '). Mencoba lagi dalam ' + jeda + ' ms.');
     return new Promise(r => setTimeout(r, jeda)).then(() => coba(sisa - 1, keTampil + 1));
   });
 
-  return coba(batasUlang, 0)
+  const perjalanan = coba(batasUlang, 0)
     .catch(err => {
       // Pengalihan ke proxy hanya untuk pembacaan, dengan alasan yang sama
       // seperti pengulangan: penyimpanan data yang gagal di tengah jalan bisa
       // saja sudah tercatat di spreadsheet, dan mengirimnya lagi lewat jalur
       // lain berisiko menggandakannya.
-      if (!iniGalatJaringan(err) || batasUlang === 0) throw err;
+      if (!bolehDiulang(err) || batasUlang === 0) throw err;
       if (alamatUtama === ALAMAT_PROXY || !proxyTersedia()) throw err;
       return sekali(ALAMAT_PROXY).then(paket => { aktifkanProxy(); return paket; }, () => { throw err; });
     })
@@ -499,6 +544,12 @@ function kirimKeServer(namaFungsi, args, opsi) {
       if (paket && paket.__galat) throw new Error(paket.__galat);
       return paket ? paket.hasil : null;
     });
+
+  if (!kunciGabung) return perjalanan;
+  SEDANG_TERBANG[kunciGabung] = perjalanan;
+  const lepas = () => { delete SEDANG_TERBANG[kunciGabung]; };
+  perjalanan.then(lepas, lepas);
+  return perjalanan;
 }
 
 function panggil(namaFungsi, ...args) {
@@ -513,9 +564,16 @@ return kirimKeServer(namaFungsi, args).then(
 const SLASH2 = '/' + '/';
 const HTTPS = 'https:' + SLASH2;
 const CDN = {
+// Urutannya sengaja: jsdelivr lebih dulu karena alamat inilah yang terbukti ada.
+// cdnjs TIDAK memuat Chart.js 4.4.4 — alamat lamanya menjawab 404 berisi halaman
+// HTML, dan peramban menolaknya dengan "MIME type ('text/html') is not
+// executable". Grafik tetap muncul karena cadangannya bekerja, tetapi setiap
+// pemuatan membuang satu perjalanan dan menaburkan galat merah di Console yang
+// menyesatkan saat menelusuri masalah lain. Alamat cdnjs diturunkan ke 4.4.1,
+// versi terakhir yang benar-benar tersedia di sana.
 chart: [
-HTTPS + 'cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js',
 HTTPS + 'cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js',
+HTTPS + 'cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js',
 HTTPS + 'unpkg.com/chart.js@4.4.4/dist/chart.umd.min.js'
 ],
 sheetjs: [
@@ -1692,6 +1750,10 @@ if (awal && awal.bootstrap) {
 res = awal.bootstrap;
 halaman = awal.halaman;
 sebagian = !!awal.sebagian;
+// Data beranda ikut terbawa dalam jawaban masuk. Menaruhnya di paketData
+// membuat navigateTo('beranda') menyerahkannya ke panggilCepat sebagai
+// dataAwal, sehingga dashboard tergambar TANPA satu pun permintaan tambahan.
+if (awal.dataBeranda) AppState.paketData = { beranda: awal.dataBeranda };
 } else {
 // Memulihkan sesi tersimpan. Kerangka halaman yang tersinggah dari sesi
 // sebelumnya dipakai lebih dulu supaya layar langsung tergambar; versi
@@ -1763,8 +1825,14 @@ namaSekolah: c.namaSekolah || '', logoUrl: c.logoUrl || ''
 } catch (e) {}
 AppState.htmlHalaman = (halaman && halaman.success) ? halaman.data : {};
 if (AppState.htmlHalaman.login) simpanHtmlLogin(AppState.htmlHalaman.login);
-if (sebagian) lengkapiKerangkaHalaman(); else simpanKerangka(AppState.htmlHalaman);
-segarkanPaketData();
+if (!sebagian) simpanKerangka(AppState.htmlHalaman);
+// Pekerjaan latar dijalankan BERURUTAN, tidak berbarengan.
+//
+// Dulu keduanya dilepas bersamaan tepat saat dashboard sedang menggambar.
+// Apps Script mengantrekan eksekusi milik pengguna yang sama, jadi tiga
+// permintaan berat sekaligus bukan tiga kali lebih cepat — ketiganya justru
+// sama-sama molor sampai kehabisan waktu.
+jadwalkanTugasLatar(sebagian);
 if (!AppState.periode) toast('Belum ada periode PKL aktif. Presensi dan jurnal terkunci.', 'warning', 7000);
 }
 // ── SINGGAHAN KERANGKA HALAMAN ─────────────────────────────────────────────
@@ -1796,16 +1864,37 @@ return (isi && typeof isi === 'object' && isi.beranda) ? isi : null;
 }
 
 /**
+ * Antrean pekerjaan latar sesudah masuk: kerangka halaman dulu, baru paket data.
+ *
+ * Keduanya berat, dan keduanya boleh terlambat — yang tidak boleh adalah
+ * mengganggu layar pertama. Karena itu keduanya menunggu satu detik lebih dulu
+ * (cukup bagi dashboard untuk selesai menggambar), lalu berjalan satu per satu.
+ */
+function jadwalkanTugasLatar(perluKerangka) {
+setTimeout(function () {
+const langkah = perluKerangka ? lengkapiKerangkaHalaman() : Promise.resolve();
+langkah.then(function () { return segarkanPaketData(); })
+       .catch(function () {});
+}, 1000);
+}
+
+/**
  * Menyusulkan kerangka halaman yang belum ada, tanpa membuat siapa pun menunggu.
- * Dipanggil sesudah dashboard tergambar.
+ * Hanya halaman yang benar-benar belum dipegang klien yang diminta, sehingga
+ * pada pembukaan kedua dan seterusnya permintaan ini nyaris tidak berbiaya.
  */
 function lengkapiKerangkaHalaman() {
-if (AppState.__lengkapiJalan) return;
+if (AppState.__lengkapiJalan) return Promise.resolve();
 AppState.__lengkapiJalan = true;
+const sudahAda = Object.keys(AppState.htmlHalaman || {});
+const kurang = (MENU[AppState.user.role] || []).map(function (m) { return m.id; })
+  .concat(['login', 'profil'])
+  .filter(function (n) { return sudahAda.indexOf(n) === -1; });
+if (!kurang.length) { AppState.__lengkapiJalan = false; return Promise.resolve(); }
 // Dikirim lewat kirimKeServer supaya tetap mendapat percobaan ulang: bila
 // pengisian ini gagal diam-diam, setiap perpindahan menu sesudahnya berbiaya
 // satu perjalanan server tambahan tanpa pengguna tahu sebabnya.
-kirimKeServer('semuaHalamanHtml', [AppState.sessionToken])
+return kirimKeServer('semuaHalamanHtml', [AppState.sessionToken, kurang])
 .then(function (res) {
 AppState.__lengkapiJalan = false;
 if (!res || !res.success || !res.data) return;

@@ -1,7 +1,7 @@
 # SIM PKL — Panduan Teknis
 
 Sistem Informasi & Manajemen Presensi Siswa Praktik Kerja Lapangan
-SMK HKTI 2 Purwareja Klampok · versi 3.5
+SMK HKTI 2 Purwareja Klampok · versi 3.6
 
 Dokumen ini menjelaskan aplikasi sebagaimana adanya sekarang: cara kerjanya, cara
 memasangnya dari nol, dan cara mengembangkannya. Ditulis untuk orang yang akan
@@ -276,6 +276,37 @@ Empat lapis, dari yang paling dekat ke pengguna:
 Dua hal berikut sengaja di-memo karena dulu terbukti menghabiskan puluhan detik:
 `getTZ()` dan `offsetZonaMs()` (dulu satu panggilan layanan **per sel tanggal**),
 serta `getSpreadsheet()` (dulu `openById()` belasan kali per permintaan).
+
+### Aturan beban server (v3.6) — dibayar dengan satu kemunduran nyata
+
+v3.5 memecah login menjadi satu permintaan ringan plus dua pekerjaan latar, dan
+memberi setiap permintaan batas waktu 25 detik. Keduanya masuk akal sendiri-
+sendiri, dan bersama-sama justru mematikan dashboard: pemutar berputar selamanya
+dan Console penuh `Server tidak menjawab dalam 25 detik`.
+
+Sebabnya bukan satu permintaan yang lambat. **Apps Script mengantrekan eksekusi
+milik pengguna yang sama.** Tepat sesudah masuk, klien melepas tiga permintaan
+berat sekaligus — `semuaHalamanHtml`, `paketDataAwal`, dan `getDashboardMonitoring`
+yang diminta dashboard untuk dirinya sendiri. Ketiganya mengantre, masing-masing
+melewati 25 detik, lalu dibatalkan dan **diulang** — dan setiap pengulangan
+menambah antrean yang justru menjadi sebab keterlambatannya.
+
+Empat aturan yang sekarang berlaku, dan tidak boleh dilanggar:
+
+| Aturan | Alasan |
+|---|---|
+| **Layar pertama tidak boleh meminta apa pun** | `masukKilat()` mengirim beranda **beserta `dataAwal`-nya**. Klien menaruhnya di `AppState.paketData`, sehingga `panggilCepat` menemukannya sebagai `dataAwal` dan dashboard tergambar tanpa satu pun permintaan tambahan |
+| **Pekerjaan latar berjalan berurutan** | `jadwalkanTugasLatar()` menunggu satu detik, lalu menjalankan kerangka halaman dulu, baru paket data. Tidak pernah dua-duanya sekaligus |
+| **Kehabisan waktu tidak diulang** | Batas dinaikkan (45 detik, 100 detik untuk perakitan berat) dan `galatLambat()` sengaja **tidak** lolos `bolehDiulang()`. Kehabisan waktu berarti server masih bekerja; permintaan kedua hanya menambah beban |
+| **Permintaan kembar digabung** | `SEDANG_TERBANG` menyatukan pembacaan identik yang sedang berjalan menjadi satu janji. Penulisan tidak pernah digabung — dua tekan Simpan adalah dua kehendak |
+
+Sebagai tambahan, `semuaHalamanHtml(token, hanya)` kini menerima daftar halaman.
+Klien mengirim hanya yang belum dipegangnya, jadi begitu kerangka tersinggah di
+`localStorage`, permintaan ini nyaris tidak berbiaya — pada pembukaan kedua ia
+bahkan tidak dikirim sama sekali.
+
+`uji/uji-boot.js` menjaga keempat aturan itu dengan mengukur puncak jumlah
+permintaan yang berjalan bersamaan; nilainya harus tetap satu.
 
 ### Yang dihapus dari jalur kritis pada v3.5
 
@@ -591,7 +622,7 @@ jadi salah.
 | Nol depan nomor HP hilang | Data lama perlu diketik ulang sekali; data baru sudah otomatis benar |
 | Kamera tidak menyala | Aplikasi menjelaskan penyebabnya di tempat placeholder — izin ditolak, tidak ada kamera, atau kamera dipakai aplikasi lain |
 | Penilaian kosong | Pastikan minimal satu kriteria berstatus Aktif |
-| Grafik tidak muncul | Chart.js gagal diunduh dari CDN. Data tetap tersedia dalam bentuk tabel |
+| Grafik tidak muncul | Chart.js gagal diunduh dari seluruh CDN. Data tetap tersedia dalam bentuk tabel. Catatan: cdnjs **tidak** memuat Chart.js 4.4.4 — alamat itu menjawab 404 berisi HTML dan peramban menolaknya dengan "MIME type ('text/html') is not executable". Urutan CDN karena itu jsdelivr dulu, cdnjs (4.4.1) sebagai cadangan |
 
 Untuk galat yang tidak jelas, buka **Console browser (F12)** dan **Executions**
 di editor Apps Script — keduanya menunjukkan sisi yang berbeda dari masalah yang
