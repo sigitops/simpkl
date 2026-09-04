@@ -167,4 +167,4 @@
 /* Cap versi berkas ini, dibaca versiCss() di app1.js. Penanda ini juga menjadi
    tanda akhir berkas: bila app.css yang dipegang peramban lebih tua daripada
    index.html, capnya tidak akan sama dan boot memuat ulang sekali. */
-:root{--versi-aset:"4.3"}
+:root{--versi-aset:"4.4"}

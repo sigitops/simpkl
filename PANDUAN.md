@@ -1,7 +1,7 @@
 # SIM PKL — Panduan Teknis
 
 Sistem Informasi & Manajemen Presensi Siswa Praktik Kerja Lapangan
-SMK HKTI 2 Purwareja Klampok · versi 4.3
+SMK HKTI 2 Purwareja Klampok · versi 4.4
 
 Dokumen ini menjelaskan aplikasi sebagaimana adanya sekarang: cara kerjanya, cara
 memasangnya dari nol, dan cara mengembangkannya. Ditulis untuk orang yang akan
@@ -578,14 +578,55 @@ di tengah jalan. Perhatikan bahwa `module.exports.config` harus dipasang
 **sesudah** `module.exports` diisi; menaruhnya di atas membuatnya tertimpa oleh
 penugasan handler-nya sendiri, dan setelannya diam-diam tidak berlaku.
 
-> **Yang TIDAK diperbaiki oleh rilis ini.** Sebab hulunya ada di Apps Script,
-> bukan di kode aplikasi: ia sedang membalas halaman HTML. Rilis ini membuat
-> sebab itu terbaca, tidak menghilangkannya. Bila terulang, buka **Pengaturan →
-> Pemeriksa integritas** atau baca pesan galatnya — kini pesan itu menyebut
-> sebabnya. Untuk memastikan langsung: buka `https://<domain>/api/gas` di
-> peramban (harus menjawab `{"siap":true}`), dan periksa **Apps Script →
-> Executions** serta kuota hariannya. Akun Gmail biasa dibatasi 90 menit total
-> waktu jalan per hari; pada ~9 detik per eksekusi, itu sekitar 600 permintaan.
+---
+
+## Proxy menjadi jalur utama (v4.4)
+
+Dua pemeriksaan menutup penyelidikan di atas dan membalik kesimpulannya:
+
+- `GET /api/gas` → `{"siap":true}`. Proxy sehat.
+- **Apps Script → Executions: semuanya "Selesai"**, 1,4–7,4 detik, tanpa satu pun
+  baris merah.
+
+Kuota yang habis meninggalkan baris gagal atau tidak meninggalkan baris sama
+sekali. Di sini barisnya ada dan hijau. Jadi bukan kuota, bukan galat kode —
+melainkan:
+
+> **Eksekusinya berhasil. Hasilnya yang tidak sampai ke peramban.**
+
+`/exec` membalas 302 ke `script.googleusercontent.com/macros/echo?user_content_key=…`,
+dan **lompatan kedua itulah** yang gagal. Kuncinya sekali pakai dan berumur
+pendek. Bukti langsungnya ada di log: `404` pada alamat googleusercontent, dan
+empat baris Executions berdempetan di 08.54.55–08.55.06 yang semuanya "Selesai"
+sementara klien mencatat empat percobaan `masukKilat` yang gagal. **Empat
+eksekusi berhasil, nol yang sampai.**
+
+Itu juga menjelaskan mengapa dashboard akhirnya tergambar lewat proxy: **Vercel
+menempuh lompatan kedua itu dari sisi server**, jadi ia kebal sepenuhnya.
+
+Karena itu urutannya dibalik. `/api/gas` kini **jalur utama**, jalur langsung
+menjadi cadangan. Yang hilang sekaligus:
+
+- kunci `user_content_key` sekali pakai — peramban tidak pernah menyentuhnya;
+- CORS — `/api/gas` satu domain dengan halamannya, jadi tidak berlaku sama sekali;
+- kebutaan terhadap halaman galat Google — proxy membacanya dan menerjemahkannya.
+
+Ongkosnya satu lompatan tambahan (~100–200 md), kecil dibanding 3–7 detik
+eksekusi Apps Script.
+
+Keduanya saling menjadi cadangan, dan **tidak ada yang mengunci**: bila proxy
+gagal, `pakaiJalurLangsung()` memindahkan lalu lintas ke jalur langsung selama
+tiga puluh menit; bila jalur langsung itu ikut gagal, `kembaliKeProxy()`
+mengembalikannya. Penyimpanan data tetap **tidak pernah** berpindah jalur
+otomatis — permintaan simpan yang gagal di tengah jalan bisa saja sudah tercatat
+di spreadsheet, dan mengirimnya lagi lewat jalur lain berisiko menggandakannya.
+
+> **Yang masih perlu diawasi.** Rilis ini menghindari lompatan kedua, bukan
+> memperbaikinya di sisi Google. Bila kelak muncul lagi lewat jalur langsung,
+> pesan galatnya kini menyebut sebabnya. Untuk memeriksa sendiri: buka
+> `https://<domain>/api/gas` (harus `{"siap":true}`), lalu **Apps Script →
+> Executions**. Akun Gmail biasa dibatasi 90 menit total waktu jalan per hari;
+> pada ~4,5 detik per eksekusi itu sekitar 1.200 permintaan sehari.
 
 ---
 

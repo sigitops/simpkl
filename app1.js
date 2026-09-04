@@ -462,50 +462,58 @@ function amanDiulang(namaFungsi) {
   return AWALAN_AMAN_ULANG.some(a => n.indexOf(a) === 0);
 }
 
-// ── JALUR CADANGAN LEWAT PROXY VERCEL ──────────────────────────────────────
+// ── PROXY VERCEL SEBAGAI JALUR UTAMA ───────────────────────────────────────
 //
-// `api/gas.js` sudah lama ada di repo tetapi menganggur: ia meneruskan
-// permintaan ke Apps Script dari sisi server, sehingga browser hanya berbicara
-// dengan domain aplikasinya sendiri dan CORS tidak berlaku sama sekali.
-// Sampai sekarang ia harus diaktifkan manual dengan menyunting index.html —
-// artinya baru menolong bila ada yang sempat menyunting dan men-deploy saat
-// gangguan sedang berlangsung, yang praktis tidak pernah terjadi.
+// Apps Script tidak menjawab POST secara langsung. `/exec` membalas 302 ke
+// `script.googleusercontent.com/macros/echo?user_content_key=…`, dan lompatan
+// KEDUA itulah titik lemahnya. Kuncinya sekali pakai dan berumur pendek; bila
+// lompatan itu gagal, hasil eksekusi yang sudah selesai tidak pernah sampai.
 //
-// Sekarang perpindahannya otomatis: setelah seluruh percobaan langsung habis,
-// satu percobaan terakhir dikirim lewat proxy. Bila berhasil, seluruh sesi
-// memakai jalur itu, lalu kembali ke jalur langsung yang lebih cepat setengah
-// jam kemudian.
+// Kegagalan itu terjadi sungguhan dan bentuknya menyesatkan: di Apps Script
+// seluruh eksekusi tercatat "Selesai" dalam 1,4–7,4 detik — tidak satu pun
+// merah — sementara di peramban empat percobaan masukKilat berturut-turut gagal
+// dengan "blocked by CORS policy" dan satu 404 pada alamat googleusercontent.
+// Empat eksekusi berhasil, nol yang sampai. Sebabnya juga tidak bisa dibaca dari
+// klien: halaman galat Google tidak membawa header CORS, jadi apa pun yang
+// sebenarnya terjadi hanya tampak sebagai tembok CORS.
+//
+// Proxy `/api/gas` menempuh lompatan kedua itu DARI SISI SERVER. Peramban tidak
+// pernah menyentuh script.googleusercontent.com, tidak pernah berurusan dengan
+// kunci sekali pakai, dan tidak pernah kena CORS — /api/gas satu domain dengan
+// halamannya. Karena itu sejak v4.4 ia menjadi jalur UTAMA, bukan cadangan.
+//
+// Jalur langsung tetap ada dan otomatis dipakai bila proxy gagal, lalu kembali
+// ke proxy setengah jam kemudian. Keduanya saling menjadi cadangan.
 const ALAMAT_PROXY = '/api/gas';
-const UMUR_PROXY_MS = 30 * 60 * 1000;
+const UMUR_LANGSUNG_MS = 30 * 60 * 1000;
 
-function proxySedangDipakai() {
-  const sampai = Number(Simpanan.ambil('proxySampai') || 0);
-  if (!sampai) return false;
-  if (Date.now() > sampai) { Simpanan.hapus('proxySampai'); return false; }
-  return true;
-}
-function aktifkanProxy() {
-  Simpanan.simpan('proxySampai', String(Date.now() + UMUR_PROXY_MS));
-  console.warn('Beralih ke jalur cadangan ' + ALAMAT_PROXY + ' untuk sementara.');
-}
-/**
- * Melepaskan jalur cadangan sebelum waktunya habis.
- *
- * Tanpa ini, sekali proxy diaktifkan aplikasi TERKUNCI di sana selama tiga puluh
- * menit — bahkan ketika proxy itu sendiri yang sedang gagal. Itulah keadaan yang
- * dilaporkan: masukKilat sempat berhasil lewat proxy, jalur cadangan menyala,
- * lalu setiap permintaan sesudahnya — termasuk htmlDetailSiswa saat tombol
- * detail siswa ditekan — dijawab 502 oleh proxy yang sama, tanpa satu pun
- * kesempatan mencoba jalur langsung yang mungkin sudah pulih.
- */
-function matikanProxy() {
-  Simpanan.hapus('proxySampai');
-  console.warn('Jalur cadangan ' + ALAMAT_PROXY + ' ikut gagal. Kembali ke jalur langsung.');
-}
 /** Proxy hanya masuk akal bila halaman disajikan Vercel, bukan dari /exec. */
 function proxyTersedia() {
   return String(window.SIMPKL_API || '').indexOf('http') === 0 &&
     location.protocol.indexOf('http') === 0;
+}
+/** Benar selama proxy sedang dihindari karena terbukti gagal. */
+function langsungSedangDipakai() {
+  const sampai = Number(Simpanan.ambil('langsungSampai') || 0);
+  if (!sampai) return false;
+  if (Date.now() > sampai) { Simpanan.hapus('langsungSampai'); return false; }
+  return true;
+}
+function pakaiJalurLangsung() {
+  Simpanan.simpan('langsungSampai', String(Date.now() + UMUR_LANGSUNG_MS));
+  console.warn('Proxy ' + ALAMAT_PROXY + ' gagal. Memakai jalur langsung untuk sementara.');
+}
+/**
+ * Kembali ke proxy sebelum setengah jamnya habis.
+ *
+ * Tanpa ini aplikasi bisa TERKUNCI pada jalur yang terbukti gagal — persis yang
+ * dulu terjadi dengan arah sebaliknya: proxy sempat berhasil sekali, penandanya
+ * menyala tiga puluh menit, lalu setiap permintaan sesudahnya gagal tanpa satu
+ * pun kesempatan mencoba jalur yang lain.
+ */
+function kembaliKeProxy() {
+  Simpanan.hapus('langsungSampai');
+  console.warn('Jalur langsung ikut gagal. Kembali memakai ' + ALAMAT_PROXY + '.');
 }
 
 // Permintaan kembar yang sedang berjalan digabung menjadi satu.
@@ -739,7 +747,8 @@ function kirimSatu(namaFungsi, args, opsi) {
     });
   };
 
-  const alamatUtama = proxySedangDipakai() && proxyTersedia() ? ALAMAT_PROXY : window.SIMPKL_API;
+  const alamatUtama = (proxyTersedia() && !langsungSedangDipakai())
+    ? ALAMAT_PROXY : window.SIMPKL_API;
 
   const coba = (sisa, keTampil) => sekali(alamatUtama).catch(err => {
     if (sisa <= 0 || !bolehDiulang(err)) throw err;
@@ -756,20 +765,20 @@ function kirimSatu(namaFungsi, args, opsi) {
       // saja sudah tercatat di spreadsheet, dan mengirimnya lagi lewat jalur
       // lain berisiko menggandakannya.
       if (!bolehDiulang(err) || batasUlang === 0) throw err;
-      // Yang gagal justru jalur cadangannya sendiri: lepaskan, lalu beri jalur
-      // langsung satu kesempatan. Gangguan yang dulu membuat kita berpindah bisa
-      // saja sudah selesai, dan bertahan di jalur yang terbukti gagal tidak
-      // pernah menolong siapa pun.
+      // Jalur yang sedang dipakai habis percobaannya: beri jalur satunya satu
+      // kesempatan, lalu ingat pilihan itu untuk permintaan berikutnya. Bertahan
+      // pada jalur yang terbukti gagal tidak pernah menolong siapa pun.
       if (alamatUtama === ALAMAT_PROXY) {
-        matikanProxy();
-        return sekali(window.SIMPKL_API).catch(() => { throw err; });
+        return sekali(window.SIMPKL_API).then(
+          paket => { pakaiJalurLangsung(); return paket; },
+          // Bila proxy sempat MENJAWAB dan membawa sebabnya, itulah yang
+          // dilaporkan. Galat jalur langsung hanya berkata "tidak dapat
+          // menghubungi server" — akibat, bukan sebab.
+          errLangsung => { throw (err && err.dariServer) ? err : errLangsung; });
       }
       if (!proxyTersedia()) throw err;
       return sekali(ALAMAT_PROXY).then(
-        paket => { aktifkanProxy(); return paket; },
-        // Bila proxy sempat MENJAWAB dan membawa sebabnya, itulah yang
-        // dilaporkan. Galat jalur langsung hanya berkata "tidak dapat
-        // menghubungi server" — akibat, bukan sebab.
+        paket => { kembaliKeProxy(); return paket; },
         errProxy => { throw (errProxy && errProxy.dariServer) ? errProxy : err; });
     })
     .then(paket => {
@@ -2139,6 +2148,10 @@ return peran ? 'kerangka_' + peran + '_' + String(window.SIMPKL_VERSI || '0') : 
  */
 function bersihkanKerangkaLama() {
 const kini = '_' + String(window.SIMPKL_VERSI || '0');
+// Sisa dari masa ketika proxy masih berupa jalur cadangan. Sejak v4.4 penanda
+// itu tidak lagi dibaca siapa pun; membuangnya sekali menghindarkan kebingungan
+// bagi siapa saja yang membuka localStorage untuk menelusuri masalah.
+try { localStorage.removeItem('proxySampai'); } catch (e) {}
 try {
 for (let i = localStorage.length - 1; i >= 0; i--) {
 const k = localStorage.key(i);
