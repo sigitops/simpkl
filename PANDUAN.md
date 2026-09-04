@@ -1,7 +1,7 @@
 # SIM PKL — Panduan Teknis
 
 Sistem Informasi & Manajemen Presensi Siswa Praktik Kerja Lapangan
-SMK HKTI 2 Purwareja Klampok · versi 4.6
+SMK HKTI 2 Purwareja Klampok · versi 4.7
 
 Dokumen ini menjelaskan aplikasi sebagaimana adanya sekarang: cara kerjanya, cara
 memasangnya dari nol, dan cara mengembangkannya. Ditulis untuk orang yang akan
@@ -760,9 +760,42 @@ tahu adalah kebohongan kecil yang tidak perlu.
 penyapuan dimatikan, tetapi logo dan garis progresnya tetap terlihat penuh —
 bukan dihilangkan.
 
-`uji/uji-splash.js` mengukurnya di peramban sungguhan: masih terlihat pada 150 ms,
-sudah hilang sebelum 900 ms, ditutup sesudah `navigateTo('beranda')`, dan
-animasinya benar-benar `none` pada konteks `reducedMotion: 'reduce'`.
+### Splash menemani bagian yang LAMA (v4.7)
+
+Versi pertamanya benar bentuknya tetapi salah tempatnya, dan hasilnya kebalikan
+dari maksudnya. Urutan lamanya:
+
+```
+[tombol berputar "Memeriksa…"]  masukKilat …………… 1–3 detik   ← form menggantung
+[splash]                        muatBootstrap + navigateTo …… cepat
+```
+
+Yang lama diperlihatkan sebagai form yang menggantung dengan tombol berputar;
+yang cepat justru dihias splash yang berkelebat sekilas. Sekarang terbalik:
+
+```
+[splash]  masukKilat + muatBootstrap + navigateTo ……… seluruhnya
+```
+
+`tampilkanTiraiMasuk()` dipanggil **sebelum** permintaannya berangkat. Splash
+tampil jauh lebih lama tanpa satu milidetik pun ditambahkan — yang berubah hanya
+bagian mana yang ditemaninya. `handleLogin()` karena itu tidak lagi menyentuh
+tombol Masuk sama sekali; tombolnya sudah tidak ada di layar.
+
+**Konsekuensinya harus ditangani: form sudah dibuang dari DOM.** Ketika password
+salah, `$('errPass')` tidak lagi ada untuk diisi. `kembalikanFormLogin()`
+menggambar ulang halaman login **di balik splash** lebih dulu, memasang pesannya,
+baru meredupkan splash — sehingga yang terlihat pengguna adalah form beserta
+pesan galatnya sekaligus, bukan form kosong yang disusul pesan sepersekian detik
+kemudian. NIS/NIP yang sudah diketik dikembalikan; hanya password yang
+dikosongkan, lalu difokuskan.
+
+`uji/uji-splash.js` mengukurnya di peramban sungguhan: splash sudah naik dan form
+sudah hilang 300 ms setelah tombol ditekan sementara permintaannya masih
+berjalan; masih terlihat pada 150 ms dan sudah hilang sebelum 900 ms saat
+ditutup; ditutup sesudah `navigateTo('beranda')`; animasinya benar-benar `none`
+pada konteks `reducedMotion: 'reduce'`; dan sesudah login gagal, form kembali
+lengkap dengan pesannya serta NIS yang tidak hilang.
 
 ---
 

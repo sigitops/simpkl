@@ -39,11 +39,15 @@ kotak.appendChild(img);
 function tampilkanSplash() {
 const el = document.getElementById('bootLoader');
 if (!el) return;
+// Hitungan ambang hanya dimulai bila splash memang baru muncul. Memanggil ini
+// dua kali dalam satu proses masuk — sekali oleh handleLogin, sekali lagi oleh
+// mulaiSesi — tidak boleh memperpanjang tampilnya.
+const baruMuncul = el.hidden || SPLASH_TUTUP;
 if (PEWAKTU_SPLASH) { clearTimeout(PEWAKTU_SPLASH); PEWAKTU_SPLASH = null; }
 isiSplash();
 el.classList.remove('tutup');
 el.hidden = false;
-SPLASH_MULAI = Date.now();
+if (baruMuncul) SPLASH_MULAI = Date.now();
 SPLASH_TUTUP = false;
 }
 
@@ -2013,35 +2017,55 @@ let valid = true;
 if (!user) { $('errUser').textContent = 'NIS/NIP wajib diisi.'; $('loginUser').classList.add('invalid'); valid = false; }
 if (!pass) { $('errPass').textContent = 'Password wajib diisi.'; $('loginPass').classList.add('invalid'); valid = false; }
 if (!valid) return;
-const btn = $('btnLogin');
-btn.disabled = true;
-btn.innerHTML = '<span class="spinner spinner-sm"></span> Memeriksa…';
+// Splash dinaikkan SEBELUM permintaan berangkat, bukan sesudahnya.
+//
+// Dahulu urutannya terbalik: tombol berputar "Memeriksa…" selama masukKilat
+// berjalan — bagian yang memakan 1–3 detik — dan splash baru muncul sesudah
+// jawabannya tiba, untuk menemani sisa pekerjaan yang justru sudah cepat.
+// Akibatnya persis kebalikan dari maksudnya: yang lama diperlihatkan sebagai
+// form yang menggantung, yang cepat dihias splash yang berkelebat.
+//
+// Sekarang splash menutupi SELURUH proses masuk. Ia tampil lebih lama tanpa satu
+// milidetik pun ditambahkan — yang berubah hanya bagian mana yang ditemaninya.
+tampilkanTiraiMasuk();
 try {
 const res = await panggil('masukKilat', user, pass);
-if (!res.success) {
-$('errPass').textContent = res.message;
-$('loginPass').classList.add('invalid');
-btn.disabled = false;
-btn.innerHTML = '<span class="mi">login</span> Masuk';
-return;
-}
+if (!res.success) { await kembalikanFormLogin(user, res.message); return; }
 await mulaiSesi(res.data.token, res.data);
 } catch (err) {
-toast(err.message, 'error');
-btn.disabled = false;
-btn.innerHTML = '<span class="mi">login</span> Masuk';
+await kembalikanFormLogin(user, err.message);
 }
+}
+
+/**
+ * Mengembalikan form login sesudah percobaan yang gagal.
+ *
+ * Karena form sudah dibuang dari DOM saat splash naik, kolom dan kotak galatnya
+ * tidak lagi ada — pesannya harus dipasang pada form yang baru digambar. Form
+ * itu digambar LEBIH DULU, di balik splash, baru splash-nya diredupkan; jadi
+ * yang terlihat pengguna adalah form beserta pesan galatnya sekaligus, bukan
+ * form kosong yang menyusul pesan sepersekian detik kemudian.
+ *
+ * NIS/NIP yang sudah diketik dikembalikan; hanya password yang dikosongkan.
+ */
+async function kembalikanFormLogin(user, pesan) {
+await navigateTo('login');
+sembunyikanSplash();
+const kolomUser = $('loginUser'), kolomPass = $('loginPass'), kotakGalat = $('errPass');
+if (kolomUser) kolomUser.value = user || '';
+if (kotakGalat) kotakGalat.textContent = pesan || 'Gagal masuk.';
+else toast(pesan || 'Gagal masuk.', 'error', 6000);
+if (kolomPass) { kolomPass.value = ''; kolomPass.classList.add('invalid'); kolomPass.focus(); }
 }
 async function handleLoginGoogle() {
-tampilkanSibuk('Memeriksa akun Google…');
+// Alasan yang sama seperti handleLogin: yang ditemani harus bagian yang lama.
+tampilkanTiraiMasuk();
 try {
 const res = await panggil('doLoginGoogle');
-sembunyikanSibuk();
-if (!res.success) { toast(res.message, 'warning', 6500); return; }
+if (!res.success) { await kembalikanFormLogin('', res.message); return; }
 await mulaiSesi(res.data.token);
 } catch (err) {
-sembunyikanSibuk();
-toast(err.message, 'error');
+await kembalikanFormLogin('', err.message);
 }
 }
 // Layar peralihan saat masuk. Bukan sekadar hiasan: sebelumnya form login tetap
