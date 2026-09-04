@@ -184,10 +184,27 @@
 
 .splash{position:relative;display:flex;flex-direction:column;align-items:center;
   gap:18px;padding:24px;text-align:center}
-.splash-logo{width:76px;height:76px;border-radius:22px;display:grid;place-items:center;
+/* Logo bergerak TERUS selama splash tampil, bukan sekali lalu diam.
+   Geraknya dipecah ke dua lapis supaya keduanya tidak berebut properti yang
+   sama: pembungkusnya menangani animasi masuk, kotaknya menangani denyut yang
+   berulang. Dua animasi transform pada satu elemen akan saling menimpa —
+   yang belakangan menang, dan animasi masuknya hilang tanpa jejak. */
+.splash-halo{position:relative;display:grid;place-items:center;width:76px;height:76px;
+  animation:splashLogo .5s cubic-bezier(.22,.61,.36,1) both}
+/* Dua riak yang menyebar bergantian dari balik logo. Keduanya pseudo-element:
+   tidak menambah satu simpul pun ke DOM, dan tidak pernah ikut dihitung dalam
+   tata letak karena posisinya absolut. */
+.splash-halo::before,.splash-halo::after{content:'';position:absolute;inset:0;z-index:0;
+  border-radius:22px;border:2px solid var(--primary);opacity:0;
+  animation:splashRiak 2.6s cubic-bezier(.22,.61,.36,1) infinite}
+.splash-halo::after{animation-delay:1.3s}
+.splash-logo{position:relative;z-index:1;
+  width:76px;height:76px;border-radius:22px;display:grid;place-items:center;
   background:var(--primary-container);color:var(--on-primary-container);
   box-shadow:var(--elev-2);overflow:hidden;
-  animation:splashLogo .5s cubic-bezier(.22,.61,.36,1) both}
+  /* Ditunda .5 dtk supaya denyutnya mulai tepat sesudah animasi masuk selesai,
+     tanpa loncatan di sambungannya. */
+  animation:splashDenyut 2.6s ease-in-out .5s infinite}
 .splash-logo img{width:100%;height:100%;object-fit:cover;display:block}
 .splash-logo .mi{font-size:38px}
 .splash-teks{display:flex;flex-direction:column;gap:3px;
@@ -209,6 +226,13 @@
 @keyframes splashLogo{
   from{opacity:0;transform:scale(.86)}
   to{opacity:1;transform:none}}
+@keyframes splashDenyut{
+  0%,100%{transform:scale(1)}
+  50%{transform:scale(1.045)}}
+@keyframes splashRiak{
+  0%{transform:scale(1);opacity:.42}
+  70%{opacity:0}
+  100%{transform:scale(1.62);opacity:0}}
 @keyframes splashNaik{
   from{opacity:0;transform:translateY(7px)}
   to{opacity:1;transform:none}}
@@ -219,8 +243,9 @@
 /* Gerak dikurangi bukan berarti tanpa kabar: logonya tetap muncul, garis
    progresnya tetap ada, hanya perpindahan dan penyapuannya yang dihentikan. */
 @media (prefers-reduced-motion:reduce){
-  .boot-loader,.splash-logo,.splash-teks,.splash-bar{transition:none;animation:none}
-  .splash-logo,.splash-teks,.splash-bar{opacity:1;transform:none}
+  .boot-loader,.splash-halo,.splash-logo,.splash-teks,.splash-bar{transition:none;animation:none}
+  .splash-halo,.splash-logo,.splash-teks,.splash-bar{opacity:1;transform:none}
+  .splash-halo::before,.splash-halo::after{animation:none;opacity:0}
   .splash-bar span{width:100%;animation:none;
     background:var(--primary)}
   .boot-loader.tutup{transform:none}
@@ -229,4 +254,4 @@
 /* Cap versi berkas ini, dibaca versiCss() di app1.js. Penanda ini juga menjadi
    tanda akhir berkas: bila app.css yang dipegang peramban lebih tua daripada
    index.html, capnya tidak akan sama dan boot memuat ulang sekali. */
-:root{--versi-aset:"4.7"}
+:root{--versi-aset:"4.8"}

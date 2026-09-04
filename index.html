@@ -23,13 +23,15 @@
        memakai CSS lama, sehingga markup baru tampil tanpa aturan gayanya —
        tombol Ekspor hilang dan filter bulan melebar penuh. Uji uji-versi.js
        menolak berkas ini bila capnya tidak sama dengan APP_VERSI di Kode.gs. -->
-  <link rel="stylesheet" href="/app.css?v=4.7">
+  <link rel="stylesheet" href="/app.css?v=4.8">
 </head>
 <body>
 <div id="progresGlobal" aria-hidden="true"></div>
 <div id="bootLoader" class="boot-loader" role="status" aria-label="Memuat aplikasi">
   <div class="splash">
-    <div class="splash-logo" id="splashLogo"><span class="mi">school</span></div>
+    <div class="splash-halo">
+      <div class="splash-logo" id="splashLogo"><span class="mi">school</span></div>
+    </div>
     <div class="splash-teks">
       <span class="splash-nama" id="splashNama">SIM PKL</span>
       <span class="splash-sekolah" id="splashSekolah"></span>
@@ -224,13 +226,13 @@ wadah.innerHTML =
 // Alamat Web app Apps Script. Frontend memanggilnya lewat fetch() tanpa cookie,
 // sehingga Google tidak pernah menulis ulang alamatnya mengikuti akun yang masuk.
 window.SIMPKL_API = 'https://script.google.com/macros/s/AKfycbxnO0GrKENLXrEOQNiTeZ4W2KaK91UUGvOZbjI2_UFlIz75BiCidWWo8NSlODvwroXppA/exec';
-window.SIMPKL_VERSI = '4.7';
+window.SIMPKL_VERSI = '4.8';
 </script>
-<script src="/app1.js?v=4.7"></script>
-<script src="/app2.js?v=4.7"></script>
-<script src="/app3.js?v=4.7"></script>
-<script src="/app4.js?v=4.7"></script>
-<script src="/app5.js?v=4.7"></script>
-<script src="/app6.js?v=4.7"></script>
+<script src="/app1.js?v=4.8"></script>
+<script src="/app2.js?v=4.8"></script>
+<script src="/app3.js?v=4.8"></script>
+<script src="/app4.js?v=4.8"></script>
+<script src="/app5.js?v=4.8"></script>
+<script src="/app6.js?v=4.8"></script>
 </body>
 </html>

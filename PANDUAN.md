@@ -1,7 +1,7 @@
 # SIM PKL — Panduan Teknis
 
 Sistem Informasi & Manajemen Presensi Siswa Praktik Kerja Lapangan
-SMK HKTI 2 Purwareja Klampok · versi 4.7
+SMK HKTI 2 Purwareja Klampok · versi 4.8
 
 Dokumen ini menjelaskan aplikasi sebagaimana adanya sekarang: cara kerjanya, cara
 memasangnya dari nol, dan cara mengembangkannya. Ditulis untuk orang yang akan
@@ -751,6 +751,30 @@ compositor tanpa menghitung ulang tata letak. Splash yang menggeser tata letak
 justru menahan bingkai yang sedang ia hias, dan itu bertentangan dengan seluruh
 pekerjaan CLS/INP di v4.0. Keluarnya membesar sedikit (`scale(1.02)`) supaya
 kesannya aplikasi maju ke depan, bukan splash-nya yang pergi.
+
+**Logonya bergerak TERUS selama splash tampil (v4.8).** Versi pertamanya hanya
+punya animasi masuk setengah detik; sesudah itu logonya membeku sementara splash
+masih menemani permintaan yang berjalan 1–3 detik. Yang bergerak tinggal garis
+progresnya, dan layarnya terasa mati.
+
+Geraknya dipecah ke dua lapis, dan pemisahan itu bukan selera:
+
+| Lapis | Tugas | Animasi |
+|---|---|---|
+| `.splash-halo` | pembungkus | `splashLogo` — masuk, sekali |
+| `.splash-logo` | kotak logo | `splashDenyut` — berdenyut, `infinite`, ditunda .5 dtk |
+| `.splash-halo::before` / `::after` | dua riak | `splashRiak` — menyebar, `infinite`, yang kedua ditunda 1,3 dtk |
+
+> **Dua animasi `transform` pada SATU elemen akan saling menimpa** — yang
+> belakangan menang, dan animasi masuknya hilang tanpa jejak. Karena itu masuk
+> dan denyut harus berada di elemen yang berbeda. Transform bersarang mengalikan,
+> jadi keduanya tetap tersusun rapi. `uji-splash.js` menguji pemisahan ini.
+
+Riaknya memakai pseudo-element: tidak menambah satu simpul pun ke DOM, dan karena
+posisinya absolut ia tidak pernah ikut dihitung dalam tata letak.
+
+Ujinya tidak berhenti pada "animasinya terdaftar" — ia membaca `transform` logo
+enam kali berselang 220 ms dan menuntut nilainya benar-benar berubah.
 
 Garis progresnya **tak tentu**, dan itu disengaja: yang ditunggu adalah Apps
 Script, dan berapa persennya tidak pernah kita ketahui. Batang yang berpura-pura
