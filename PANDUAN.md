@@ -1,7 +1,7 @@
 # SIM PKL — Panduan Teknis
 
 Sistem Informasi & Manajemen Presensi Siswa Praktik Kerja Lapangan
-SMK HKTI 2 Purwareja Klampok · versi 4.4
+SMK HKTI 2 Purwareja Klampok · versi 4.5
 
 Dokumen ini menjelaskan aplikasi sebagaimana adanya sekarang: cara kerjanya, cara
 memasangnya dari nol, dan cara mengembangkannya. Ditulis untuk orang yang akan
@@ -627,6 +627,89 @@ di spreadsheet, dan mengirimnya lagi lewat jalur lain berisiko menggandakannya.
 > `https://<domain>/api/gas` (harus `{"siap":true}`), lalu **Apps Script →
 > Executions**. Akun Gmail biasa dibatasi 90 menit total waktu jalan per hari;
 > pada ~4,5 detik per eksekusi itu sekitar 1.200 permintaan sehari.
+
+---
+
+## Singgahan sheet lintas eksekusi (v4.5)
+
+Sesudah proxy menjadi jalur utama, sisa waktunya hampir seluruhnya ada di satu
+tempat: **membaca Sheets**. Angkanya dihitung dari kodenya sendiri —
+
+| Fungsi | Sheet yang disentuh |
+|---|---|
+| `pulihKilat` | **17** |
+| `getDashboardMonitoring` | **13** |
+| `getDaftarPenempatan` | 11 |
+| `getJadwalShift` | 9 |
+
+`bacaSheet()` membaca setiap sheet UTUH dengan `getValues()`. Tiga belas
+pembacaan seperti itu adalah 4–7 detik yang terlihat di panel Executions.
+
+`MEMO_SHEET` sudah menekannya menjadi sekali per sheet **per eksekusi** — `Siswa`
+dipanggil dari 62 tempat di kode dan tetap dibaca sekali. Tetapi memo itu mati
+begitu eksekusinya selesai, jadi permintaan berikutnya membayar penuh lagi.
+
+> **Ini juga alasan mengapa memisahkan jalur API per menu justru memperlambat.**
+> Memecah beranda menjadi empat jalur berarti memecah memonya: `Siswa`,
+> `Presensi`, dan `PenempatanPKL` dibaca **4×**, bukan 1×. Memecah bukan membagi
+> beban, melainkan menggandakan operasi yang paling mahal.
+
+Sekarang hasil `bacaSheet()` disimpan di CacheService sehingga bertahan **antar
+eksekusi**: membaca dari singgahan ~10 ms, dari Sheets 300–500 ms per sheet.
+Aman di-JSON-kan karena `formatNilaiSel()` sudah lebih dulu mengubah setiap
+`Date` menjadi teks — tidak ada objek yang berubah bentuk saat pulang-pergi.
+
+**Versinya per sheet, bukan global.** Ini bagian yang menentukan. Pada jam
+presensi pagi setiap siswa menulis ke `Presensi`. Dengan satu penanda global
+seperti `versiData()`, ketiga belas singgahan mati bersamaan setiap kali itu
+terjadi — tepat pada jam tersibuk. Dengan penanda per sheet, yang batal hanya
+`Presensi`; dua belas sisanya tetap hangat.
+
+### Tiga hal yang menjaga kebenarannya
+
+**1. Daftar putih.** Hanya 17 sheet yang dibaca lewat `bacaSheet()` yang
+disinggah. `Sesi` dan `AppConfig` sengaja di luar: keduanya ditulis langsung
+dengan `appendRow`/`deleteRow` tanpa melewati `lupakanMemo()`, jadi singgahannya
+tidak akan pernah dibatalkan — dan keduanya memang tidak pernah dibaca lewat
+`bacaSheet()`, jadi tidak ada yang hilang.
+
+**2. Sheet yang sedang ditulis tidak pernah dilayani singgahan.** Begitu
+`lupakanMemo(nama)` dipanggil, sheet itu ditandai kotor untuk sisa eksekusi:
+tidak dibaca dari singgahan, dan tidak ditulis ke singgahan.
+
+**3. `tutupVersiSheet()` di `doPost`.** Empat belas fungsi di berkas ini menulis
+di dalam perulangan; impor massal menyentuh sampai seribu baris. Penanda versi
+hanya naik pada penulisan PERTAMA — menaikkannya seribu kali berarti seribu
+panggilan CacheService. Selama sisa perulangan, eksekusi LAIN yang kebetulan
+membaca sheet yang sama bisa menyinggah keadaan setengah jadi di bawah versi yang
+sudah dianggap baru, dan singgahan itu bertahan enam jam. Satu kenaikan terakhir
+tepat sebelum jawaban dikirim membuat singgahan tersebut yatim seketika.
+Pengaitnya ditaruh di `doPost` — satu-satunya pintu keluar setiap eksekusi —
+supaya tidak mungkin terlupakan saat menambah fungsi baru.
+
+### Rincian teknis
+
+- Nilai di atas 100 KB ditolak CacheService, jadi isinya dipotong 50.000 huruf
+  per bagian. Sheet yang muat satu potongan disimpan langsung di kunci kepalanya
+  (isinya diawali `[`) sehingga hanya perlu SATU perjalanan CacheService — kasus
+  yang paling sering terjadi.
+- Di atas 16 potongan (~800 KB) singgahannya dilewati: menyinggah tidak lagi
+  sepadan, dan sheet-nya tetap dibaca seperti biasa.
+- Satu potongan yang hilang membatalkan seluruh rangkaian. Lebih baik membaca
+  ulang daripada menyajikan separuh.
+- Seluruh penanda versi diambil sekali dengan satu `getAll`. Tanpa itu, satu
+  permintaan yang menyentuh 13 sheet melakukan 13 perjalanan hanya untuk
+  menanyakan nomor versi. Terukur di uji: **13 sheet hangat = maksimal 14
+  perjalanan CacheService, nol pembacaan Sheets.**
+- `setupAppEnvironment()` memanggil `lupakanSeluruhSinggahanSheet()` karena setup
+  boleh menambah kolom, dan ia dijalankan manual dari editor sehingga
+  `tutupVersiSheet()` tidak ikut berjalan.
+
+`uji/uji-singgah-sheet.js` menjalankan semuanya dengan CacheService dan
+SpreadsheetApp tiruan yang **menghitung pembacaan sungguhan** — termasuk skenario
+impor massal yang disela pembaca lain. Berkas itu tidak mengukur kecepatan sama
+sekali; yang diuji kebenaran pembatalannya, karena data basi yang bertahan enam
+jam jauh lebih berbahaya daripada lambat.
 
 ---
 
