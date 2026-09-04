@@ -1,10 +1,74 @@
+// ── SPLASH ─────────────────────────────────────────────────────────────────
+//
+// Satu layar peralihan untuk dua saat yang dulu terlihat berbeda: membuka
+// aplikasi, dan menunggu dashboard sesudah menekan Masuk.
+//
+// Aturannya satu: SPLASH MENGIKUTI KESIAPAN, BUKAN DURASI. Ia tidak pernah
+// menahan aplikasi. Satu-satunya penundaan adalah ambang minimum 400 md, dan itu
+// pun bukan hiasan — sesudah singgahan sheet, pemulihan sesi bisa selesai dalam
+// dua ratusan milidetik, dan layar yang muncul lalu hilang secepat itu terbaca
+// sebagai kedipan yang rusak, bukan sebagai kecepatan.
+const AMBANG_SPLASH_MS = 400;
+const RAGAM_KELUAR_MS = 260;
+let SPLASH_MULAI = Date.now();
+let SPLASH_TUTUP = false;
+let PEWAKTU_SPLASH = null;
+
+/** Mengisi logo dan nama dari identitas tersimpan. Aman dipanggil berulang. */
+function isiSplash(identitas) {
+const kotak = document.getElementById('splashLogo');
+const nama = document.getElementById('splashNama');
+const sekolah = document.getElementById('splashSekolah');
+if (!kotak || !nama) return;
+let id = identitas;
+if (!id) {
+try { id = JSON.parse(Simpanan.ambil('identitas') || 'null'); } catch (e) { id = null; }
+}
+if (!id) return;
+if (id.appName) nama.textContent = id.appName;
+if (sekolah && id.namaSekolah) sekolah.textContent = id.namaSekolah;
+if (id.logoUrl && !kotak.querySelector('img')) {
+const img = document.createElement('img');
+img.src = id.logoUrl;
+img.alt = '';
+kotak.textContent = '';
+kotak.appendChild(img);
+}
+}
+
+function tampilkanSplash() {
+const el = document.getElementById('bootLoader');
+if (!el) return;
+if (PEWAKTU_SPLASH) { clearTimeout(PEWAKTU_SPLASH); PEWAKTU_SPLASH = null; }
+isiSplash();
+el.classList.remove('tutup');
+el.hidden = false;
+SPLASH_MULAI = Date.now();
+SPLASH_TUTUP = false;
+}
+
 function sembunyikanSplash() {
 const el = document.getElementById('bootLoader');
-if (el) el.hidden = true;
+if (!el || SPLASH_TUTUP) return;
+// Ditandai tertutup SEKETIKA, meski peredupannya masih berjalan. Penjaga boot
+// memakai splashMasihTampil() untuk memutuskan apakah aplikasi tersangkut;
+// menunda penandanya akan membuatnya salah menuduh.
+SPLASH_TUTUP = true;
+const sisa = Math.max(0, AMBANG_SPLASH_MS - (Date.now() - SPLASH_MULAI));
+if (PEWAKTU_SPLASH) clearTimeout(PEWAKTU_SPLASH);
+PEWAKTU_SPLASH = setTimeout(function () {
+el.classList.add('tutup');
+PEWAKTU_SPLASH = setTimeout(function () {
+el.hidden = true;
+el.classList.remove('tutup');
+PEWAKTU_SPLASH = null;
+}, RAGAM_KELUAR_MS);
+}, sisa);
 }
+
 function splashMasihTampil() {
 const el = document.getElementById('bootLoader');
-return !!(el && !el.hidden);
+return !!(el && !el.hidden && !SPLASH_TUTUP);
 }
 function lolosHtml(teks) {
 return String(teks == null ? '' : teks)
@@ -1984,12 +2048,12 @@ toast(err.message, 'error');
 // terpampang di balik lapisan gelap "Menyiapkan aplikasi…" sampai dashboard siap,
 // sehingga pengguna melihat kolom NIS dan password-nya sendiri masih di layar
 // dan mengira loginnya gagal. Form dibuang lebih dulu, baru kita menunggu.
-function tampilkanTiraiMasuk(pesan) {
+function tampilkanTiraiMasuk() {
+// Form login tetap dibuang dari DOM, bukan sekadar ditutupi: selama peredupan
+// splash nanti, apa pun yang tersisa di baliknya akan terlihat sekilas.
 const wadah = $('app-container');
-if (!wadah) return;
-wadah.classList.add('plain');
-wadah.innerHTML = '<div class="tirai-peralihan"><span class="boot-spin"></span>' +
-'<p>' + esc(pesan || 'Menyiapkan aplikasi…') + '</p></div>';
+if (wadah) { wadah.classList.add('plain'); wadah.innerHTML = ''; }
+tampilkanSplash();
 }
 async function mulaiSesi(token, awal) {
 SinggahData.bersihkan();
@@ -1999,8 +2063,12 @@ tampilkanTiraiMasuk();
 try {
 await muatBootstrap(awal);
 await navigateTo('beranda');
+// Baru sesudah dashboard benar-benar tergambar. Menutupnya lebih awal
+// memperlihatkan wadah kosong sekejap — persis kesan yang ingin dihindari.
+sembunyikanSplash();
 toast('Selamat datang, ' + AppState.user.nama + '!', 'success');
 } catch (err) {
+sembunyikanSplash();
 toast(err.message, 'error');
 keluarPaksa();
 }
@@ -2106,12 +2174,14 @@ $('popSub').textContent = u.username + ' · ' + peran;
 $('popPengaturan').hidden = (u.role !== 'admin');
 renderNavigation();
 tampilkanKerangkaAplikasi(true);
-try {
-Simpanan.simpan('identitas', JSON.stringify({
+const identitas = {
 appName: c.appName || 'SIM PKL', appTagline: c.appTagline || '',
 namaSekolah: c.namaSekolah || '', logoUrl: c.logoUrl || ''
-}));
-} catch (e) {}
+};
+try { Simpanan.simpan('identitas', JSON.stringify(identitas)); } catch (e) {}
+// Masuk pertama kali di perangkat ini: localStorage masih kosong saat splash
+// tergambar, jadi identitasnya disusulkan sekarang — sebelum splash meredup.
+isiSplash(identitas);
 AppState.htmlHalaman = (halaman && halaman.success) ? halaman.data : {};
 if (AppState.htmlHalaman.login) simpanHtmlLogin(AppState.htmlHalaman.login);
 if (!sebagian) simpanKerangka(AppState.htmlHalaman);

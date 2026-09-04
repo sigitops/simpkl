@@ -1,7 +1,7 @@
 # SIM PKL — Panduan Teknis
 
 Sistem Informasi & Manajemen Presensi Siswa Praktik Kerja Lapangan
-SMK HKTI 2 Purwareja Klampok · versi 4.5
+SMK HKTI 2 Purwareja Klampok · versi 4.6
 
 Dokumen ini menjelaskan aplikasi sebagaimana adanya sekarang: cara kerjanya, cara
 memasangnya dari nol, dan cara mengembangkannya. Ditulis untuk orang yang akan
@@ -710,6 +710,59 @@ SpreadsheetApp tiruan yang **menghitung pembacaan sungguhan** — termasuk skena
 impor massal yang disela pembaca lain. Berkas itu tidak mengukur kecepatan sama
 sekali; yang diuji kebenaran pembatalannya, karena data basi yang bertahan enam
 jam jauh lebih berbahaya daripada lambat.
+
+---
+
+## Layar splash (v4.6)
+
+Satu layar untuk dua peralihan yang dulu terlihat berbeda: membuka aplikasi, dan
+menunggu dashboard sesudah menekan Masuk. Sebelumnya keduanya berupa cincin abu-
+abu 32 px di layar kosong.
+
+Isinya logo sekolah, nama aplikasi, nama sekolah, dan garis progres tipis.
+Ketiganya diambil dari `identitas` di localStorage oleh **skrip sebaris di
+`index.html`**, dijalankan sebelum `app*.js` sempat diunduh — jadi splash sudah
+lengkap pada gambaran pertama, tanpa satu pun perjalanan server, dan tetap benar
+saat perangkat luring. Menaruhnya di `app1.js` berarti splash berkedip dulu
+dengan nama bawaan.
+
+### Aturan yang menentukan bentuknya
+
+**Splash mengikuti kesiapan, bukan durasi.** Ia tidak pernah menahan aplikasi.
+Satu-satunya penundaan adalah ambang minimum `AMBANG_SPLASH_MS = 400`, dan itu
+pun bukan hiasan: sesudah singgahan sheet v4.5, pemulihan sesi bisa selesai dalam
+dua ratusan milidetik, dan layar yang muncul lalu hilang secepat itu terbaca
+sebagai kedipan yang rusak — bukan sebagai kecepatan.
+
+**Ditutup sesudah dashboard tergambar, bukan sesudah datanya tiba.** Urutannya
+`await navigateTo('beranda')` dulu, baru `sembunyikanSplash()`. Terbalik sedikit
+saja, yang terlihat sekejap adalah wadah kosong — persis kesan yang ingin
+dihindari. Berlaku di `mulaiSesi()` maupun `mulaiAplikasi()`.
+
+**`splashMasihTampil()` berubah SEKETIKA saat penutupan diminta**, meski
+peredupannya masih berjalan 260 ms. `tampilkanGalatFatal()` memakainya untuk
+memutuskan apakah boot tersangkut; menunda penandanya membuat penjaga itu salah
+menuduh.
+
+### Gerak
+
+Hanya `opacity` dan `transform` yang digerakkan — dua sifat yang dapat digerakkan
+compositor tanpa menghitung ulang tata letak. Splash yang menggeser tata letak
+justru menahan bingkai yang sedang ia hias, dan itu bertentangan dengan seluruh
+pekerjaan CLS/INP di v4.0. Keluarnya membesar sedikit (`scale(1.02)`) supaya
+kesannya aplikasi maju ke depan, bukan splash-nya yang pergi.
+
+Garis progresnya **tak tentu**, dan itu disengaja: yang ditunggu adalah Apps
+Script, dan berapa persennya tidak pernah kita ketahui. Batang yang berpura-pura
+tahu adalah kebohongan kecil yang tidak perlu.
+
+`prefers-reduced-motion` dihormati tanpa memotong kabarnya: animasi dan
+penyapuan dimatikan, tetapi logo dan garis progresnya tetap terlihat penuh —
+bukan dihilangkan.
+
+`uji/uji-splash.js` mengukurnya di peramban sungguhan: masih terlihat pada 150 ms,
+sudah hilang sebelum 900 ms, ditutup sesudah `navigateTo('beranda')`, dan
+animasinya benar-benar `none` pada konteks `reducedMotion: 'reduce'`.
 
 ---
 

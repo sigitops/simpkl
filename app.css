@@ -163,8 +163,70 @@
    kali datanya tiba. */
 .insight-list{min-height:150px}
 
+/* ── SPLASH ─────────────────────────────────────────────────────────────────
+   Satu layar untuk dua peralihan: membuka aplikasi, dan menunggu dashboard
+   sesudah menekan Masuk. Isinya identitas sekolah yang sudah tersimpan di
+   localStorage, jadi lengkap sejak gambaran pertama tanpa perjalanan server.
+
+   Semua geraknya hanya opacity dan transform — dua sifat yang dapat digerakkan
+   compositor tanpa menghitung ulang tata letak. Splash yang menggeser tata
+   letak justru menahan bingkai yang sedang ia hias. */
+.boot-loader{position:fixed;inset:0;z-index:9000;display:grid;place-items:center;
+  background:var(--surface);
+  transition:opacity .26s ease,transform .26s ease}
+/* Sinar lembut di belakang logo. radial-gradient tidak menambah satu elemen pun
+   dan tidak pernah ikut dihitung dalam tata letak. */
+.boot-loader::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(52vmin 52vmin at 50% 42%,var(--primary-soft),transparent 70%)}
+/* Keluar dengan membesar sedikit: kesannya aplikasi maju ke depan, bukan
+   splash-nya yang pergi. */
+.boot-loader.tutup{opacity:0;transform:scale(1.02)}
+
+.splash{position:relative;display:flex;flex-direction:column;align-items:center;
+  gap:18px;padding:24px;text-align:center}
+.splash-logo{width:76px;height:76px;border-radius:22px;display:grid;place-items:center;
+  background:var(--primary-container);color:var(--on-primary-container);
+  box-shadow:var(--elev-2);overflow:hidden;
+  animation:splashLogo .5s cubic-bezier(.22,.61,.36,1) both}
+.splash-logo img{width:100%;height:100%;object-fit:cover;display:block}
+.splash-logo .mi{font-size:38px}
+.splash-teks{display:flex;flex-direction:column;gap:3px;
+  animation:splashNaik .45s cubic-bezier(.22,.61,.36,1) .09s both}
+.splash-nama{font-size:19px;font-weight:700;letter-spacing:-.2px;color:var(--on-surface)}
+.splash-sekolah{font-size:12.5px;color:var(--on-surface-muted)}
+.splash-sekolah:empty{display:none}
+
+/* Garis progres tak tentu. Sengaja TIDAK berpura-pura tahu sudah sampai berapa
+   persen — yang ditunggu adalah Apps Script, dan angkanya tidak pernah kita
+   ketahui. Yang jujur adalah menyatakan "sedang berjalan". */
+.splash-bar{width:132px;height:3px;border-radius:var(--r-full);
+  background:var(--outline-variant);overflow:hidden;
+  animation:splashNaik .45s cubic-bezier(.22,.61,.36,1) .16s both}
+.splash-bar span{display:block;width:40%;height:100%;border-radius:var(--r-full);
+  background:linear-gradient(90deg,transparent,var(--primary),transparent);
+  animation:splashSapu 1.15s ease-in-out infinite}
+
+@keyframes splashLogo{
+  from{opacity:0;transform:scale(.86)}
+  to{opacity:1;transform:none}}
+@keyframes splashNaik{
+  from{opacity:0;transform:translateY(7px)}
+  to{opacity:1;transform:none}}
+@keyframes splashSapu{
+  0%{transform:translateX(-110%)}
+  100%{transform:translateX(360%)}}
+
+/* Gerak dikurangi bukan berarti tanpa kabar: logonya tetap muncul, garis
+   progresnya tetap ada, hanya perpindahan dan penyapuannya yang dihentikan. */
+@media (prefers-reduced-motion:reduce){
+  .boot-loader,.splash-logo,.splash-teks,.splash-bar{transition:none;animation:none}
+  .splash-logo,.splash-teks,.splash-bar{opacity:1;transform:none}
+  .splash-bar span{width:100%;animation:none;
+    background:var(--primary)}
+  .boot-loader.tutup{transform:none}
+}
 
 /* Cap versi berkas ini, dibaca versiCss() di app1.js. Penanda ini juga menjadi
    tanda akhir berkas: bila app.css yang dipegang peramban lebih tua daripada
    index.html, capnya tidak akan sama dan boot memuat ulang sekali. */
-:root{--versi-aset:"4.5"}
+:root{--versi-aset:"4.6"}

@@ -23,13 +23,44 @@
        memakai CSS lama, sehingga markup baru tampil tanpa aturan gayanya —
        tombol Ekspor hilang dan filter bulan melebar penuh. Uji uji-versi.js
        menolak berkas ini bila capnya tidak sama dengan APP_VERSI di Kode.gs. -->
-  <link rel="stylesheet" href="/app.css?v=4.5">
+  <link rel="stylesheet" href="/app.css?v=4.6">
 </head>
 <body>
 <div id="progresGlobal" aria-hidden="true"></div>
 <div id="bootLoader" class="boot-loader" role="status" aria-label="Memuat aplikasi">
-  <span class="boot-spin"></span>
+  <div class="splash">
+    <div class="splash-logo" id="splashLogo"><span class="mi">school</span></div>
+    <div class="splash-teks">
+      <span class="splash-nama" id="splashNama">SIM PKL</span>
+      <span class="splash-sekolah" id="splashSekolah"></span>
+    </div>
+    <div class="splash-bar" aria-hidden="true"><span></span></div>
+  </div>
 </div>
+<script>
+// Identitas sekolah diisi SEBELUM app*.js sempat diunduh.
+//
+// Nama dan logo sekolah sudah tersimpan di localStorage sejak pembukaan
+// sebelumnya, jadi splash dapat tergambar lengkap pada gambaran pertama —
+// tanpa satu pun perjalanan server, dan tetap benar saat perangkat luring.
+// Menaruhnya di app1.js berarti splash berkedip dulu dengan nama bawaan.
+(function () {
+  try {
+    var id = JSON.parse(localStorage.getItem('identitas') || 'null');
+    if (!id) return;
+    if (id.appName) document.getElementById('splashNama').textContent = id.appName;
+    if (id.namaSekolah) document.getElementById('splashSekolah').textContent = id.namaSekolah;
+    if (id.logoUrl) {
+      var img = document.createElement('img');
+      img.src = id.logoUrl;
+      img.alt = '';
+      var kotak = document.getElementById('splashLogo');
+      kotak.textContent = '';
+      kotak.appendChild(img);
+    }
+  } catch (e) {}
+})();
+</script>
 <div id="drawerScrim" class="drawer-scrim" onclick="tutupDrawer()" hidden></div>
 <nav id="sidebar" class="sidebar" hidden aria-label="Navigasi utama">
   <div class="sidebar-brand">
@@ -193,13 +224,13 @@ wadah.innerHTML =
 // Alamat Web app Apps Script. Frontend memanggilnya lewat fetch() tanpa cookie,
 // sehingga Google tidak pernah menulis ulang alamatnya mengikuti akun yang masuk.
 window.SIMPKL_API = 'https://script.google.com/macros/s/AKfycbxnO0GrKENLXrEOQNiTeZ4W2KaK91UUGvOZbjI2_UFlIz75BiCidWWo8NSlODvwroXppA/exec';
-window.SIMPKL_VERSI = '4.5';
+window.SIMPKL_VERSI = '4.6';
 </script>
-<script src="/app1.js?v=4.5"></script>
-<script src="/app2.js?v=4.5"></script>
-<script src="/app3.js?v=4.5"></script>
-<script src="/app4.js?v=4.5"></script>
-<script src="/app5.js?v=4.5"></script>
-<script src="/app6.js?v=4.5"></script>
+<script src="/app1.js?v=4.6"></script>
+<script src="/app2.js?v=4.6"></script>
+<script src="/app3.js?v=4.6"></script>
+<script src="/app4.js?v=4.6"></script>
+<script src="/app5.js?v=4.6"></script>
+<script src="/app6.js?v=4.6"></script>
 </body>
 </html>

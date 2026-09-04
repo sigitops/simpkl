@@ -632,8 +632,9 @@ AppState.sessionToken = token;
 try {
 await muatBootstrap();
 clearTimeout(batasBoot);
-sembunyikanSplash();
+// Splash bertahan sampai dashboard tergambar, bukan sampai datanya tiba.
 await navigateTo('beranda');
+sembunyikanSplash();
 return;
 } catch (e) {
 // Pembedaan yang dahulu tidak ada, dan itulah inti masalahnya.
@@ -656,8 +657,8 @@ AppState.sessionToken = null;
 }
 tampilkanKerangkaAplikasi(false);
 clearTimeout(batasBoot);
-sembunyikanSplash();
 await navigateTo('login');
+sembunyikanSplash();
 } catch (e) {
 clearTimeout(batasBoot);
 console.error('Boot gagal:', e);
@@ -1273,4 +1274,4 @@ await muatJadwalShift();
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '4.5';
+window.__SIMPKL_EOF = '4.6';
