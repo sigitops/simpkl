@@ -1,7 +1,7 @@
 # SIM PKL — Panduan Teknis
 
 Sistem Informasi & Manajemen Presensi Siswa Praktik Kerja Lapangan
-SMK HKTI 2 Purwareja Klampok · versi 4.0
+SMK HKTI 2 Purwareja Klampok · versi 4.3
 
 Dokumen ini menjelaskan aplikasi sebagaimana adanya sekarang: cara kerjanya, cara
 memasangnya dari nol, dan cara mengembangkannya. Ditulis untuk orang yang akan
@@ -425,6 +425,167 @@ belum mengenal `pulihKilat`, klien menerima `__galat` "tidak tersedia" — dan s
 pengguna **tidak boleh** dianggap batal karenanya. Jalur lama
 (`getBootstrapData` + `semuaHalamanHtml`) masih ada dan tetap dipakai, hanya
 dengan satu perjalanan tambahan. Diuji di `uji/uji-boot.js`.
+
+---
+
+## Kolom HariKerja hanya boleh ditafsirkan satu kali (v4.1)
+
+Laporan dari lapangan: di halaman Jadwal Shift, meter di kepala kartu berbunyi
+**"3 dari 22 hari kerja terjadwal"** sementara lencana di baris siswanya berbunyi
+**0/4** — padahal tiga tanggal jelas-jelas sudah terisi shift. Dua angka, satu
+kolom data, dan tidak satu pun pesan galat.
+
+Sebabnya: `HariKerja` adalah teks bebas yang ditafsirkan **dua kali**. Server
+memakai `hariKerjaSet()`; klien memakai tiruannya sendiri di `app6.js`. Tiruan
+itu mirip, bukan kembar, dan tiga selisihnya cukup untuk menghasilkan dua
+kenyataan yang berbeda:
+
+| Tulisan di TempatPKL | Server | Klien (lama) |
+|---|---|---|
+| `Senin-Jumat` | Sen–Jum | Sen–Jum ✓ |
+| `Senin-Jum'at` | Sen–Jum | **hanya Senin** |
+| `Senin–Jumat` (en dash) | Sen–Jum | **Senin + Jumat** |
+| `Setiap Hari` | Sen–Jum | **tujuh hari** |
+| tulisan tak dikenal | Sen–Jum (bawaan) | **nol hari** |
+
+SKN Computer tertulis `Senin-Jum'at`. Penguraian rentang di klien gagal karena
+ejaan itu tidak dikenal, lalu jatuh ke pemindaian kata dan hanya `senin` yang
+cocok — dan September 2026 punya tepat empat hari Senin. Itulah angka 4. Angka 0
+menyusul dengan sendirinya: tanggal 1, 2, 3 September adalah Selasa, Rabu, Kamis.
+
+**Perbaikannya bukan menambal tiruannya, melainkan menghapus tafsir keduanya.**
+`siswaBershift()` kini ikut mengirim `hariKerjaAngka` — hasil `hariKerjaSet()`
+sebagai larik `[1,2,3,4,5]` — dan klien memakainya apa adanya. Penguraian di
+klien tetap ada sebagai cadangan untuk Kode.gs yang belum mengirim bidang itu,
+tetapi sekarang berupa salinan harfiah, dan `uji-kembaran.js` menjalankan
+keduanya atas 33 tulisan lalu menolak bila hasilnya berbeda sedikit pun.
+
+Dua penjaga tambahan, karena satu penjaga saja terlalu mudah dilewati:
+
+- `uji-shift-ui.js` menjumlahkan seluruh lencana baris dan membandingkannya
+  dengan `ringkas.totalHariKerja` dari server. Selisih apa pun tertangkap, bukan
+  hanya yang sudah diketahui.
+- `uji-shift.js` tidak lagi memakai tiruan `hariKerjaSet` di dalam ujinya. Tiruan
+  itu hanya mengenali tulisan `Senin-Jumat` dan menganggap sisanya hari kerja
+  penuh — penyederhanaan yang justru menyembunyikan kelas kesalahan ini. Kini
+  fungsinya diambil apa adanya dari `Kode.gs`.
+
+---
+
+## Penafsir HariKerja yang longgar (v4.2)
+
+Perbaikan v4.1 menyamakan kedua sisi, tetapi menyamakan dua penafsir yang
+sama-sama sempit hanya menghasilkan salah yang konsisten. Penafsir lama benar
+untuk satu bentuk tulisan — `Senin-Jumat` — dan diam-diam salah untuk hampir
+semua bentuk lain yang wajar ditulis orang. Karena kolom ini menentukan hari mana
+yang dihitung **Alpha**, setiap kesalahannya berakhir di daftar kehadiran siswa:
+
+| Tulisan | Dulu terbaca | Akibatnya pada Alpha |
+|---|---|---|
+| `Senin s/d Jumat` | Senin **dan** Jumat (2 hari) | tidak pernah Alpha Selasa–Kamis |
+| `Senin–Jumat` (en dash) | Senin **dan** Jumat | sama |
+| `Setiap Hari` | Senin–Jumat (bawaan) | tidak pernah Alpha Sabtu–Minggu |
+| `Sabtu Minggu libur` | Sabtu **dan** Minggu sebagai hari kerja | Alpha justru pada hari libur |
+
+Yang terakhir adalah kebalikan persis dari maksud kalimatnya.
+
+`uraiHariKerja()` sekarang bekerja dalam empat langkah:
+
+1. **Normalisasi.** Huruf kecil; apostrof dibuang (`Jum'at` → `jumat`); en dash,
+   em dash, dan `~` disamakan menjadi tanda hubung; `sampai`, `sampai dengan`,
+   `hingga`, `s/d`, `s.d.`, dan `sd` semuanya menjadi tanda hubung.
+2. **Pemisahan klausa** pada koma dan titik koma. `dan` TIDAK memisahkan klausa —
+   ia menggabungkan, dan memisahkannya di sini dulu membuat `Minggu` pada
+   "kecuali Sabtu dan Minggu" lepas dari kata "kecuali".
+3. **Pengecualian.** Bahasa Indonesia menaruh penyangkalnya di dua tempat:
+   `libur Minggu` dan `Minggu libur`. Bila tidak ada apa pun sesudah kata
+   `libur`/`kecuali`/`selain`, yang libur adalah hari yang disebut sebelumnya;
+   selain itu, yang sesudahnya.
+4. **Pengenalan hari.** Nama penuh, singkatan tiga huruf (`Sen`, `Jum`), ejaan
+   alternatif (`Jum'at`, `Ahad`, `Senen`), rentang melingkar (`Sabtu-Senin`),
+   dan sebutan umum (`hari kerja` → Senin–Jumat; `setiap hari`, `tiap hari`,
+   `7 hari` → tujuh hari).
+
+Semua itu diikat satu tabel kontrak berisi 53 baris di `uji/uji-shift.js` —
+tulisan, himpunan hari yang harus dihasilkan, dan statusnya. Menambah bentuk baru
+berarti menambah barisnya, bukan menebak.
+
+**Yang tetap tidak terbaca tidak ditebak.** Ia memakai bawaan Senin–Jumat —
+presensi tidak boleh terhalang oleh kolom yang salah tulis — tetapi `uraiHariKerja()`
+mengembalikan `status: 'tidak dikenal'`, dan `periksaIntegritasPenempatan()`
+mengumpulkannya. Pokja PKL melihatnya di **Pengaturan → Pemeriksa integritas**,
+lengkap dengan tulisan aslinya, apa yang dipakai sebagai gantinya, dan berapa
+siswa aktif yang terpengaruh. Inilah bedanya dengan sebelumnya: dulu salah tafsir
+tidak meninggalkan jejak apa pun.
+
+> Kolom yang **dikosongkan** berbeda dari yang **tidak terbaca**. Kosong adalah
+> pilihan sadar yang berarti Senin–Jumat, dan tidak dilaporkan. Yang dilaporkan
+> hanya tulisan yang ada tetapi tidak dimengerti.
+
+---
+
+## Kegagalan yang tidak bisa dilihat dari peramban (v4.3)
+
+Laporan: menekan tombol detail siswa gagal. Konsol penuh baris merah, dan yang
+sampai ke pengguna hanya `Server menjawab kode 502.`
+
+Rantainya, dari log yang dilampirkan:
+
+```
+✗ blocked by CORS policy: No 'Access-Control-Allow-Origin' header  ×3   ← masukKilat
+✗ 404  script.googleusercontent.com/…/echo?user_content_key=…
+⚠ Beralih ke jalur cadangan /api/gas untuk sementara.
+✗ 502  /api/gas?_p=10mtmahuhc
+⚠ Permintaan "htmlDetailSiswa" gagal (Server menjawab kode 502.)
+```
+
+**Yang penting dipahami: pesan CORS itu bukan soal CORS.** Ketika Apps Script
+gagal — kuota habis, otorisasi diminta ulang, penerapan tidak bisa dibuka — ia
+tidak membalas JSON melainkan halaman HTML miliknya sendiri, dan halaman itu
+tidak membawa header `Access-Control-Allow-Origin`. Peramban hanya melihat
+tembok CORS. **Sebab sesungguhnya mustahil dibaca dari sisi klien.**
+
+Proxy `/api/gas` adalah satu-satunya tempat yang dapat membacanya — ia berbicara
+dengan Apps Script dari sisi server, tanpa CORS. Tiga cacat membuat kemampuan itu
+tidak pernah terpakai:
+
+**1. Proxy membuang buktinya.** Ia hanya menulis "Apps Script membalas bukan JSON
+(kode N). Kemungkinan penerapan belum dibuat versi barunya" — sebuah tebakan yang
+menuntun ke tempat yang salah. Sekarang `bacaGalatGoogle()` mengenali kuota
+harian, batas 6 menit, permintaan otorisasi, permintaan login, penerapan yang
+tidak dapat dibuka, dan galat kode; bila polanya asing, judul halaman dan 220
+karakter pertama isinya tetap ikut dibawa.
+
+**2. Klien membuang laporan itu.** `if (!r.ok)` melempar galat **sebelum**
+membaca badan jawaban, sehingga `__galat` yang sudah berisi sebab lengkap tidak
+pernah dibaca. Sekarang badan dibaca dulu; bila ada `__galat`, itulah pesannya,
+dan galat tersebut ditandai `dariServer` supaya tidak kalah oleh galat transport
+yang hanya berkata "tidak dapat menghubungi server" — akibat, bukan sebab.
+
+**3. Proxy yang gagal mengunci aplikasi tiga puluh menit.** `aktifkanProxy()`
+menyimpan penanda berumur 30 menit, dan `kirimSatu()` menolak mencoba jalur
+langsung selama penanda itu ada (`if (alamatUtama === ALAMAT_PROXY) throw err`).
+Inilah keadaan yang dilaporkan: `masukKilat` sempat berhasil lewat proxy — itu
+sebabnya dashboard tergambar — lalu setiap permintaan sesudahnya dijawab 502 oleh
+proxy yang sama, tanpa satu pun kesempatan mencoba jalur langsung yang mungkin
+sudah pulih. Sekarang proxy yang ikut gagal langsung dilepas
+(`matikanProxy()`) dan jalur langsung diberi satu kesempatan.
+
+Ditambah satu setelan yang selama ini hilang: **`maxDuration: 60`**. Vercel
+memberi 10 detik secara bawaan, sedangkan satu eksekusi Apps Script di aplikasi
+ini terukur 8–10 detik — proxy berada persis di garis batas dan kadang dipotong
+di tengah jalan. Perhatikan bahwa `module.exports.config` harus dipasang
+**sesudah** `module.exports` diisi; menaruhnya di atas membuatnya tertimpa oleh
+penugasan handler-nya sendiri, dan setelannya diam-diam tidak berlaku.
+
+> **Yang TIDAK diperbaiki oleh rilis ini.** Sebab hulunya ada di Apps Script,
+> bukan di kode aplikasi: ia sedang membalas halaman HTML. Rilis ini membuat
+> sebab itu terbaca, tidak menghilangkannya. Bila terulang, buka **Pengaturan →
+> Pemeriksa integritas** atau baca pesan galatnya — kini pesan itu menyebut
+> sebabnya. Untuk memastikan langsung: buka `https://<domain>/api/gas` di
+> peramban (harus menjawab `{"siap":true}`), dan periksa **Apps Script →
+> Executions** serta kuota hariannya. Akun Gmail biasa dibatasi 90 menit total
+> waktu jalan per hari; pada ~9 detik per eksekusi, itu sekitar 600 permintaan.
 
 ---
 

@@ -488,6 +488,20 @@ function aktifkanProxy() {
   Simpanan.simpan('proxySampai', String(Date.now() + UMUR_PROXY_MS));
   console.warn('Beralih ke jalur cadangan ' + ALAMAT_PROXY + ' untuk sementara.');
 }
+/**
+ * Melepaskan jalur cadangan sebelum waktunya habis.
+ *
+ * Tanpa ini, sekali proxy diaktifkan aplikasi TERKUNCI di sana selama tiga puluh
+ * menit — bahkan ketika proxy itu sendiri yang sedang gagal. Itulah keadaan yang
+ * dilaporkan: masukKilat sempat berhasil lewat proxy, jalur cadangan menyala,
+ * lalu setiap permintaan sesudahnya — termasuk htmlDetailSiswa saat tombol
+ * detail siswa ditekan — dijawab 502 oleh proxy yang sama, tanpa satu pun
+ * kesempatan mencoba jalur langsung yang mungkin sudah pulih.
+ */
+function matikanProxy() {
+  Simpanan.hapus('proxySampai');
+  console.warn('Jalur cadangan ' + ALAMAT_PROXY + ' ikut gagal. Kembali ke jalur langsung.');
+}
 /** Proxy hanya masuk akal bila halaman disajikan Vercel, bukan dari /exec. */
 function proxyTersedia() {
   return String(window.SIMPKL_API || '').indexOf('http') === 0 &&
@@ -676,13 +690,34 @@ function kirimSatu(namaFungsi, args, opsi) {
       // percobaan habis — hanya empat detik lebih lambat, dengan pesan yang
       // sudah menjelaskan bahwa alamatnya yang perlu diperiksa.
       if (!r.ok) {
-        const e = new Error(r.status === 404
-          ? 'Alamat layanan tidak menjawab (404).'
-          : 'Server menjawab kode ' + r.status + '.');
-        if (r.status >= 500 || r.status === 429 || r.status === 404 || r.status === 403) {
-          e.jenis = GALAT_JARINGAN;
-        }
-        throw e;
+        // Isi jawabannya dibaca DULU, baru dijadikan galat.
+        //
+        // Proxy /api/gas sengaja menaruh sebab yang sudah diterjemahkan di dalam
+        // badan jawaban 502-nya — kuota Apps Script habis, otorisasi diminta
+        // ulang, penerapan tidak bisa dibuka. Dulu blok ini melempar galat
+        // sebelum membaca badan itu, sehingga satu-satunya komponen yang tahu
+        // sebabnya justru dibungkam, dan yang sampai ke pengguna hanya "Server
+        // menjawab kode 502." Di jalur langsung sebab itu memang tidak pernah
+        // terlihat — halaman galat Google tidak membawa header CORS — jadi
+        // jawaban proxy inilah satu-satunya keterangan yang ada.
+        return r.text().then(teks => {
+          let pesan = r.status === 404
+            ? 'Alamat layanan tidak menjawab (404).'
+            : 'Server menjawab kode ' + r.status + '.';
+          let dariServer = false;
+          try {
+            const isi = JSON.parse(teks);
+            if (isi && isi.__galat) { pesan = String(isi.__galat); dariServer = true; }
+          } catch (x) {}
+          const e = new Error(pesan);
+          // Ditandai supaya keterangan yang benar-benar berisi tidak kalah oleh
+          // galat transport yang hanya berkata "tidak dapat menghubungi server".
+          if (dariServer) e.dariServer = true;
+          if (r.status >= 500 || r.status === 429 || r.status === 404 || r.status === 403) {
+            e.jenis = GALAT_JARINGAN;
+          }
+          throw e;
+        });
       }
       return r.text().then(teks => {
         // Bila Google menyisipkan halaman HTML-nya sendiri, JSON.parse akan
@@ -721,8 +756,21 @@ function kirimSatu(namaFungsi, args, opsi) {
       // saja sudah tercatat di spreadsheet, dan mengirimnya lagi lewat jalur
       // lain berisiko menggandakannya.
       if (!bolehDiulang(err) || batasUlang === 0) throw err;
-      if (alamatUtama === ALAMAT_PROXY || !proxyTersedia()) throw err;
-      return sekali(ALAMAT_PROXY).then(paket => { aktifkanProxy(); return paket; }, () => { throw err; });
+      // Yang gagal justru jalur cadangannya sendiri: lepaskan, lalu beri jalur
+      // langsung satu kesempatan. Gangguan yang dulu membuat kita berpindah bisa
+      // saja sudah selesai, dan bertahan di jalur yang terbukti gagal tidak
+      // pernah menolong siapa pun.
+      if (alamatUtama === ALAMAT_PROXY) {
+        matikanProxy();
+        return sekali(window.SIMPKL_API).catch(() => { throw err; });
+      }
+      if (!proxyTersedia()) throw err;
+      return sekali(ALAMAT_PROXY).then(
+        paket => { aktifkanProxy(); return paket; },
+        // Bila proxy sempat MENJAWAB dan membawa sebabnya, itulah yang
+        // dilaporkan. Galat jalur langsung hanya berkata "tidak dapat
+        // menghubungi server" — akibat, bukan sebab.
+        errProxy => { throw (errProxy && errProxy.dariServer) ? errProxy : err; });
     })
     .then(paket => {
       JEDA_PULIH = 0;                 // koneksi terbukti hidup, jarak percobaan disetel ulang

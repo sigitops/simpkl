@@ -708,6 +708,21 @@ ${d.gandaSiswa.length ? `<div class="alert alert-error" style="margin-top:12px">
 penempatan yang tidak dipakai lewat perpindahan, agar presensinya tidak salah lokasi.</p>
 <ul style="margin:8px 0 0 18px">${d.gandaSiswa.map(g =>
 `<li>${esc(g.nama)} — ${g.jumlah} penempatan aktif</li>`).join('')}</ul></div></div>` : ''}
+${(d.hariKerjaMeragukan || []).length ? `<div class="alert alert-warning" style="margin-top:12px">
+<span class="mi">event_busy</span>
+<div><strong>Hari kerja tidak terbaca</strong>
+<p>Kolom <em>Hari Kerja</em> di tempat PKL berikut tidak dapat ditafsirkan, jadi sistem memakai
+Senin–Jumat. Bila hari kerja sebenarnya berbeda, siswa akan tercatat Alpha pada hari yang
+sebetulnya libur — atau sebaliknya, tidak pernah Alpha pada hari yang seharusnya masuk.</p>
+<ul style="margin:8px 0 0 18px">${d.hariKerjaMeragukan.map(h =>
+`<li><strong>${esc(h.nama)}</strong> — tertulis “${esc(h.teks || '(kosong)')}”, dipakai sebagai
+${esc(h.dipakai)}${h.siswa ? ` · ${h.siswa} siswa aktif` : ''}</li>`).join('')}</ul>
+<p style="margin-top:10px;font-size:13px">Perbaiki lewat menu Tempat PKL. Yang dikenali antara
+lain <code>Senin-Jumat</code>, <code>Senin s/d Sabtu</code>, <code>Setiap Hari</code>,
+<code>Senin, Rabu, Jumat</code>, dan <code>Senin-Sabtu, Minggu libur</code>.</p>
+<div class="btn-row" style="margin-top:12px">
+<button class="btn btn-outline btn-sm" onclick="navigateTo('kelola-tempat')">
+<span class="mi">domain</span> Buka Tempat PKL</button></div></div></div>` : ''}
 ${d.kuotaMeleset.length ? `<div class="alert alert-warning" style="margin-top:12px">
 <span class="mi">warning</span>
 <div><strong>Kuota tidak sinkron</strong>
@@ -839,7 +854,6 @@ kepala.push('<th class="js-tgl' + (hd === 0 || hd === 6 ? ' js-pekan' : '') +
 
 const baris = d.siswa.map(function (s) {
 const opsi = d.shiftPerTempat[s.tempatId] || [];
-const setHari = s.hariKerja || '';
 const sel = [];
 let terisiBaris = 0, perluBaris = 0;
 for (let i = 1; i <= d.jumlahHari; i++) {
@@ -850,7 +864,7 @@ const nilai = kunciUbah(s.siswaId, kol) in Jadwal.ubah
 const diubah = kunciUbah(s.siswaId, kol) in Jadwal.ubah;
 const tgl = new Date(iso + 'T00:00:00Z');
 const akhirPekan = tgl.getUTCDay() === 0 || tgl.getUTCDay() === 6;
-const kerja = hariKerjaKlien(tgl.getUTCDay(), setHari);
+const kerja = hariKerjaSiswa(s, tgl.getUTCDay());
 if (kerja) { perluBaris++; if (nilai) terisiBaris++; }
 // Warna sel mengikuti urutan shift, bukan kodenya, supaya sekolah bebas
 // memberi nama apa pun tanpa kehilangan pembedaan visualnya.
@@ -905,19 +919,121 @@ kotak.innerHTML =
 setelRingkasJadwal();
 }
 
-/** Meniru hariKerjaPada() di server untuk penandaan sel kosong. */
-function hariKerjaKlien(hariAngka, teksHariKerja) {
-const t = String(teksHariKerja || '').toLowerCase();
-if (!t || t === '-') return hariAngka >= 1 && hariAngka <= 5;
-const nama = ['minggu', 'senin', 'selasa', 'rabu', 'kamis', 'jumat', 'sabtu'];
-if (t.indexOf('setiap hari') >= 0 || t.indexOf('senin-minggu') >= 0) return true;
-if (t.indexOf('-') > 0) {
-const sisi = t.split('-').map(function (x) { return x.trim(); });
-const a = nama.indexOf(sisi[0]), b = nama.indexOf(sisi[1]);
-if (a >= 0 && b >= 0) return a <= b ? (hariAngka >= a && hariAngka <= b)
-                                    : (hariAngka >= a || hariAngka <= b);
+/**
+ * Hari kerja seorang siswa pada hari tertentu (0 = Minggu).
+ *
+ * Yang dipakai lebih dulu adalah `hariKerjaAngka` yang DIKIRIM SERVER — hasil
+ * hariKerjaSet() yang sama persis dengan yang dipakai untuk menghitung Alpha dan
+ * meter kemajuan. Dengan begitu tidak ada dua penafsiran atas satu kolom teks.
+ *
+ * Penguraian di klien hanya cadangan untuk Kode.gs yang belum mengirim bidang
+ * itu, dan sengaja dipertahankan sebagai kembaran yang diuji.
+ */
+function hariKerjaSiswa(s, hariAngka) {
+if (s && Object.prototype.toString.call(s.hariKerjaAngka) === '[object Array]') {
+return s.hariKerjaAngka.indexOf(hariAngka) >= 0;
 }
-return t.indexOf(nama[hariAngka]) >= 0;
+return hariKerjaKlien(hariAngka, s ? s.hariKerja : '');
+}
+
+/**
+ * Kembaran uraiHariKerja()/hariKerjaSet() di Kode.gs — WAJIB menghasilkan
+ * himpunan yang sama persis, dan sengaja ditulis mandiri agar uji-kembaran.js
+ * dapat menjalankannya berdampingan dengan sisi server tanpa merakit apa pun.
+ *
+ * Kolom HariKerja adalah teks bebas, dan menafsirkannya dua kali dengan dua
+ * penafsir yang "mirip" pernah menghasilkan dua kenyataan berbeda untuk satu
+ * siswa: meter berbunyi 22 hari kerja, lencana barisnya 0/4. Sekarang server
+ * mengirim hasil penafsirannya (hariKerjaAngka) dan fungsi ini hanya cadangan
+ * bila Kode.gs belum tersebar — tetapi cadangan pun harus benar, sebab justru
+ * di sela penyebaran itulah selisihnya dulu muncul.
+ *
+ * @return {number[]} nomor hari 0–6, terurut.
+ */
+function setHariKerjaKlien(teks) {
+const PETA = {
+minggu: 0, mingu: 0, mgg: 0, ming: 0, min: 0, ahad: 0, akhad: 0,
+senin: 1, senen: 1, sen: 1, snn: 1,
+selasa: 2, slasa: 2, sel: 2, sls: 2,
+rabu: 3, rebo: 3, rab: 3, rbu: 3,
+kamis: 4, kemis: 4, kam: 4, kms: 4,
+jumat: 5, jumaat: 5, jumt: 5, jum: 5, jmt: 5,
+sabtu: 6, saptu: 6, sab: 6, sbt: 6
+};
+const PENUH = ['minggu', 'mingu', 'ahad', 'akhad', 'senin', 'senen',
+'selasa', 'slasa', 'rabu', 'rebo', 'kamis', 'kemis', 'jumat', 'jumaat', 'sabtu', 'saptu'];
+const NEGASI = /\b(?:libur|kecuali|selain|tutup|off)\b/;
+
+const t = String(teks == null ? '' : teks)
+.toLowerCase()
+.replace(/[‘’ʼ'`´]/g, '')
+.replace(/[‐-―−]/g, '-')
+.replace(/\s*(?:\bsampai dengan\b|\bsampai\b|\bhingga\b|s\s*\/\s*d|s\s*\.\s*d\s*\.?|\bsd\b|~|→)\s*/g, '-')
+.replace(/\s*-\s*/g, '-')
+.replace(/-+/g, '-')
+.replace(/\s+/g, ' ')
+.trim();
+if (!t) return [1, 2, 3, 4, 5];
+
+function nomor(potongan) {
+const q = String(potongan || '').trim()
+.replace(/^(?:(?:hari|setiap|tiap|pada|mulai|dari|jam)\s+)+/, '')
+.replace(/[.\s]+$/, '');
+return PETA[q] === undefined ? null : PETA[q];
+}
+
+function dalam(potongan) {
+const p = String(potongan || '').trim();
+if (!p) return [];
+if (/\bhari kerja\b/.test(p)) return [1, 2, 3, 4, 5];
+if (/\b(?:setiap|tiap|semua|full)\b[^]*\bhari\b/.test(p) ||
+    /^7\s*hari\b/.test(p) || /\bfulltime\b/.test(p)) return [0, 1, 2, 3, 4, 5, 6];
+
+const hasil = [];
+const tambah = function (n) { if (hasil.indexOf(n) < 0) hasil.push(n); };
+p.split(/\bdan\b|&|\+/).forEach(function (bagian) {
+const q = bagian.trim();
+if (!q) return;
+const sisi = q.split('-');
+if (sisi.length === 2) {
+const a = nomor(sisi[0]), b = nomor(sisi[1]);
+if (a !== null && b !== null) {
+for (let i = a; ; i = (i + 1) % 7) { tambah(i); if (i === b) break; }
+return;
+}
+}
+if (sisi.length === 1) {
+const satu = nomor(q);
+if (satu !== null) { tambah(satu); return; }
+}
+PENUH.forEach(function (n) { if (q.indexOf(n) >= 0) tambah(PETA[n]); });
+});
+return hasil;
+}
+
+const nyala = [], padam = [];
+const kumpul = function (wadah, daftar) {
+daftar.forEach(function (n) { if (wadah.indexOf(n) < 0) wadah.push(n); });
+};
+t.split(/[,;]/).forEach(function (bagian) {
+const i = bagian.search(NEGASI);
+if (i < 0) { kumpul(nyala, dalam(bagian)); return; }
+const depan = bagian.slice(0, i);
+const belakang = bagian.slice(i).replace(NEGASI, ' ').trim();
+if (!belakang) { kumpul(padam, dalam(depan)); return; }
+kumpul(nyala, dalam(depan));
+kumpul(padam, dalam(belakang));
+});
+
+if (!nyala.length && !padam.length) return [1, 2, 3, 4, 5];
+const dasar = nyala.length ? nyala : [0, 1, 2, 3, 4, 5, 6];
+const hari = dasar.filter(function (n) { return padam.indexOf(n) < 0; })
+.sort(function (a, b) { return a - b; });
+return hari.length ? hari : [1, 2, 3, 4, 5];
+}
+
+function hariKerjaKlien(hariAngka, teksHariKerja) {
+return setHariKerjaKlien(teksHariKerja).indexOf(hariAngka) >= 0;
 }
 
 function inisialNama(nama) {
@@ -1020,7 +1136,7 @@ const kol = 'T' + ('0' + i).slice(-2);
 const k = kunciUbah(s.siswaId, kol);
 const nilai = (k in Jadwal.ubah) ? Jadwal.ubah[k] : (s.isi[kol] || '');
 const t = new Date(d.bulan + '-' + ('0' + i).slice(-2) + 'T00:00:00Z');
-if (hariKerjaKlien(t.getUTCDay(), s.hariKerja)) { perlu++; if (nilai) terisi++; }
+if (hariKerjaSiswa(s, t.getUTCDay())) { perlu++; if (nilai) terisi++; }
 sel.push(nilai || '');
 }
 sel.push(terisi + '/' + perlu);
@@ -1157,4 +1273,4 @@ await muatJadwalShift();
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '4.0';
+window.__SIMPKL_EOF = '4.3';
