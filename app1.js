@@ -429,6 +429,74 @@ ${opsi.chip || ''}
 </div>
 </div>`;
 }
+// ── AI ASISTEN ─────────────────────────────────────────────────────────────
+//
+// Tiga tempat memakai penolong yang sama: komentar jurnal, komentar laporan,
+// dan perapian pengumuman. Semuanya mengikuti satu bentuk yang sama, dan
+// bentuk itu dipilih supaya AI tidak pernah menjadi jalan yang HARUS dilewati:
+//
+//   1. Tombolnya TAMBAHAN, bukan pengganti. Kotak teksnya tetap bisa diketik
+//      manual, dan tombol Setujui/Tolak/Terbitkan tidak menunggu AI sama sekali.
+//   2. Tombolnya tidak muncul bila AI belum disiapkan. Tidak ada tombol mati
+//      yang mengundang pertanyaan "kenapa ini tidak jalan".
+//   3. Apa pun yang ditimpa AI bisa DIKEMBALIKAN. Menimpa tulisan orang tanpa
+//      jalan pulang adalah hal yang tidak sopan dilakukan perangkat lunak.
+//   4. Kegagalannya berhenti di toast. Kotak teksnya tidak disentuh, dan
+//      pekerjaan bisa diteruskan dengan tangan seolah tombolnya tidak ada.
+function aiTersedia() {
+return !!(AppState.config && AppState.config.aiSiap);
+}
+/** Baris tombol di bawah kotak teks. Mengembalikan '' bila AI belum siap. */
+function barisAi(id, label, nota) {
+if (!aiTersedia()) return '';
+return `<div class="ai-bar">
+<button type="button" class="btn btn-ai btn-xs" id="${id}">
+<span class="mi">auto_awesome</span> ${esc(label)}</button>
+<button type="button" class="btn btn-outline btn-xs" id="${id}_undo" hidden>
+<span class="mi">undo</span> Kembalikan</button>
+<span class="ai-nota">${esc(nota || 'Draf AI — periksa dan sunting sebelum dikirim.')}</span>
+</div>`;
+}
+/**
+ * Memasang perilaku pada baris yang dibuat barisAi().
+ *
+ * opsi.cadangkan() mengambil potret keadaan sebelum ditimpa, opsi.terap(data)
+ * menuliskan hasilnya, opsi.pulihkan(potret) mengembalikannya. Ketiganya
+ * diserahkan pemanggil karena Pengumuman menimpa DUA kolom sekaligus sedangkan
+ * dua tempat lain hanya satu.
+ */
+function pasangAi(id, opsi) {
+const tombol = $(id);
+if (!tombol) return;
+const undo = $(id + '_undo');
+let potret = null;
+if (undo) undo.onclick = () => {
+if (potret === null) return;
+opsi.pulihkan(potret);
+potret = null;
+undo.hidden = true;
+};
+tombol.onclick = async () => {
+const labelAsli = tombol.innerHTML;
+tombol.disabled = true;
+// Ikon berputar, bukan teks statis: permintaan AI berjalan 2–8 detik, dan
+// tombol yang diam selama itu terbaca sebagai tombol yang tidak menerima klik.
+tombol.innerHTML = '<span class="mi mi-putar">progress_activity</span> Menyusun…';
+try {
+const res = await panggil(opsi.fn, AppState.sessionToken, ...opsi.args());
+if (!res.success) { toast(res.message, 'error', 7000); return; }
+potret = opsi.cadangkan();
+opsi.terap(res.data);
+if (undo) undo.hidden = false;
+if (res.data && res.data.diulang) toast('Draf sebelumnya dipakai kembali.', 'info');
+} catch (err) {
+toast(err.message, 'error', 7000);
+} finally {
+tombol.disabled = false;
+tombol.innerHTML = labelAsli;
+}
+};
+}
 function chipStatus(status) {
 const peta = {
 'Hadir': ['chip-success', 'check_circle'], 'Disetujui': ['chip-success', 'check_circle'],

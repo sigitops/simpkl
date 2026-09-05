@@ -312,7 +312,29 @@
 .detail-sub{margin:0;font-size:12.5px;color:var(--on-surface-muted);
   overflow-wrap:anywhere}
 
+/* ── AI Asisten ──────────────────────────────────────────────────────────────
+   Tombolnya sengaja TIDAK memakai gaya tombol utama. Ia bukan jalan yang harus
+   dilewati — hanya jalan pintas yang boleh diabaikan — dan tombol yang tampil
+   sama menonjolnya dengan "Setujui" akan menarik klik yang tidak diminta. */
+.ai-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}
+.btn-ai{background:var(--primary-soft);color:var(--primary-deep);
+  border:1px solid var(--primary);border-color:color-mix(in srgb,var(--primary) 35%,transparent)}
+.btn-ai:hover:not(:disabled){background:var(--primary-container);
+  color:var(--on-primary-container)}
+.btn-ai:disabled{opacity:.7;cursor:progress}
+/* Keterangan ini bukan hiasan: ia satu-satunya tempat pemakainya diberi tahu
+   bahwa yang muncul di kotak adalah DRAF, bukan penilaian yang sudah jadi. */
+.ai-nota{flex:1 1 100%;font-size:11.5px;line-height:1.45;color:var(--on-surface-muted)}
+@media (min-width:560px){.ai-nota{flex:1 1 auto;min-width:160px}}
+.mi-putar{animation:aiPutar 1s linear infinite}
+@keyframes aiPutar{to{transform:rotate(360deg)}}
+.ai-status{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 16px}
+.ai-model-baris{display:flex;gap:8px;align-items:center}
+.ai-model-baris .field-input{flex:1 1 auto;min-width:0}
+.ai-model-baris .btn{flex:0 0 auto;white-space:nowrap}
+@media (prefers-reduced-motion:reduce){.mi-putar{animation:none}}
+
 /* Cap versi berkas ini, dibaca versiCss() di app1.js. Penanda ini juga menjadi
    tanda akhir berkas: bila app.css yang dipegang peramban lebih tua daripada
    index.html, capnya tidak akan sama dan boot memuat ulang sekali. */
-:root{--versi-aset:"5.0"}
+:root{--versi-aset:"5.1"}

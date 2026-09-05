@@ -1,7 +1,7 @@
 # SIM PKL — Panduan Teknis
 
 Sistem Informasi & Manajemen Presensi Siswa Praktik Kerja Lapangan
-SMK HKTI 2 Purwareja Klampok · versi 5.0
+SMK HKTI 2 Purwareja Klampok · versi 5.1
 
 Dokumen ini menjelaskan aplikasi sebagaimana adanya sekarang: cara kerjanya, cara
 memasangnya dari nol, dan cara mengembangkannya. Ditulis untuk orang yang akan
@@ -993,6 +993,119 @@ juga diterima.
 kosong. Halaman Profil menulis keduanya sekaligus sehingga biasanya sama, tetapi
 foto yang sudah ada di baris Siswa **sebelum akunnya dibuat** hanya tersimpan di
 sana.
+
+---
+
+## AI Asisten — Gemini (v5.1)
+
+Membantu guru menyusun draf komentar jurnal, komentar laporan akhir, dan
+merapikan pengumuman. Ini panggilan keluar pertama yang pernah dilakukan
+aplikasi ini — sebelumnya tidak ada satu pun `UrlFetchApp` di `Kode.gs`.
+
+### Satu aturan yang mengatur semua
+
+> **AI hanya membuat draf. Ia tidak pernah memutuskan.**
+
+Tidak ada satu pun fungsi di modul AI yang menulis ke sheet. Yang dikembalikan
+hanya teks, dan teks itu masuk ke kotak yang memang sudah ada supaya guru
+menyuntingnya. Yang menekan Setujui, Tolak, dan Terbitkan tetap manusia, lewat
+`reviewJurnal()`, `reviewLaporan()`, dan `simpanPengumuman()` yang **tidak
+berubah satu baris pun**.
+
+Konsekuensinya yang penting: kalau seluruh modul ini mati — kunci dicabut, kuota
+habis, Google sedang penuh — aplikasi tetap berjalan persis seperti sebelum ada
+AI. Itu bukan kebetulan, itu syaratnya. `uji-ai.js` mematikan AI lalu memastikan
+kotak komentar dan tombol Setujui tetap utuh, dan menggagalkan panggilan AI di
+tengah jalan lalu memastikan tulisan guru yang sudah ada tidak tersentuh.
+
+### Kunci API tidak boleh lewat AppConfig
+
+Kuncinya disimpan di **Script Properties**, bukan di sheet `AppConfig`.
+Alasannya bukan selera: `getAllConfig()` mengirim seluruh isi AppConfig ke
+klien, dan `app*.js` adalah berkas publik di Vercel yang bisa dibuka siapa saja.
+Kunci yang lewat sana sama saja dengan kunci yang ditempel di pintu depan.
+
+Yang keluar dari server hanya dua hal, dan keduanya tidak berguna bagi penyerang:
+
+| Ke mana | Apa yang dikirim |
+|---|---|
+| Bootstrap (semua peran) | `config.aiSiap` — satu boolean |
+| `statusAi()` (admin saja) | empat huruf terakhir kunci, mis. `…4f2a` |
+
+Kotak kunci di Pengaturan **selalu tampil kosong**. Ia kotak untuk *mengganti*,
+bukan kotak yang menampilkan apa yang tersimpan — karena yang tersimpan memang
+tidak pernah dikirim ke sana.
+
+### Nama model sengaja tidak dipatok
+
+Keluarga Gemini berganti nama beberapa kali setahun dan model lama akhirnya
+dimatikan. Kalau namanya tertanam di kode, fiturnya akan mati diam-diam pada
+suatu hari tanpa ada yang mengubah apa pun. Karena itu:
+
+- namanya disimpan di `AppConfig.aiModel`, dengan `AI_MODEL_BAWAAN` sebagai
+  cadangan;
+- **`daftarModelAi()` menanyakan langsung ke Google** model apa saja yang boleh
+  dipakai kunci ini, lalu menyaring yang tidak bisa menulis teks (penyematan,
+  gambar, suara);
+- kegagalan 404 tidak berbunyi "not found" melainkan menyebut nama modelnya dan
+  memberi tahu jalan keluarnya: buka Pengaturan, tekan "Muat daftar model".
+
+### Membaca laporan akhir: dua format, dua jalan
+
+Aplikasi menerima PDF dan DOCX, dan masing-masing ditempuh lewat jalan terbaiknya
+sendiri:
+
+| Format | Jalan | Alasan |
+|---|---|---|
+| PDF | dikirim apa adanya ke Gemini | dibaca secara asli, sekali lompatan, tabel dan tata letak tidak hilang |
+| DOCX | diubah jadi Google Docs lalu diekspor sebagai teks | Gemini tidak membaca DOCX; mengubahnya di Drive jauh lebih murah daripada mengunggah berkas binernya |
+
+Konversinya memakai **Drive REST + `ScriptApp.getOAuthToken()`**, bukan Advanced
+Drive Service. Advanced Service menuntut satu centang manual di editor Apps
+Script yang tidak ikut terbawa saat kode disalin ke proyek baru — dan setup yang
+bergantung pada langkah manual yang tak terlihat adalah setup yang akan
+terlupakan. Salinan sementaranya dibuang di blok `finally`; tanpa itu folder
+sekolah menumpuk satu berkas sampah setiap kali tombol AI ditekan.
+
+Berkas di atas `AI_MAKS_BERKAS_MB` (12 MB) **ditolak sebelum diunggah**, dengan
+kalimat yang menyebut ukurannya — bukan dibiarkan menggantung sampai proxy
+Vercel putus di detik ke-60.
+
+### Penjagaan lain
+
+- **Nama siswa tidak pernah ikut dikirim.** Model tidak butuh nama untuk menulis
+  umpan balik, jadi tidak ada alasan mengirimkannya ke luar. Yang keluar hanya
+  isi pekerjaannya.
+- **Draf disinggah 30 menit** per (jurnal × nada). Membuka modal yang sama dua
+  kali tidak memanggil Google dua kali. Jawaban yang **gagal** tidak ikut
+  disinggah — kalau tidak, satu galat sesaat akan terus terulang selama setengah
+  jam.
+- **Penjaga laju** 10 panggilan per pengguna per menit. Bukan pengamanan, hanya
+  pencegah satu orang menghabiskan kuota harian sekolah dengan menekan tombol
+  berulang kali.
+- **Tidak diulang otomatis.** `amanDiulang()` memutuskan berdasarkan awalan nama,
+  dan `ai…` tidak termasuk. Satu klik, satu kuota. `uji-ai.js` memanggil
+  `amanDiulang()` yang sebenarnya untuk memastikan itu, bukan membaca sumbernya.
+- **Setiap kegagalan punya kalimatnya sendiri** — kunci ditolak, tidak berizin,
+  model tidak ada, kuota habis, layanan sibuk, diblokir filter keamanan, jawaban
+  terpotong. `muteHttpExceptions` dinyalakan justru supaya badan galatnya
+  terbaca; ini pelajaran yang sama dengan proxy Vercel di v4.3.
+- **Apa pun yang ditimpa bisa dikembalikan.** Menimpa tulisan orang tanpa jalan
+  pulang adalah hal yang tidak sopan dilakukan perangkat lunak. Di Pengumuman,
+  potret cadangannya menyimpan **judul dan isi sekaligus**.
+
+### Menyiapkannya
+
+1. Ambil kunci di [Google AI Studio](https://aistudio.google.com/apikey).
+2. Buka **Pengaturan → AI Asisten**, tempel kuncinya, tekan **Simpan**.
+3. Tekan **Muat daftar** untuk melihat model yang tersedia, pilih salah satu.
+4. Tekan **Uji koneksi** — bila berhasil, ia menyebutkan model dan waktu
+   tempuhnya.
+
+> **Yang perlu disadari sebelum menyalakannya:** isi jurnal dan laporan siswa
+> dikirim ke server Google untuk diproses. Namanya tidak ikut, tetapi isi
+> pekerjaannya iya. Untuk sekolah, itu keputusan yang sebaiknya diambil sadar.
+> Saklar **Nonaktif** di Pengaturan mematikannya sepenuhnya tanpa mencabut kunci.
 
 ---
 

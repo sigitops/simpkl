@@ -409,6 +409,8 @@ bukaModal(status === 'Ditolak' ? 'Tolak Jurnal' : 'Setujui dengan Komentar', `
 <textarea class="field-input" id="rvKomentar" rows="4" maxlength="600"
 placeholder="${status === 'Ditolak' ? 'Jelaskan apa yang perlu diperbaiki.' : 'Apresiasi atau masukan (opsional).'}"></textarea>
 ${status === 'Ditolak' ? '<p class="field-help">Komentar wajib diisi saat menolak jurnal.</p>' : ''}
+${barisAi('aiJurnal', 'Bantu tulis komentar',
+'Draf AI dari uraian kegiatan siswa. Periksa sebelum dikirim.')}
 <div class="field-error" id="errRvKomentar"></div>
 </div>`,
 [{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
@@ -420,6 +422,13 @@ if (status === 'Ditolak' && !k) { $('errRvKomentar').textContent = 'Komentar waj
 tutupModal();
 kirimReviewJurnal(id, status, k);
 } }]);
+// Dipasang SESUDAH bukaModal: sebelum itu tombolnya belum ada di DOM.
+pasangAi('aiJurnal', {
+fn: 'aiKomentarJurnal', args: () => [id, status],
+cadangkan: () => $('rvKomentar').value,
+terap: d => { $('rvKomentar').value = d.teks; $('rvKomentar').focus(); },
+pulihkan: v => { $('rvKomentar').value = v; }
+});
 }
 async function kirimReviewJurnal(id, status, komentar) {
 tampilkanSibuk('Menyimpan review…');
@@ -491,6 +500,8 @@ bukaModal(status === 'Ditolak' ? 'Tolak Laporan' : 'Setujui Laporan', `
 <label class="field-label" for="lpKomentar">Komentar</label>
 <textarea class="field-input" id="lpKomentar" rows="4" maxlength="600"
 placeholder="${status === 'Ditolak' ? 'Jelaskan bagian yang perlu diperbaiki.' : 'Masukan tambahan (opsional).'}"></textarea>
+${barisAi('aiLaporan', 'Baca laporan & bantu tulis',
+'AI membaca isi berkas laporannya. Perlu beberapa detik.')}
 <div class="field-error" id="errLpKomentar"></div>
 </div>`,
 [{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
@@ -508,6 +519,12 @@ toast(res.message, res.success ? 'success' : 'error');
 if (res.success) muatRekapLaporan();
 } catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
 } }]);
+pasangAi('aiLaporan', {
+fn: 'aiKomentarLaporan', args: () => [id, status],
+cadangkan: () => $('lpKomentar').value,
+terap: d => { $('lpKomentar').value = d.teks; $('lpKomentar').focus(); },
+pulihkan: v => { $('lpKomentar').value = v; }
+});
 }
 async function muatDaftarPenilaian() {
 const box = $('tabelPenilaian');
