@@ -313,11 +313,36 @@ return t.join('');
 box.innerHTML = emptyState('error', 'Gagal memuat data', err.message);
 }
 }
+/**
+ * Kepala modal detail untuk tiga entitas yang punya wajah atau lambang.
+ * Entitas lain (periode, kriteria, pengumuman) tidak punya, dan mengembalikan
+ * '' — modalnya terbuka persis seperti sebelumnya, tanpa kotak kosong.
+ */
+function kepalaDetailMaster(entitas, row) {
+if (entitas === 'Siswa') return kepalaDetail({
+gambar: row.FotoUrl, nama: row.Nama, bentuk: 'bulat',
+sub: [row.NIS, row.Kelas, row.Jurusan].filter(Boolean).join(' · '),
+chip: row.StatusPenempatan ? chipStatus(row.StatusPenempatan) : ''
+});
+if (entitas === 'GuruPembimbing') return kepalaDetail({
+gambar: row.FotoUrl, nama: row.Nama, bentuk: 'bulat',
+sub: [row.NIP, row.Mapel].filter(Boolean).join(' · ')
+});
+if (entitas === 'TempatPKL') return kepalaDetail({
+gambar: row.LogoUrl, nama: row.NamaInstansi, bentuk: 'kotak', ikon: 'domain',
+sub: row.Alamat || '',
+chip: chipStatus(String(row.Aktif) === 'Ya' ? 'Aktif' : 'Nonaktif')
+});
+return '';
+}
 function lihatDetailMaster(entitas, id) {
 const skema = SKEMA_MASTER[entitas];
 const row = (AppState.dataTabel || []).find(r => r.ID === id);
 if (!row) return;
-const baris = skema.field.map(f => [f.l, f.t === 'time' ? jamTampil(row[f.k])
+// LogoUrl sudah tampil sebagai gambar di kepala modal; mengulanginya sebagai
+// baris alamat panjang hanya menambah bacaan tanpa menambah keterangan.
+const baris = skema.field.filter(f => f.k !== 'LogoUrl').map(f => [f.l,
+f.t === 'time' ? jamTampil(row[f.k])
 : f.t === 'date' ? tglSingkat(row[f.k]) : (row[f.k] || '—')]);
 if (entitas === 'TempatPKL') baris.push(['Kuota Terisi', (row.KuotaTerisi || 0) + ' / ' + (row.KuotaTotal || 0)]);
 if (entitas === 'Siswa') {
@@ -325,7 +350,8 @@ baris.push(['Status Penempatan', row.StatusPenempatan || '—']);
 baris.push(['Pendaftaran Mandiri', String(row.KunciPendaftaran || '') === 'Ya'
 ? 'Ditahan' + (row.AlasanKunci ? ' — ' + row.AlasanKunci : '') : 'Terbuka']);
 }
-bukaModal('Detail ' + skema.judul, `<div class="list">${baris.map(([l, v]) => `
+bukaModal('Detail ' + skema.judul, `${kepalaDetailMaster(entitas, row)}
+<div class="list">${baris.map(([l, v]) => `
 <div class="list-item"><div class="list-main">
 <div class="data-label">${esc(l)}</div><div class="data-value">${esc(v)}</div></div></div>`).join('')}</div>`,
 [{ label: 'Tutup', kelas: 'btn-outline', aksi: tutupModal },

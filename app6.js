@@ -445,13 +445,11 @@ const baris = [['Username', a.Username], ['Nama', a.Nama || '—'], ['Peran', a.
 ['Data Tertaut', a.Tertaut], ['Email Google', a.Email || 'belum ditautkan'],
 ['Nomor HP', a.NoHP || '—'], ['Status', a.Aktif === 'Ya' ? 'Aktif' : 'Nonaktif'],
 ['Terakhir Masuk', a.TerakhirLogin || 'belum pernah']];
-bukaModal('Detail Akun', `
-<div style="text-align:center;margin-bottom:16px">
-<div class="avatar avatar-lg" style="margin:0 auto 10px;width:70px;height:70px;font-size:26px">
-${a.Foto ? `<img src="${esc(a.Foto)}" alt="Foto profil">` : esc((a.Nama || a.Username || '?').charAt(0).toUpperCase())}
-</div>
-<div style="font-size:17px;font-weight:700">${esc(a.Nama || a.Username)}</div>
-</div>
+bukaModal('Detail Akun', `${kepalaDetail({
+gambar: a.Foto, nama: a.Nama || a.Username, bentuk: 'bulat',
+sub: '@' + (a.Username || '') + (a.Tertaut && a.Tertaut !== '—' ? ' · ' + a.Tertaut : ''),
+chip: chipStatus(a.Aktif === 'Ya' ? 'Aktif' : 'Nonaktif')
+})}
 <div class="list">${baris.map(([l, v]) => `
 <div class="list-item"><div class="list-main">
 <div class="data-label">${esc(l)}</div><div class="data-value">${esc(v)}</div></div></div>`).join('')}</div>`,
@@ -1274,4 +1272,4 @@ await muatJadwalShift();
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '4.8';
+window.__SIMPKL_EOF = '5.0';

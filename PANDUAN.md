@@ -1,7 +1,7 @@
 # SIM PKL — Panduan Teknis
 
 Sistem Informasi & Manajemen Presensi Siswa Praktik Kerja Lapangan
-SMK HKTI 2 Purwareja Klampok · versi 4.8
+SMK HKTI 2 Purwareja Klampok · versi 5.0
 
 Dokumen ini menjelaskan aplikasi sebagaimana adanya sekarang: cara kerjanya, cara
 memasangnya dari nol, dan cara mengembangkannya. Ditulis untuk orang yang akan
@@ -762,8 +762,9 @@ Geraknya dipecah ke dua lapis, dan pemisahan itu bukan selera:
 | Lapis | Tugas | Animasi |
 |---|---|---|
 | `.splash-halo` | pembungkus | `splashLogo` — masuk, sekali |
-| `.splash-logo` | kotak logo | `splashDenyut` — berdenyut, `infinite`, ditunda .5 dtk |
-| `.splash-halo::before` / `::after` | dua riak | `splashRiak` — menyebar, `infinite`, yang kedua ditunda 1,3 dtk |
+| `.splash-logo` | lingkaran logo | `splashDenyut` — berdenyut, `infinite`, ditunda .58 dtk |
+| `.splash-logo::after` | kilau | `splashKilau` — melintas, `infinite`, ditunda 1,1 dtk |
+| `.splash-halo::before` / `::after` | dua riak | `splashRiak` — menyebar, `infinite`, yang kedua ditunda 1,6 dtk |
 
 > **Dua animasi `transform` pada SATU elemen akan saling menimpa** — yang
 > belakangan menang, dan animasi masuknya hilang tanpa jejak. Karena itu masuk
@@ -783,6 +784,34 @@ tahu adalah kebohongan kecil yang tidak perlu.
 `prefers-reduced-motion` dihormati tanpa memotong kabarnya: animasi dan
 penyapuan dimatikan, tetapi logo dan garis progresnya tetap terlihat penuh —
 bukan dihilangkan.
+
+### Bingkai logo menjadi lingkaran (v4.9)
+
+Bingkainya semula persegi bersudut membulat 22 px. Sekarang lingkaran penuh,
+dan perubahan itu menyeret tiga hal lain ikut berubah — bukan karena selera,
+melainkan karena bentuknya sendiri yang menuntut:
+
+- **Riaknya ikut melingkar.** Riak yang menyebar dari lingkaran menjauh rata ke
+  segala arah; dari persegi bersudut, ia menebal di keempat sudutnya. Itulah
+  beda yang membuat gerak melingkar terbaca lebih tenang.
+- **Denyutnya dibuat lebih dangkal dan lebih pelan** (1,045 → 1,032; 2,6 → 3,2
+  detik). Pada lingkaran, skala yang berlebih segera terbaca sebagai gelembung.
+- **Ditambah satu kilau yang melintas** (`splashKilau`). Inilah yang memberi
+  kesan bahan — permukaan yang memantulkan cahaya, bukan sekadar bidang
+  berwarna. Ia melintas cepat di sepertiga awal putaran lalu menunggu di luar
+  bingkai; jeda diamnya yang panjang itulah yang membuatnya terasa sesekali,
+  bukan berkedip terus-menerus. Ia dikurung `overflow:hidden` milik lingkaran,
+  jadi ujung-ujungnya terpotong mengikuti lengkung tepinya tanpa perhitungan
+  apa pun.
+
+Ditambah satu garis rambut statis `0 0 0 1px var(--primary-soft)` di tepi
+lingkaran — tidak dianimasikan, dan cukup untuk memisahkan logo dari permukaan
+tanpa menambah bobot gerak.
+
+Seluruhnya tetap hanya `opacity` dan `transform`; tidak ada satu pun yang
+menyentuh tata letak. `uji-splash.js` mengukur `border-radius` dari **gaya
+terhitung**, bukan dari sumber CSS — hanya itu yang membuktikan tidak ada aturan
+lain di berkas yang menimpanya lebih belakangan.
 
 ### Splash menemani bagian yang LAMA (v4.7)
 
@@ -820,6 +849,150 @@ berjalan; masih terlihat pada 150 ms dan sudah hilang sebelum 900 ms saat
 ditutup; ditutup sesudah `navigateTo('beranda')`; animasinya benar-benar `none`
 pada konteks `reducedMotion: 'reduce'`; dan sesudah login gagal, form kembali
 lengkap dengan pesannya serta NIS yang tidak hilang.
+
+---
+
+## Libur punya tempat di grafik (v4.9)
+
+Sebelumnya hari libur tidak punya tempat sama sekali di bar "Tren Kehadiran 7
+Hari". Akibatnya bukan sekadar kurang rapi — **akhir pekan tampil sebagai batang
+kosong yang tidak bisa dibedakan dari hari kerja yang seluruh siswanya membolos.**
+Dua keadaan yang paling berlawanan digambar dengan bentuk yang sama persis.
+
+Sekarang `getDashboardMonitoring()` mengirim satu deret lagi, `tren.libur`, dan
+donat "Status Presensi Hari Ini" memberi Libur warnanya sendiri.
+
+### `hitungLibur()` — kembaran `hitungAlpha()`
+
+Keduanya membaca kolom `HariKerja` lewat `hariKerjaSet()` yang sama; yang berbeda
+hanya sisi yang diambil. Alpha mengambil hari kerja yang tanpa catatan, Libur
+mengambil hari yang memang bukan hari kerja. **Satu tanggal tidak boleh masuk
+keduanya** — dan itu diuji langsung.
+
+Dua hal membedakannya, keduanya disengaja:
+
+1. **Libur tidak menunggu jam pulang lewat.** Hari Minggu sudah libur sejak
+   Minggu pagi. Alpha harus menunggu karena siswa masih mungkin datang; libur
+   tidak punya alasan seperti itu.
+2. **Siswa yang tetap presensi di hari liburnya tidak dihitung libur.** Sebagian
+   tempat sesekali meminta siswa masuk di akhir pekan. Kalau hari itu dihitung
+   dua kali — sekali Hadir, sekali Libur — batang tumpuknya menjadi lebih tinggi
+   daripada jumlah siswa yang sebenarnya ada, dan grafiknya berbohong ke atas.
+
+Keduanya dihitung dalam **satu putaran yang sama**: `getPenempatanSiswa()` mahal
+dan cukup dipanggil sekali untuk dua-duanya. `uji-libur-detail.js` menghitung
+kemunculan pemanggilan itu di sumber dan menolak bila menjadi dua.
+
+### Dua keputusan tampilan
+
+**Libur diletakkan paling atas tumpukan, sesudah Alpha.** Yang ingin dibaca dari
+batang ini adalah kehadiran, dan kehadiran lebih mudah dibandingkan antarhari
+bila semuanya bertolak dari garis nol yang sama. Efek sampingnya menyenangkan:
+tinggi total tiap batang menjadi jumlah siswa yang sebenarnya, sehingga akhir
+pekan tidak lagi tampak seperti hari kosong.
+
+**Warnanya mawar cerah** (`#FF3369` terang / `#FE97C2` gelap). Versi pertamanya
+memakai batu tulis yang tenang dengan alasan yang masuk akal — hari libur tidak
+ada kewajiban hadir, jadi tidak pantas bersaing dengan lima status kehadiran.
+Alasan itu benar tetapi salah timbangannya: di antara enam warna, satu-satunya
+yang kusam justru menjadi yang paling sulit ditemukan mata, dan Libur adalah
+keterangan yang **paling sering** muncul pada bar tujuh hari.
+
+Ronanya bukan pilihan selera. Lima status sudah memakai hijau, kuning, biru,
+violet, dan merah; sesudah keenamnya diletakkan di lingkaran rona, **mawar adalah
+celah terlebar yang tersisa**. Seluruh lingkaran disisir dengan tiga gerbang
+sekaligus — kroma ≥ 35 (benar-benar cerah), kontras ≥ 3:1 terhadap permukaan
+kartu, dan ΔE CIEDE2000 ≥ 8 terhadap enam warna lain pada mata normal maupun
+protanopia, deuteranopia, dan tritanopia. Sian dan pirus gugur di gerbang
+ketiga (pirus tertukar dengan Hadir pada tritanopia, ΔE 2,6); ungu listrik dan
+fuksia gugur melawan Izin dan Sakit.
+
+| | Terang | Gelap |
+|---|---|---|
+| Warna | `#FF3369` | `#FE97C2` |
+| Kroma Lab | 79 | 44 |
+| Kontras terhadap permukaan | 3,54:1 | 8,45:1 |
+| Pasangan terlemah | Telat/deuteranopia ΔE 10,7 | Telat/tritanopia ΔE 12,5 |
+| ΔE minimum SELURUH palet | 10,7 buta warna · 17,3 normal | 8,9 buta warna · 19,0 normal |
+
+Nada gelapnya jauh lebih muda, bukan versi tergelapkan dari nada terangnya: di
+atas permukaan gelap, mawar pekat justru meredup dan mawar mudalah yang menyala.
+Kromanya di sana sengaja ditahan sekitar 45 — di atas itu ia mulai berdempetan
+dengan Sakit (violet) pada penglihatan protanopia.
+
+> Libur **tidak pernah menjadi pasangan terlemah** palet ini. Di mode gelap yang
+> terlemah tetap Izin/Sakit (ΔE 8,9), persis seperti sebelum Libur ada.
+
+Tiga uji menjaganya sekaligus: kromanya ≥ 35 (agar permintaan "warna cerah"
+tidak diam-diam kembali menjadi abu), kontrasnya ≥ 3:1, dan jarak luminansnya
+dari "Belum Presensi" > 0,1.
+
+`statusPresensi` kini menyiapkan `'Libur': 0` sejak awal, sama seperti status
+lain. Kalau ia baru muncul saat ada yang libur, legenda donatnya berubah-ubah
+dari hari ke hari — dan legenda yang berpindah tempat setiap pagi lebih
+membingungkan daripada satu potongan bernilai nol.
+
+---
+
+## Foto profil dan logo instansi di modal detail (v4.9)
+
+Foto siswa dan guru sudah tersimpan sejak lama — halaman Profil menulisnya ke
+kolom `FotoUrl` di baris Siswa/Guru **dan** baris Akun sekaligus. Yang belum ada
+hanyalah tempat menampilkannya selain di bilah atas. Empat modal "lihat detail"
+kini membukanya: Pengaturan, Tempat PKL, Data Siswa, dan Guru Pembimbing.
+
+### Satu kepala untuk empat modal
+
+`kepalaDetail()` di `app1.js` dipakai `lihatDetailMaster()` (app5) dan
+`lihatDetailAkun()` (app6), supaya keempatnya membuka dengan kepala yang sama
+bentuk dan jaraknya. Yang berbeda hanya bentuk bingkai gambarnya, dan itu bukan
+selera:
+
+| | Bentuk | `object-fit` | Latar |
+|---|---|---|---|
+| Wajah (admin, guru, siswa) | lingkaran | `cover` | `--primary-container` |
+| Logo instansi | persegi membulat | `contain` | putih |
+
+Wajah dipotong lingkaran karena itulah bahasa avatar di seluruh aplikasi. **Logo
+tidak boleh diperlakukan begitu**: memotongnya jadi lingkaran akan memakan huruf
+di tepi lambang, jadi ia dimuat utuh. Latarnya putih dipaksa **di kedua tema** —
+banyak logo berlatar transparan dan bertulisan gelap, dan di atas permukaan
+gelap mode malam huruf-hurufnya akan hilang.
+
+### Satu kolom, dua bentuk isi
+
+`FotoUrl`/`LogoUrl` menyimpan dua bentuk yang berbeda tergantung asalnya: berkas
+yang diunggah lewat halaman Profil tersimpan sebagai **ID berkas Drive**,
+sedangkan logo instansi diketik admin sebagai **alamat web biasa**. `urlGambar()`
+di `app1.js` yang membedakannya — kembaran `urlPratinjau()` di server, dengan
+tambahan: yang sudah berupa alamat lengkap dibiarkan apa adanya.
+
+> `onerror` melucuti dirinya sendiri pada baris pertama. Peramban bisa
+> memunculkan galat untuk satu gambar lebih dari sekali, dan pada panggilan
+> kedua elemennya sudah tercabut dari induknya — penanganan yang tidak berjaga
+> akan melempar `TypeError` dari dalam penangan galat.
+
+### Kolom baru: `TempatPKL.LogoUrl`
+
+Satu-satunya yang belum punya sumber data. Ditambahkan **paling belakang**,
+sesudah `PakaiShift`, karena `pastikanSheet()` menambahkan kolom yang hilang di
+ujung kanan sheet yang sudah ada — urutan di `definisiSkema()` dibuat sama supaya
+definisi dan sheet lama tetap sejajar.
+
+Isinya alamat gambar yang diketik, **bukan unggahan**: logo instansi hampir
+selalu sudah ada di situs perusahaan, dan menyalin alamatnya jauh lebih ringkas
+daripada mengunduh lalu mengunggah ulang satu per satu. Bentuk ID berkas Drive
+juga diterima.
+
+> **Perlu `setupAppEnvironment()` sekali** supaya kolomnya terbentuk. Sebelum
+> itu dijalankan, aplikasinya tetap berjalan normal — `tulisBaris()` dan
+> `perbaruiBaris()` digerakkan oleh header sheet, jadi kunci yang tidak punya
+> kolom hanya diabaikan, dan modal detailnya menampilkan ikon cadangan.
+
+`getDaftarAkun()` kini jatuh ke baris Siswa/Guru yang tertaut bila `Akun.FotoUrl`
+kosong. Halaman Profil menulis keduanya sekaligus sehingga biasanya sama, tetapi
+foto yang sudah ada di baris Siswa **sebelum akunnya dibuat** hanya tersimpan di
+sana.
 
 ---
 
@@ -1041,7 +1214,7 @@ Spreadsheet **`DB_SIM_PKL`** di dalam folder Drive **`SIM_PKL_Data`**, 18 sheet:
 | `Akun` | Login: username, hash, garam, peran, tautan ke Siswa/Guru |
 | `Siswa` | Biodata siswa, kelas, jurusan, status penempatan |
 | `GuruPembimbing` | Biodata guru pembimbing |
-| `TempatPKL` | Instansi, koordinat, radius, kuota, jam & hari kerja |
+| `TempatPKL` | Instansi, koordinat, radius, kuota, jam & hari kerja, logo |
 | `PendaftaranPKL` | Pengajuan siswa beserta statusnya |
 | `PenempatanPKL` | Relasi siswa–tempat–guru; satu baris per penempatan, jadi rantainya sekaligus riwayat perpindahan |
 | `PengajuanPindah` | Permintaan pindah tempat PKL dari siswa beserta keputusannya |

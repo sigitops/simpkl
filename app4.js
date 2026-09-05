@@ -106,7 +106,13 @@ data: { labels: d.tren.label, datasets: [
 { label: 'Telat', data: d.tren.telat, backgroundColor: w.warning, borderRadius: 5 },
 { label: 'Izin', data: d.tren.izin || [], backgroundColor: w.primary, borderRadius: 5 },
 { label: 'Sakit', data: d.tren.sakit || [], backgroundColor: w.ungu, borderRadius: 5 },
-{ label: 'Alpha', data: d.tren.alpha || [], backgroundColor: w.error, borderRadius: 5 }] },
+{ label: 'Alpha', data: d.tren.alpha || [], backgroundColor: w.error, borderRadius: 5 },
+// Libur diletakkan PALING ATAS pada tumpukan, bukan di dasarnya. Yang ingin
+// dibaca dari batang ini adalah kehadiran, dan kehadiran lebih mudah
+// dibandingkan antarhari bila semuanya bertolak dari garis nol yang sama.
+// Libur di puncak juga membuat tinggi total tiap batang menjadi jumlah siswa
+// yang sebenarnya — akhir pekan tidak lagi tampak seperti hari kosong.
+{ label: 'Libur', data: d.tren.libur || [], backgroundColor: w.libur, borderRadius: 5 }] },
 options: {
 responsive: true, maintainAspectRatio: false,
 plugins: { legend: { position: 'bottom', labels: { color: w.teks, usePointStyle: true, padding: 14 } } },
@@ -123,7 +129,7 @@ const label = Object.keys(d.statusPresensi);
 const nilai = label.map(k => d.statusPresensi[k]);
 const warna = label.map(k => k === 'Hadir' ? w.sukses : k === 'Telat' ? w.warning
 : k === 'Izin' ? w.primary : k === 'Sakit' ? w.ungu
-: k === 'Alpha' ? w.error : w.netral);
+: k === 'Alpha' ? w.error : k === 'Libur' ? w.libur : w.netral);
 AppState.grafik.statusHariIni = new Chart(c2, {
 type: 'doughnut',
 // Celah 2px sewarna permukaan memisahkan potongan yang bersebelahan. Pada warna

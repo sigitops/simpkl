@@ -190,21 +190,37 @@
    berulang. Dua animasi transform pada satu elemen akan saling menimpa —
    yang belakangan menang, dan animasi masuknya hilang tanpa jejak. */
 .splash-halo{position:relative;display:grid;place-items:center;width:76px;height:76px;
-  animation:splashLogo .5s cubic-bezier(.22,.61,.36,1) both}
+  animation:splashLogo .58s cubic-bezier(.22,1.12,.36,1) both}
 /* Dua riak yang menyebar bergantian dari balik logo. Keduanya pseudo-element:
    tidak menambah satu simpul pun ke DOM, dan tidak pernah ikut dihitung dalam
-   tata letak karena posisinya absolut. */
+   tata letak karena posisinya absolut.
+   Bingkainya LINGKARAN penuh: riak yang menyebar dari lingkaran menjauh rata ke
+   segala arah, sedangkan dari persegi bersudut ia menebal di keempat sudutnya —
+   itulah beda yang membuat gerak melingkar terbaca lebih tenang. */
 .splash-halo::before,.splash-halo::after{content:'';position:absolute;inset:0;z-index:0;
-  border-radius:22px;border:2px solid var(--primary);opacity:0;
-  animation:splashRiak 2.6s cubic-bezier(.22,.61,.36,1) infinite}
-.splash-halo::after{animation-delay:1.3s}
+  border-radius:50%;border:1.5px solid var(--primary);opacity:0;
+  animation:splashRiak 3.2s cubic-bezier(.22,.61,.36,1) infinite}
+.splash-halo::after{animation-delay:1.6s}
 .splash-logo{position:relative;z-index:1;
-  width:76px;height:76px;border-radius:22px;display:grid;place-items:center;
+  width:76px;height:76px;border-radius:50%;display:grid;place-items:center;
   background:var(--primary-container);color:var(--on-primary-container);
-  box-shadow:var(--elev-2);overflow:hidden;
-  /* Ditunda .5 dtk supaya denyutnya mulai tepat sesudah animasi masuk selesai,
-     tanpa loncatan di sambungannya. */
-  animation:splashDenyut 2.6s ease-in-out .5s infinite}
+  /* Garis rambut sewarna primer di tepi lingkaran. Statis, tidak dianimasikan,
+     dan cukup untuk memisahkan logo dari permukaan tanpa menambah bobot. */
+  box-shadow:var(--elev-2),0 0 0 1px var(--primary-soft);overflow:hidden;
+  /* Ditunda .58 dtk supaya denyutnya mulai tepat sesudah animasi masuk selesai,
+     tanpa loncatan di sambungannya. Denyutnya sengaja lebih pelan dan lebih
+     dangkal daripada versi persegi: pada lingkaran, skala yang berlebih segera
+     terbaca sebagai gelembung. */
+  animation:splashDenyut 3.2s cubic-bezier(.45,0,.55,1) .58s infinite}
+/* Kilau yang melintas di muka logo sekali tiap putaran denyut. Inilah yang
+   memberi kesan bahan — permukaan yang memantulkan cahaya, bukan sekadar bidang
+   berwarna. Ia dikurung overflow:hidden milik lingkaran, jadi ujung-ujungnya
+   terpotong mengikuti lengkung tepinya tanpa perlu perhitungan apa pun. */
+.splash-logo::after{content:'';position:absolute;z-index:2;pointer-events:none;
+  top:-50%;left:0;width:30%;height:200%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);
+  transform:rotate(18deg) translateX(-180%);
+  animation:splashKilau 3.2s cubic-bezier(.4,0,.2,1) 1.1s infinite}
 .splash-logo img{width:100%;height:100%;object-fit:cover;display:block}
 .splash-logo .mi{font-size:38px}
 .splash-teks{display:flex;flex-direction:column;gap:3px;
@@ -223,16 +239,25 @@
   background:linear-gradient(90deg,transparent,var(--primary),transparent);
   animation:splashSapu 1.15s ease-in-out infinite}
 
+/* Sedikit melewati ukuran akhirnya lalu kembali — bukan pantulan, hanya cukup
+   untuk membuat kedatangannya terasa disengaja. Nilainya dijaga kecil: pada
+   lingkaran, lonjakan yang besar langsung terbaca murahan. */
 @keyframes splashLogo{
-  from{opacity:0;transform:scale(.86)}
+  from{opacity:0;transform:scale(.72)}
   to{opacity:1;transform:none}}
 @keyframes splashDenyut{
   0%,100%{transform:scale(1)}
-  50%{transform:scale(1.045)}}
+  50%{transform:scale(1.032)}}
 @keyframes splashRiak{
-  0%{transform:scale(1);opacity:.42}
+  0%{transform:scale(1);opacity:.34}
   70%{opacity:0}
-  100%{transform:scale(1.62);opacity:0}}
+  100%{transform:scale(1.72);opacity:0}}
+/* Melintas cepat di sepertiga awal, lalu menunggu di luar bingkai sampai
+   putaran berikutnya. Jeda diamnya yang panjang itulah yang membuat kilaunya
+   terasa sesekali, bukan berkedip terus-menerus. */
+@keyframes splashKilau{
+  0%{transform:rotate(18deg) translateX(-180%)}
+  34%,100%{transform:rotate(18deg) translateX(420%)}}
 @keyframes splashNaik{
   from{opacity:0;transform:translateY(7px)}
   to{opacity:1;transform:none}}
@@ -246,12 +271,48 @@
   .boot-loader,.splash-halo,.splash-logo,.splash-teks,.splash-bar{transition:none;animation:none}
   .splash-halo,.splash-logo,.splash-teks,.splash-bar{opacity:1;transform:none}
   .splash-halo::before,.splash-halo::after{animation:none;opacity:0}
+  .splash-logo::after{animation:none;opacity:0}
   .splash-bar span{width:100%;animation:none;
     background:var(--primary)}
   .boot-loader.tutup{transform:none}
 }
 
+/* ── Kepala modal detail: foto profil dan logo instansi ──────────────────────
+   Satu blok dipakai empat menu (Pengaturan, Tempat PKL, Data Siswa, Guru
+   Pembimbing) supaya keempat modal detailnya membuka dengan kepala yang sama
+   bentuk dan jaraknya. Yang berbeda hanya bentuk bingkai gambarnya. */
+.detail-kepala{display:flex;align-items:center;gap:14px;
+  padding:14px;margin-bottom:14px;
+  background:var(--surface-container-low);border:1px solid var(--outline-variant);
+  border-radius:var(--r-lg)}
+/* Ukurannya dikunci lewat flex-basis, bukan hanya width. Nama yang panjang
+   tidak boleh menggencet bingkai gambarnya menjadi lonjong. */
+.detail-gambar{position:relative;width:64px;height:64px;flex:0 0 64px;
+  display:grid;place-items:center;overflow:hidden;
+  background:var(--primary-container);color:var(--on-primary-container)}
+.detail-gambar-bulat{border-radius:50%}
+/* Logo instansi: persegi membulat, dimuat UTUH, dan diberi permukaan terang
+   sendiri. Banyak logo berlatar transparan dan bertulisan gelap — di atas
+   permukaan gelap mode malam, huruf-hurufnya akan hilang. */
+.detail-gambar-kotak{border-radius:var(--r-md);
+  background:#FFFFFF;color:var(--on-surface-muted);
+  border:1px solid var(--outline-variant)}
+.detail-gambar img{width:100%;height:100%;display:block}
+.detail-gambar-bulat img{object-fit:cover}
+.detail-gambar-kotak img{object-fit:contain;padding:6px}
+.detail-gambar-cadangan{position:absolute;inset:0;display:grid;place-items:center;
+  font-weight:700;font-size:24px}
+.detail-gambar-kotak .detail-gambar-cadangan .mi{font-size:30px}
+.detail-gambar.ada-gambar .detail-gambar-cadangan{display:none}
+/* min-width:0 supaya nama yang kepanjangan boleh dipotong, bukan melebarkan
+   baris dan mendorong gambarnya keluar. */
+.detail-identitas{min-width:0;display:flex;flex-direction:column;gap:3px}
+.detail-nama{margin:0;font-size:16px;font-weight:700;line-height:1.3;
+  color:var(--on-surface);overflow-wrap:anywhere}
+.detail-sub{margin:0;font-size:12.5px;color:var(--on-surface-muted);
+  overflow-wrap:anywhere}
+
 /* Cap versi berkas ini, dibaca versiCss() di app1.js. Penanda ini juga menjadi
    tanda akhir berkas: bila app.css yang dipegang peramban lebih tua daripada
    index.html, capnya tidak akan sama dan boot memuat ulang sekali. */
-:root{--versi-aset:"4.8"}
+:root{--versi-aset:"5.0"}

@@ -379,6 +379,56 @@ ${deskripsi ? `<p class="empty-desc">${esc(deskripsi)}</p>` : ''}
 ${tombolHtml || ''}
 </div>`;
 }
+// Kolom FotoUrl/LogoUrl menyimpan DUA bentuk yang berbeda, tergantung dari mana
+// isinya datang: berkas yang diunggah lewat halaman Profil tersimpan sebagai ID
+// berkas Drive, sedangkan logo instansi diketik admin sebagai alamat web biasa.
+// Keduanya sah, dan pemakainya tidak perlu tahu bedanya — fungsi ini yang
+// membedakannya. Kembaran urlPratinjau() di sisi server, dengan tambahan: yang
+// sudah berupa alamat lengkap dibiarkan apa adanya.
+function urlGambar(nilai, lebar) {
+const v = String(nilai || '').trim();
+if (!v) return '';
+if (/^(https?:)?\/\//i.test(v) || v.indexOf('data:') === 0) return v;
+return 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(v) + '&sz=w' + (lebar || 400);
+}
+/**
+ * Kepala modal detail: gambar besar, nama, dan satu baris keterangan.
+ *
+ * Bentuk gambarnya sengaja tidak seragam. Wajah dipotong lingkaran dan diisi
+ * penuh (cover) karena itulah bahasa avatar yang dipakai di seluruh aplikasi.
+ * Logo instansi TIDAK boleh diperlakukan begitu: memotongnya jadi lingkaran
+ * akan memakan huruf di tepi lambang, jadi ia diberi bingkai persegi membulat
+ * dan dimuat utuh (contain) di atas permukaan terang.
+ */
+function kepalaDetail(opsi) {
+const bentuk = opsi.bentuk === 'kotak' ? 'kotak' : 'bulat';
+const src = urlGambar(opsi.gambar, 400);
+const alt = bentuk === 'kotak' ? 'Logo ' + (opsi.nama || '') : 'Foto ' + (opsi.nama || '');
+const cadangan = bentuk === 'kotak'
+? `<span class="mi">${esc(opsi.ikon || 'domain')}</span>`
+: esc(String(opsi.nama || '?').trim().charAt(0).toUpperCase() || '?');
+// Gambar dan cadangannya sama-sama ditulis, lalu salah satunya disembunyikan
+// lewat kelas 'ada-gambar'. Kalau alamatnya ternyata mati, onerror mencabut
+// kelas itu dan huruf/ikon cadangannya muncul menggantikan — tidak ada kotak
+// gambar rusak yang tertinggal di kepala modal.
+//
+// onerror dilucuti sendiri pada baris pertama. Peramban bisa memunculkan galat
+// untuk satu gambar LEBIH DARI SEKALI, dan pada panggilan kedua elemennya sudah
+// tercabut dari induknya — parentNode-nya null, dan penanganan yang tidak
+// berjaga akan melempar TypeError dari dalam penangan galat.
+return `<div class="detail-kepala">
+<div class="detail-gambar detail-gambar-${bentuk}${src ? ' ada-gambar' : ''}">
+${src ? `<img src="${esc(src)}" alt="${esc(alt)}"
+onerror="this.onerror=null;if(this.parentNode)this.parentNode.classList.remove('ada-gambar');this.remove()">` : ''}
+<span class="detail-gambar-cadangan" aria-hidden="true">${cadangan}</span>
+</div>
+<div class="detail-identitas">
+<p class="detail-nama">${esc(opsi.nama || '—')}</p>
+${opsi.sub ? `<p class="detail-sub">${esc(opsi.sub)}</p>` : ''}
+${opsi.chip || ''}
+</div>
+</div>`;
+}
 function chipStatus(status) {
 const peta = {
 'Hadir': ['chip-success', 'check_circle'], 'Disetujui': ['chip-success', 'check_circle'],
@@ -979,8 +1029,9 @@ function gambarUlangSemuaGrafik() {
 // biru sengaja gelap, violet sengaja terang. Itu sebabnya nilainya tampak tidak
 // beraturan bila hanya dilihat sebagai daftar hex.
 //
-// Hasil ukur: mode terang ΔE buta warna 10,0 dan mata normal 16,2 (ambang 8 dan 15);
-// mode gelap 8,2 dan 15,3. Seluruh warna ≥3:1 terhadap permukaannya.
+// Hasil ukur sesudah Libur masuk (v5.0): mode terang ΔE buta warna 10,7 dan mata
+// normal 17,3; mode gelap 8,9 dan 19,0 (ambang 8 dan 15). Seluruh warna kategori
+// ≥3:1 terhadap permukaannya.
 // Mode gelap DIPILIH ULANG untuk permukaan gelap, bukan hasil pembalikan otomatis.
 function warnaGrafik() {
 const gelap = document.documentElement.getAttribute('data-theme') === 'dark';
@@ -990,6 +1041,21 @@ warning: gelap ? '#BC8B33' : '#C2891A',  // Telat
 primary: gelap ? '#3273AE' : '#2F6DA8',  // Izin
 ungu:    gelap ? '#9E7ED2' : '#A87FD9',  // Sakit
 error:   gelap ? '#B0414F' : '#B0353F',  // Alpha
+// Libur: mawar cerah. Rona ini dipilih bukan karena selera, melainkan karena
+// ia satu-satunya yang masih lapang — lima status sudah memakai hijau, kuning,
+// biru, violet, dan merah, dan mawar adalah celah terlebar yang tersisa di
+// lingkaran rona sesudah keenamnya diletakkan.
+//
+// Ia diukur terhadap enam warna lain pada mata normal DAN tiga jenis buta warna:
+// pasangan terlemahnya Telat/deuteranopia ΔE 10,7 di mode terang dan
+// Telat/tritanopia ΔE 12,5 di mode gelap — keduanya di atas ambang 8, dan Libur
+// tidak pernah menjadi pasangan terlemah palet ini.
+//
+// Nada gelapnya jauh lebih muda, bukan versi tergelapkan dari nada terangnya:
+// di atas permukaan gelap, mawar pekat justru meredup, dan mawar muda yang
+// menyala. Kroma di mode gelap sengaja ditahan (~45) karena di atas itu ia mulai
+// berdempetan dengan Sakit(violet) pada penglihatan protanopia.
+libur:   gelap ? '#FE97C2' : '#FF3369',
 // Bukan bagian palet kategori: "Belum Presensi" berarti belum ada datanya,
 // jadi sengaja netral supaya tidak ikut bersaing dengan status yang sebenarnya.
 netral:  gelap ? '#48545A' : '#B6C2C9',
