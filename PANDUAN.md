@@ -1,7 +1,7 @@
 # SIM PKL — Panduan Teknis
 
 Sistem Informasi & Manajemen Presensi Siswa Praktik Kerja Lapangan
-SMK HKTI 2 Purwareja Klampok · versi 5.1
+SMK HKTI 2 Purwareja Klampok · versi 5.4
 
 Dokumen ini menjelaskan aplikasi sebagaimana adanya sekarang: cara kerjanya, cara
 memasangnya dari nol, dan cara mengembangkannya. Ditulis untuk orang yang akan
@@ -1086,21 +1086,100 @@ Vercel putus di detik ke-60.
 - **Tidak diulang otomatis.** `amanDiulang()` memutuskan berdasarkan awalan nama,
   dan `ai…` tidak termasuk. Satu klik, satu kuota. `uji-ai.js` memanggil
   `amanDiulang()` yang sebenarnya untuk memastikan itu, bukan membaca sumbernya.
-- **Setiap kegagalan punya kalimatnya sendiri** — kunci ditolak, tidak berizin,
-  model tidak ada, kuota habis, layanan sibuk, diblokir filter keamanan, jawaban
-  terpotong. `muteHttpExceptions` dinyalakan justru supaya badan galatnya
-  terbaca; ini pelajaran yang sama dengan proxy Vercel di v4.3.
+- **Setiap kegagalan punya kalimatnya sendiri** — kunci ditolak, model tidak ada,
+  kuota habis, layanan sibuk, diblokir filter keamanan, jawaban terpotong.
+  `muteHttpExceptions` dinyalakan justru supaya badan galatnya terbaca; ini
+  pelajaran yang sama dengan proxy Vercel di v4.3.
+
+### 403 bukan satu penyakit (v5.2)
+
+Versi pertama menjawab **setiap** 403 dengan satu kalimat yang sama — "pastikan
+Generative Language API sudah aktif" — dan itu terbukti salah di pemakaian
+pertama. 403 dari Google punya sedikitnya empat sebab, dan jalan keluarnya
+berbeda-beda:
+
+| `reason` dari Google | Artinya | Yang harus dilakukan |
+|---|---|---|
+| `SERVICE_DISABLED` | API belum dinyalakan di proyek Cloud tempat kunci dibuat | Buka tautan pengaktifan, tekan Enable |
+| `API_KEY_SERVICE_BLOCKED` | Kunci dibatasi ke API lain | Credentials → API restrictions → tambahkan Generative Language API |
+| `API_KEY_HTTP_REFERRER_BLOCKED` | Kunci dibatasi ke situs tertentu | Application restrictions → None (Apps Script tidak punya perujuk) |
+| `API_KEY_IP_ADDRESS_BLOCKED` | Kunci dibatasi ke IP tertentu | Application restrictions → None (IP Apps Script berubah-ubah) |
+
+Yang lebih buruk pada versi pertama: ia **membuang pesan asli Google**, termasuk
+tautan pengaktifan yang di dalamnya sudah memuat **nomor proyek yang benar**.
+Orang yang harus memperbaikinya justru kehilangan satu-satunya petunjuk yang
+menyebut proyek mana yang bermasalah — persis kelas kegagalan buta yang sudah
+diperbaiki di v4.3, terulang di tempat baru.
+
+Sekarang `bedahGalatAi()` mengurai `error.details[].reason` dan menarik tautan
+pengaktifannya, `pesanGalatAi()` memberi jalan keluar per sebab, dan **kalimat
+asli Google selalu disertakan di belakang** (`— kata Google: "…"`). Terjemahan
+kita boleh salah tebak; kalimat aslinya tidak.
+
+### 429 juga bukan satu penyakit (v5.4)
+
+Dua keadaan berbunyi sama tetapi penanganannya berlawanan:
+
+| | Artinya | Menunggu menolong? |
+|---|---|---|
+| Kuota **habis terpakai** | Batas per menit/per hari tercapai | **Ya** — jeda dari Google disebutkan |
+| Kuota **bernilai nol** | Jatahnya tidak pernah ada | **Tidak akan pernah** |
+
+Keadaan kedua menimpa kunci yang dibuat di proyek Google Cloud biasa yang belum
+punya akun penagihan. Bentuknya menipu: `ListModels` tetap menjawab **200**
+sehingga tombol "Muat daftar" tampak berhasil dan daftar modelnya terisi,
+tetapi `generateContent` ditolak **429 pada percobaan pertama**.
+
+Versi sebelumnya menyamakan keduanya dan menjawab "coba lagi beberapa menit
+lagi" — nasihat yang **tidak mungkin berhasil**, dan yang membuat orang
+menunggu, mencoba lagi, gagal lagi, lalu menyimpulkan aplikasinya yang rusak.
+Memberi saran yang pasti gagal lebih buruk daripada tidak memberi saran.
+
+`bedahGalatAi()` sekarang membaca `QuotaFailure.violations[]` (`quotaMetric`,
+`quotaValue`) dan `RetryInfo.retryDelay`. Bila ada `quotaValue: "0"` — atau
+kalimatnya memuat `limit: 0` — pesannya berganti sama sekali: menunggu tidak
+menolong, dan dua jalan keluarnya disebut (buat kunci di proyek **baru** buatan
+AI Studio, atau hubungkan penagihan). Uji koneksi menampilkan tombol ke AI
+Studio, bukan ke Cloud Console — karena jalan keluarnya memang di tempat lain.
+
+`galatAi()` melempar `Error` yang **membawa bukti mentahnya** (`aiAlasan`,
+`aiRinci`, `aiTautan`, `aiKuotaMetrik`, `aiKuotaNol`), dan **Uji koneksi**
+menuliskannya di kartu Pengaturan —
+bukan hanya di toast. Toast menghilang sesudah sembilan detik; diagnosis yang
+perlu dibaca sambil membuka Google Cloud Console di tab lain tidak boleh ikut
+menghilang. Tautan pengaktifannya tampil sebagai tombol yang bisa langsung
+diklik.
 - **Apa pun yang ditimpa bisa dikembalikan.** Menimpa tulisan orang tanpa jalan
   pulang adalah hal yang tidak sopan dilakukan perangkat lunak. Di Pengumuman,
   potret cadangannya menyimpan **judul dan isi sekaligus**.
 
 ### Menyiapkannya
 
+> ### ⚠ Dua API bernama nyaris sama — dan yang salah muncul lebih dulu
+>
+> | | Nama di Console | Service name | Untuk fitur ini |
+> |---|---|---|---|
+> | ✅ | **Gemini API** | `generativelanguage.googleapis.com` | **Ini yang benar.** Gratis, tanpa penagihan |
+> | ❌ | Cloud Natural Language API | `language.googleapis.com` | Produk lain. Minta penagihan. Tidak menolong sama sekali |
+>
+> Mengetik "language" di API Library memunculkan yang **salah** lebih dulu.
+> Menyalakannya tidak menghasilkan galat baru — 403 yang sama berulang — jadi
+> orang menyimpulkan kuncinya yang rusak, lalu membuat kunci baru, lalu gagal
+> lagi. Kekeliruan ini benar-benar terjadi, dan sesudahnya rambu yang sama
+> dipasang di dua tempat: di kartu Pengaturan sebelum orang tersesat, dan di
+> dalam pesan `SERVICE_DISABLED` sesudahnya.
+
 1. Ambil kunci di [Google AI Studio](https://aistudio.google.com/apikey).
+   **Catat proyek Cloud yang dipilih saat membuatnya** — inilah sumber
+   kesalahan yang paling sering: kunci dibuat di proyek yang Gemini API-nya
+   belum aktif.
 2. Buka **Pengaturan → AI Asisten**, tempel kuncinya, tekan **Simpan**.
-3. Tekan **Muat daftar** untuk melihat model yang tersedia, pilih salah satu.
-4. Tekan **Uji koneksi** — bila berhasil, ia menyebutkan model dan waktu
-   tempuhnya.
+3. Tekan **Uji koneksi** lebih dulu, sebelum yang lain. Bila gagal, kotak
+   diagnosis di bawah tombol menyebutkan kode alasan Google dan — bila
+   sebabnya API yang belum aktif — tombol yang langsung membuka halaman
+   pengaktifan proyek yang benar.
+4. Sesudah Uji koneksi berhasil, tekan **Muat daftar** untuk melihat model yang
+   tersedia dan pilih salah satu.
 
 > **Yang perlu disadari sebelum menyalakannya:** isi jurnal dan laporan siswa
 > dikirim ke server Google untuk diproses. Namanya tidak ikut, tetapi isi

@@ -329,6 +329,34 @@
 .mi-putar{animation:aiPutar 1s linear infinite}
 @keyframes aiPutar{to{transform:rotate(360deg)}}
 .ai-status{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 16px}
+/* Hasil Uji koneksi, ditulis di kartunya supaya bisa dibaca sambil membuka
+   Google Cloud Console di tab lain. Toast menghilang; ini tidak. */
+.ai-diagnosa{margin-top:14px;padding:12px 14px;border-radius:var(--r-md);
+  border:1px solid var(--outline-variant);background:var(--surface-container-low);
+  font-size:13px;line-height:1.55}
+.ai-diagnosa p{margin:0 0 8px;display:flex;gap:8px;align-items:flex-start}
+.ai-diagnosa p:last-child{margin-bottom:0}
+.ai-diagnosa .mi{flex:0 0 auto;font-size:18px;line-height:1.3}
+.ai-diagnosa.ok{border-color:var(--success);background:var(--success-bg);color:var(--success)}
+.ai-diagnosa.gagal{border-color:var(--error);background:var(--error-bg);color:var(--on-surface)}
+.ai-diagnosa.gagal .mi{color:var(--error)}
+.ai-diagnosa-kode{font-size:12px;color:var(--on-surface-muted)}
+.ai-diagnosa code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;
+  padding:1px 5px;border-radius:var(--r-sm);background:var(--surface-container);
+  color:var(--on-surface);overflow-wrap:anywhere}
+.ai-diagnosa a{align-self:flex-start}
+/* Catatan "jangan salah API". Dibuat setenang mungkin — ia bukan galat, hanya
+   rambu di persimpangan yang memang membingungkan. */
+.ai-catatan{margin:0 0 16px;padding:12px 14px;border-radius:var(--r-md);
+  border:1px solid var(--warning);background:var(--warning-bg);
+  font-size:12.5px;line-height:1.55;color:var(--on-surface)}
+.ai-catatan p{margin:0 0 8px;display:flex;gap:8px;align-items:flex-start}
+.ai-catatan p:last-child{margin-bottom:0}
+.ai-catatan .mi{flex:0 0 auto;font-size:17px;line-height:1.35;color:var(--warning)}
+.ai-catatan code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;
+  padding:1px 5px;border-radius:var(--r-sm);background:var(--surface-container);
+  color:var(--on-surface);overflow-wrap:anywhere}
+.ai-catatan a{align-self:flex-start}
 .ai-model-baris{display:flex;gap:8px;align-items:center}
 .ai-model-baris .field-input{flex:1 1 auto;min-width:0}
 .ai-model-baris .btn{flex:0 0 auto;white-space:nowrap}
@@ -337,4 +365,4 @@
 /* Cap versi berkas ini, dibaca versiCss() di app1.js. Penanda ini juga menjadi
    tanda akhir berkas: bila app.css yang dipegang peramban lebih tua daripada
    index.html, capnya tidak akan sama dan boot memuat ulang sekali. */
-:root{--versi-aset:"5.1"}
+:root{--versi-aset:"5.4"}

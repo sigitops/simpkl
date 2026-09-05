@@ -416,7 +416,40 @@ try {
 const res = await panggil('ujiKoneksiAi', AppState.sessionToken);
 sembunyikanSibuk();
 toast(res.message, res.success ? 'success' : 'error', 9000);
+// Hasilnya juga ditulis di kartu, bukan hanya di toast. Toast menghilang
+// sendiri sesudah sembilan detik; diagnosis yang perlu dibaca sambil membuka
+// Google Cloud Console di tab lain tidak boleh ikut menghilang.
+tulisDiagnosaAi(res);
+if (res.success) muatStatusAi();
 } catch (err) { sembunyikanSibuk(); toast(err.message, 'error', 9000); }
+}
+function tulisDiagnosaAi(res) {
+const kotak = $('aiDiagnosa');
+if (!kotak) return;
+kotak.hidden = false;
+if (res.success) {
+kotak.className = 'ai-diagnosa ok';
+kotak.innerHTML = `<p><span class="mi">check_circle</span> ${esc(res.message)}</p>`;
+return;
+}
+const d = res.data || {};
+kotak.className = 'ai-diagnosa gagal';
+kotak.innerHTML = `<p><span class="mi">error</span> ${esc(res.message)}</p>` +
+(d.alasan ? `<p class="ai-diagnosa-kode">Kode alasan Google: <code>${esc(d.alasan)}</code>${
+d.kode ? ' · HTTP ' + esc(String(d.kode)) : ''}</p>` : '') +
+// Tautan dari Google sudah memuat nomor proyek yang benar. Menyuruh admin
+// mencari proyeknya sendiri di antara beberapa proyek Cloud adalah cara
+// tercepat membuatnya menyerah.
+(d.kuotaMetrik ? `<p class="ai-diagnosa-kode">Kuota yang ditolak:
+<code>${esc(d.kuotaMetrik)}</code></p>` : '') +
+(d.tautan ? `<p><a href="${esc(d.tautan)}" target="_blank" rel="noopener"
+class="btn btn-outline btn-xs"><span class="mi">open_in_new</span>
+Buka halaman pengaktifan di Google Cloud</a></p>` : '') +
+// Kuota bernilai nol tidak diperbaiki di Cloud Console melainkan dengan
+// membuat kunci di proyek buatan AI Studio, jadi tautannya pun berbeda.
+(d.tautanStudio ? `<p><a href="${esc(d.tautanStudio)}" target="_blank" rel="noopener"
+class="btn btn-outline btn-xs"><span class="mi">open_in_new</span>
+Buat kunci baru di Google AI Studio</a></p>` : '');
 }
 async function muatPengaturan() {
 try {
@@ -1370,4 +1403,4 @@ await muatJadwalShift();
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '5.1';
+window.__SIMPKL_EOF = '5.4';
