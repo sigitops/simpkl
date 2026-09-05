@@ -226,27 +226,6 @@ function initPengumuman() {
 muatDaftarPengumuman();
 if (AppState.user.role === 'admin') muatOpsiGuruKeSelect('pgTargetId');
 toggleTargetGuru();
-pasangAiPengumuman();
-}
-/**
- * Tombol "Rapikan dengan AI" di bawah kotak isi pengumuman.
- *
- * Berbeda dari dua tempat lain, di sini AI menimpa DUA kolom sekaligus — judul
- * dan isi — jadi potret cadangannya juga menyimpan keduanya. Tanpa itu, admin
- * yang tidak menyukai hasil rapiannya kehilangan judul yang sudah ia pikirkan.
- */
-function pasangAiPengumuman() {
-const slot = $('slotAiPengumuman');
-if (!slot) return;
-slot.innerHTML = barisAi('aiPengumuman', 'Rapikan dengan AI',
-'AI memperbaiki tata bahasanya. Tanggal, jam, dan nama tidak diubah — tetap periksa.');
-pasangAi('aiPengumuman', {
-fn: 'aiRapikanPengumuman',
-args: () => [$('pgJudul').value, $('pgIsi').value],
-cadangkan: () => ({ judul: $('pgJudul').value, isi: $('pgIsi').value }),
-terap: d => { $('pgJudul').value = d.judul || ''; $('pgIsi').value = d.isi || ''; },
-pulihkan: p => { $('pgJudul').value = p.judul; $('pgIsi').value = p.isi; }
-});
 }
 function toggleTargetGuru() {
 const sel = $('pgTarget'), field = $('fieldTargetGuru');
@@ -342,115 +321,6 @@ $('modalBody').innerHTML = (res.success && res.data.length)
 $('modalBody').innerHTML = emptyState('error', 'Gagal memuat', err.message);
 }
 }
-// ── Pengaturan AI Asisten ──────────────────────────────────────────────────
-//
-// Kuncinya TIDAK PERNAH dikirim balik ke sini — yang datang hanya empat huruf
-// terakhirnya, cukup untuk mengenali kunci mana yang terpasang. Karena itu
-// kotak kuncinya selalu tampil kosong: ia kotak untuk MENGGANTI, bukan kotak
-// yang menampilkan apa yang tersimpan.
-async function muatStatusAi() {
-const kotak = $('aiStatusKotak');
-if (!kotak) return;
-try {
-const res = await panggilCepat('statusAi', AppState.sessionToken);
-if (!res.success) { kotak.innerHTML = `<p class="muted-sm">${esc(res.message)}</p>`; return; }
-const d = res.data;
-AppState.aiModelTerpasang = d.model;
-if ($('aiAktif')) $('aiAktif').value = d.aktif ? 'Ya' : 'Tidak';
-isiSelectModel([d.model], d.model);
-kotak.innerHTML = d.terpasang
-? `<span class="chip chip-success"><span class="mi">check_circle</span>Kunci terpasang ${esc(d.ekor)}</span>
-<span class="chip ${d.aktif ? 'chip-info' : 'chip-neutral'}">
-<span class="mi">${d.aktif ? 'auto_awesome' : 'block'}</span>${d.aktif ? 'Aktif' : 'Nonaktif'}</span>`
-: `<span class="chip chip-warning"><span class="mi">key_off</span>Belum ada kunci API</span>`;
-} catch (err) {
-kotak.innerHTML = `<p class="muted-sm">${esc(err.message)}</p>`;
-}
-}
-function isiSelectModel(daftar, terpilih) {
-const sel = $('aiModel');
-if (!sel) return;
-const semua = daftar.slice();
-if (terpilih && semua.indexOf(terpilih) < 0) semua.unshift(terpilih);
-sel.innerHTML = semua.map(m =>
-`<option value="${esc(m)}" ${m === terpilih ? 'selected' : ''}>${esc(m)}</option>`).join('');
-}
-async function muatModelAi() {
-tampilkanSibuk('Menanyakan daftar model…');
-try {
-const res = await panggil('daftarModelAi', AppState.sessionToken);
-sembunyikanSibuk();
-if (!res.success) { toast(res.message, 'error', 8000); return; }
-isiSelectModel(res.data, AppState.aiModelTerpasang);
-toast(res.message, 'success');
-} catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
-}
-async function simpanAi() {
-const kunci = $('aiKunci') ? $('aiKunci').value.trim() : '';
-tampilkanSibuk('Menyimpan pengaturan AI…');
-try {
-// Kunci hanya dikirim bila kotaknya diisi. Kotak kosong berarti "biarkan yang
-// sudah ada", bukan "cabut" — mencabut dilakukan lewat status Nonaktif.
-if (kunci) {
-const rk = await panggil('simpanKunciAi', AppState.sessionToken, kunci);
-if (!rk.success) { sembunyikanSibuk(); toast(rk.message, 'error', 8000); return; }
-$('aiKunci').value = '';
-}
-const res = await panggil('simpanPengaturan', AppState.sessionToken, {
-aiAktif: $('aiAktif') ? $('aiAktif').value : 'Ya',
-aiModel: $('aiModel') && $('aiModel').value ? $('aiModel').value : ''
-});
-sembunyikanSibuk();
-toast(res.success ? 'Pengaturan AI tersimpan.' : res.message, res.success ? 'success' : 'error');
-if (res.success) {
-// Bootstrap memuat aiSiap, dan tombol AI di menu lain bergantung padanya.
-batalkanPaketData();
-await muatBootstrap();
-muatStatusAi();
-}
-} catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
-}
-async function ujiAi() {
-tampilkanSibuk('Menghubungi layanan AI…');
-try {
-const res = await panggil('ujiKoneksiAi', AppState.sessionToken);
-sembunyikanSibuk();
-toast(res.message, res.success ? 'success' : 'error', 9000);
-// Hasilnya juga ditulis di kartu, bukan hanya di toast. Toast menghilang
-// sendiri sesudah sembilan detik; diagnosis yang perlu dibaca sambil membuka
-// Google Cloud Console di tab lain tidak boleh ikut menghilang.
-tulisDiagnosaAi(res);
-if (res.success) muatStatusAi();
-} catch (err) { sembunyikanSibuk(); toast(err.message, 'error', 9000); }
-}
-function tulisDiagnosaAi(res) {
-const kotak = $('aiDiagnosa');
-if (!kotak) return;
-kotak.hidden = false;
-if (res.success) {
-kotak.className = 'ai-diagnosa ok';
-kotak.innerHTML = `<p><span class="mi">check_circle</span> ${esc(res.message)}</p>`;
-return;
-}
-const d = res.data || {};
-kotak.className = 'ai-diagnosa gagal';
-kotak.innerHTML = `<p><span class="mi">error</span> ${esc(res.message)}</p>` +
-(d.alasan ? `<p class="ai-diagnosa-kode">Kode alasan Google: <code>${esc(d.alasan)}</code>${
-d.kode ? ' · HTTP ' + esc(String(d.kode)) : ''}</p>` : '') +
-// Tautan dari Google sudah memuat nomor proyek yang benar. Menyuruh admin
-// mencari proyeknya sendiri di antara beberapa proyek Cloud adalah cara
-// tercepat membuatnya menyerah.
-(d.kuotaMetrik ? `<p class="ai-diagnosa-kode">Kuota yang ditolak:
-<code>${esc(d.kuotaMetrik)}</code></p>` : '') +
-(d.tautan ? `<p><a href="${esc(d.tautan)}" target="_blank" rel="noopener"
-class="btn btn-outline btn-xs"><span class="mi">open_in_new</span>
-Buka halaman pengaktifan di Google Cloud</a></p>` : '') +
-// Kuota bernilai nol tidak diperbaiki di Cloud Console melainkan dengan
-// membuat kunci di proyek buatan AI Studio, jadi tautannya pun berbeda.
-(d.tautanStudio ? `<p><a href="${esc(d.tautanStudio)}" target="_blank" rel="noopener"
-class="btn btn-outline btn-xs"><span class="mi">open_in_new</span>
-Buat kunci baru di Google AI Studio</a></p>` : '');
-}
 async function muatPengaturan() {
 try {
 const res = await panggilCepat('getAllConfig', AppState.sessionToken);
@@ -463,7 +333,6 @@ isi('stKepsek', c.kepalaSekolah); isi('stNipKepsek', c.nipKepalaSekolah);
 isi('stRadius', c.radiusDefault); isi('stToleransi', c.toleransiTelat); isi('stAdminEmail', c.adminEmail);
 if ($('stNotif')) $('stNotif').value = c.notifikasiEmail || 'aktif';
 pratinjauLogo();
-muatStatusAi();
 const box = $('boxPenyimpanan');
 if (box) {
 const folder = id => id ? (HTTPS + 'drive.google.com/drive/folders/' + id) : '';
@@ -1403,4 +1272,4 @@ await muatJadwalShift();
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '5.4';
+window.__SIMPKL_EOF = '5.9';

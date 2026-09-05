@@ -1,7 +1,7 @@
 # SIM PKL — Panduan Teknis
 
 Sistem Informasi & Manajemen Presensi Siswa Praktik Kerja Lapangan
-SMK HKTI 2 Purwareja Klampok · versi 5.4
+SMK HKTI 2 Purwareja Klampok · versi 5.7
 
 Dokumen ini menjelaskan aplikasi sebagaimana adanya sekarang: cara kerjanya, cara
 memasangnya dari nol, dan cara mengembangkannya. Ditulis untuk orang yang akan
@@ -996,195 +996,114 @@ sana.
 
 ---
 
-## AI Asisten — Gemini (v5.1)
+## Ilustrasi hero (v5.9)
 
-Membantu guru menyusun draf komentar jurnal, komentar laporan akhir, dan
-merapikan pengumuman. Ini panggilan keluar pertama yang pernah dilakukan
-aplikasi ini — sebelumnya tidak ada satu pun `UrlFetchApp` di `Kode.gs`.
+Kotak di sebelah kanan sapaan dulu berisi **satu ikon Material raksasa** di atas
+bidang biru muda — bukan ilustrasi melainkan tempat kosong yang kebetulan
+berwarna. Sekarang ketiga peran punya gambarnya sendiri: satu kerangka kartu
+yang sama, tiga isi yang berbeda.
 
-### Satu aturan yang mengatur semua
-
-> **AI hanya membuat draf. Ia tidak pernah memutuskan.**
-
-Tidak ada satu pun fungsi di modul AI yang menulis ke sheet. Yang dikembalikan
-hanya teks, dan teks itu masuk ke kotak yang memang sudah ada supaya guru
-menyuntingnya. Yang menekan Setujui, Tolak, dan Terbitkan tetap manusia, lewat
-`reviewJurnal()`, `reviewLaporan()`, dan `simpanPengumuman()` yang **tidak
-berubah satu baris pun**.
-
-Konsekuensinya yang penting: kalau seluruh modul ini mati — kunci dicabut, kuota
-habis, Google sedang penuh — aplikasi tetap berjalan persis seperti sebelum ada
-AI. Itu bukan kebetulan, itu syaratnya. `uji-ai.js` mematikan AI lalu memastikan
-kotak komentar dan tombol Setujui tetap utuh, dan menggagalkan panggilan AI di
-tengah jalan lalu memastikan tulisan guru yang sudah ada tidak tersentuh.
-
-### Kunci API tidak boleh lewat AppConfig
-
-Kuncinya disimpan di **Script Properties**, bukan di sheet `AppConfig`.
-Alasannya bukan selera: `getAllConfig()` mengirim seluruh isi AppConfig ke
-klien, dan `app*.js` adalah berkas publik di Vercel yang bisa dibuka siapa saja.
-Kunci yang lewat sana sama saja dengan kunci yang ditempel di pintu depan.
-
-Yang keluar dari server hanya dua hal, dan keduanya tidak berguna bagi penyerang:
-
-| Ke mana | Apa yang dikirim |
-|---|---|
-| Bootstrap (semua peran) | `config.aiSiap` — satu boolean |
-| `statusAi()` (admin saja) | empat huruf terakhir kunci, mis. `…4f2a` |
-
-Kotak kunci di Pengaturan **selalu tampil kosong**. Ia kotak untuk *mengganti*,
-bukan kotak yang menampilkan apa yang tersimpan — karena yang tersimpan memang
-tidak pernah dikirim ke sana.
-
-### Nama model sengaja tidak dipatok
-
-Keluarga Gemini berganti nama beberapa kali setahun dan model lama akhirnya
-dimatikan. Kalau namanya tertanam di kode, fiturnya akan mati diam-diam pada
-suatu hari tanpa ada yang mengubah apa pun. Karena itu:
-
-- namanya disimpan di `AppConfig.aiModel`, dengan `AI_MODEL_BAWAAN` sebagai
-  cadangan;
-- **`daftarModelAi()` menanyakan langsung ke Google** model apa saja yang boleh
-  dipakai kunci ini, lalu menyaring yang tidak bisa menulis teks (penyematan,
-  gambar, suara);
-- kegagalan 404 tidak berbunyi "not found" melainkan menyebut nama modelnya dan
-  memberi tahu jalan keluarnya: buka Pengaturan, tekan "Muat daftar model".
-
-### Membaca laporan akhir: dua format, dua jalan
-
-Aplikasi menerima PDF dan DOCX, dan masing-masing ditempuh lewat jalan terbaiknya
-sendiri:
-
-| Format | Jalan | Alasan |
+| Peran | Isi kartu utama | Kartu satelit |
 |---|---|---|
-| PDF | dikirim apa adanya ke Gemini | dibaca secara asli, sekali lompatan, tabel dan tata letak tidak hilang |
-| DOCX | diubah jadi Google Docs lalu diekspor sebagai teks | Gemini tidak membaca DOCX; mengubahnya di Drive jauh lebih murah daripada mengunggah berkas binernya |
+| Siswa | presensi hari ini (centang besar) + rekam kehadiran sepekan | jam & titik lokasi |
+| Guru pembimbing | checklist penilaian + batang progresnya | cincin progres & dokumen |
+| Pokja PKL | grafik batang + garis tren yang menanjak | panah tren & daftar siswa |
 
-Konversinya memakai **Drive REST + `ScriptApp.getOAuthToken()`**, bukan Advanced
-Drive Service. Advanced Service menuntut satu centang manual di editor Apps
-Script yang tidak ikut terbawa saat kode disalin ke proyek baru — dan setup yang
-bergantung pada langkah manual yang tak terlihat adalah setup yang akan
-terlupakan. Salinan sementaranya dibuang di blok `finally`; tanpa itu folder
-sekolah menumpuk satu berkas sampah setiap kali tombol AI ditekan.
+### Kenapa geometris, bukan figur orang (v5.9)
 
-Berkas di atas `AI_MAKS_BERKAS_MB` (12 MB) **ditolak sebelum diunggah**, dengan
-kalimat yang menyebut ukurannya — bukan dibiarkan menggantung sampai proxy
-Vercel putus di detik ke-60.
+Tiga versi sebelumnya menggambar sosok manusia — siswa berhoodie, guru
+berkacamata, pokja berdasi — dan ketiganya ditolak. Ini catatan kegagalannya,
+karena sebabnya berguna untuk diingat.
 
-### Penjagaan lain
+Kualitas gambar figur ditentukan **anatomi**, dan anatomi tidak bisa ditawar.
+Mata orang mengenali proporsi wajah dan badan jauh lebih teliti daripada
+mengenali apa pun yang lain — meleset satu-dua persen sudah cukup membuat
+gambarnya terasa salah tanpa bisa ditunjuk salahnya di mana. Tiap putaran
+memperbaiki hal yang benar (pose tiga perempat, kepala diperkecil, palet
+diredam, garis lipatan ditambahkan) dan tetap tidak sampai, karena yang kurang
+bukan daftar perbaikannya melainkan ketelitian yang tidak bisa dicapai dengan
+menulis path SVG dan memeriksanya lewat tangkapan layar.
 
-- **Nama siswa tidak pernah ikut dikirim.** Model tidak butuh nama untuk menulis
-  umpan balik, jadi tidak ada alasan mengirimkannya ke luar. Yang keluar hanya
-  isi pekerjaannya.
-- **Draf disinggah 30 menit** per (jurnal × nada). Membuka modal yang sama dua
-  kali tidak memanggil Google dua kali. Jawaban yang **gagal** tidak ikut
-  disinggah — kalau tidak, satu galat sesaat akan terus terulang selama setengah
-  jam.
-- **Penjaga laju** 10 panggilan per pengguna per menit. Bukan pengamanan, hanya
-  pencegah satu orang menghabiskan kuota harian sekolah dengan menekan tombol
-  berulang kali.
-- **Tidak diulang otomatis.** `amanDiulang()` memutuskan berdasarkan awalan nama,
-  dan `ai…` tidak termasuk. Satu klik, satu kuota. `uji-ai.js` memanggil
-  `amanDiulang()` yang sebenarnya untuk memastikan itu, bukan membaca sumbernya.
-- **Setiap kegagalan punya kalimatnya sendiri** — kunci ditolak, model tidak ada,
-  kuota habis, layanan sibuk, diblokir filter keamanan, jawaban terpotong.
-  `muteHttpExceptions` dinyalakan justru supaya badan galatnya terbaca; ini
-  pelajaran yang sama dengan proxy Vercel di v4.3.
+Ilustrasi geometris tidak memikul beban itu. Yang menentukan kualitasnya adalah
+hal-hal yang justru **bisa** dijamin dan bisa diuji: irama jarak, satu bahasa
+bentuk, kedalaman berlapis, dan palet yang disiplin.
 
-### 403 bukan satu penyakit (v5.2)
+> **Pelajaran yang lebih umum:** kalau tiga putaran perbaikan tidak
+> memperbaiki, yang salah biasanya bukan eksekusinya melainkan pilihan
+> pendekatannya. Berhenti dan ganti pendekatan lebih murah daripada putaran
+> keempat.
 
-Versi pertama menjawab **setiap** 403 dengan satu kalimat yang sama — "pastikan
-Generative Language API sudah aktif" — dan itu terbukti salah di pemakaian
-pertama. 403 dari Google punya sedikitnya empat sebab, dan jalan keluarnya
-berbeda-beda:
+### Empat aturan yang dipegang seluruh bagian ini
 
-| `reason` dari Google | Artinya | Yang harus dilakukan |
+1. **Satu bahasa bentuk.** Kartu ber-radius 11, satelit 9, elemen di dalamnya
+   2,5–5, pil selalu bulat penuh. Tidak ada satu pun sudut yang dipilih
+   sembarangan.
+2. **Kedalaman lewat tumpukan, bukan bayangan tebal.** Kartu utama di tengah,
+   dua kartu satelit menimpanya sedikit di dua sudut berlawanan. Tumpang tindih
+   kecil itulah yang membuat bidang datar terbaca berlapis; bayangannya sendiri
+   sengaja tipis (`feDropShadow` dy 3, blur 4,5).
+3. **Warnanya milik aplikasi ini, bukan palet baru.** Aksennya memakai
+   `var(--primary)` dan `var(--success)` — token yang sama persis dengan tombol
+   dan lencana di seluruh dashboard. Jadi ilustrasinya bukan sekadar
+   "diselaraskan" dengan temanya; ia memang bagian dari sistem warnanya, dan
+   ikut berubah sendiri kalau tema aplikasinya diubah. `uji-hero.js` menolak
+   hex baru yang diselundupkan masuk — satu-satunya yang diizinkan `#FFFFFF`
+   untuk centang.
+4. **Ruang kosong dijaga.** Isi hanya menempati bidang tengah; tepi kotak
+   sengaja dibiarkan lapang.
+
+### Kenapa harus DUA LAPIS
+
+Kotak `.hero-art` tingginya **selalu 180px** (dikunci `min-height`), tetapi
+lebarnya berayun mengikuti kolom kisi:
+
+| Lebar layar | Kotak `.hero-art` | Perbandingan |
 |---|---|---|
-| `SERVICE_DISABLED` | API belum dinyalakan di proyek Cloud tempat kunci dibuat | Buka tautan pengaktifan, tekan Enable |
-| `API_KEY_SERVICE_BLOCKED` | Kunci dibatasi ke API lain | Credentials → API restrictions → tambahkan Generative Language API |
-| `API_KEY_HTTP_REFERRER_BLOCKED` | Kunci dibatasi ke situs tertentu | Application restrictions → None (Apps Script tidak punya perujuk) |
-| `API_KEY_IP_ADDRESS_BLOCKED` | Kunci dibatasi ke IP tertentu | Application restrictions → None (IP Apps Script berubah-ubah) |
+| 900px | 314 × 180 | 1,74 |
+| 1280px | 466 × 180 | 2,59 |
+| 1920px | 722 × 180 | 4,01 |
 
-Yang lebih buruk pada versi pertama: ia **membuang pesan asli Google**, termasuk
-tautan pengaktifan yang di dalamnya sudah memuat **nomor proyek yang benar**.
-Orang yang harus memperbaikinya justru kehilangan satu-satunya petunjuk yang
-menyebut proyek mana yang bermasalah — persis kelas kegagalan buta yang sudah
-diperbaiki di v4.3, terulang di tempat baru.
+Versi lama memakai **satu** SVG dengan `preserveAspectRatio="…slice"` untuk
+rentang selebar itu. Tidak ada satu pun `viewBox` yang bisa: pada 1920px,
+`slice` harus memperbesar gambar 1,8× untuk menutupi lebarnya lalu memotong
+98px tingginya. Susunannya sekarang:
 
-Sekarang `bedahGalatAi()` mengurai `error.details[].reason` dan menarik tautan
-pengaktifannya, `pesanGalatAi()` memberi jalan keluar per sebab, dan **kalimat
-asli Google selalu disertakan di belakang** (`— kata Google: "…"`). Terjemahan
-kita boleh salah tebak; kalimat aslinya tidak.
+| | `preserveAspectRatio` | Isinya | Kenapa aman |
+|---|---|---|---|
+| Lapisan 1 | `none` | gradien langit, cahaya, bidang ambien | semuanya bentuk yang tidak rusak diregangkan mendatar |
+| Lapisan 2 | `xMidYMid meet` | kartu dan isinya | `meet` **tidak pernah memotong** |
 
-### 429 juga bukan satu penyakit (v5.4)
+Kuncinya angka: `viewBox` lapisan 2 adalah `0 0 300 180`, perbandingan **1,67**
+— di bawah perbandingan kotak yang paling sempit sekalipun (1,74). Karena itu
+`meet` selalu dibatasi TINGGI: gambarnya selalu tepat 180px tinggi, selalu
+utuh, di lebar layar berapa pun. `uji-hero.js` mengukur ini pada ketiga lebar
+nyata dan menolak bila salah satu lapisan kembali memakai `slice`.
 
-Dua keadaan berbunyi sama tetapi penanganannya berlawanan:
+> **Bidang ambien harus bergradien sampai nol.** Percobaan yang memakai elips
+> berkelegapan tetap (`opacity=".09"`) meninggalkan tepi keras yang terbaca
+> sebagai bentuk nyasar, bukan sebagai cahaya. Yang dipakai sekarang
+> `radialGradient` dengan `stop-opacity` berakhir di 0.
 
-| | Artinya | Menunggu menolong? |
-|---|---|---|
-| Kuota **habis terpakai** | Batas per menit/per hari tercapai | **Ya** — jeda dari Google disebutkan |
-| Kuota **bernilai nol** | Jatahnya tidak pernah ada | **Tidak akan pernah** |
+### Kenapa SVG sebaris, bukan berkas gambar
 
-Keadaan kedua menimpa kunci yang dibuat di proyek Google Cloud biasa yang belum
-punya akun penagihan. Bentuknya menipu: `ListModels` tetap menjawab **200**
-sehingga tombol "Muat daftar" tampak berhasil dan daftar modelnya terisi,
-tetapi `generateContent` ditolak **429 pada percobaan pertama**.
+1. **Nol permintaan jaringan.** Hero tergambar paling awal. Menambahkan satu
+   unduhan gambar di sana berarti menambah satu hal yang bisa lambat tepat di
+   tempat yang paling terlihat — bertentangan dengan seluruh pekerjaan
+   kecepatan sejak v4.0. Ukurannya ±7 KB per peran, turun dari ±17 KB di v5.8.
+2. **Ikut berganti tema seluruhnya.** Karena tidak ada satu pun warna mati di
+   dalamnya, mode malam bukan hasil menggelapkan gambar terang secara paksa.
+3. **Tidak pernah menggeser tata letak.** `viewBox` mengunci perbandingannya
+   dan `.hero-art` sudah punya `min-height`, jadi kotaknya bertinggi penuh
+   sebelum gambarnya sempat digambar.
 
-Versi sebelumnya menyamakan keduanya dan menjawab "coba lagi beberapa menit
-lagi" — nasihat yang **tidak mungkin berhasil**, dan yang membuat orang
-menunggu, mencoba lagi, gagal lagi, lalu menyimpulkan aplikasinya yang rusak.
-Memberi saran yang pasti gagal lebih buruk daripada tidak memberi saran.
+> **Satu token melanggar aturan "mode malam lebih gelap", dan itu disengaja.**
+> `--il-hias` digambar tipis DI ATAS latar, jadi menggelapkannya di mode malam
+> justru membuatnya lenyap. Yang dituntut untuknya bukan "lebih gelap"
+> melainkan "dipilih ulang, dan tetap lebih terang daripada langit yang
+> ditumpanginya" — dan itulah yang diuji.
 
-`bedahGalatAi()` sekarang membaca `QuotaFailure.violations[]` (`quotaMetric`,
-`quotaValue`) dan `RetryInfo.retryDelay`. Bila ada `quotaValue: "0"` — atau
-kalimatnya memuat `limit: 0` — pesannya berganti sama sekali: menunggu tidak
-menolong, dan dua jalan keluarnya disebut (buat kunci di proyek **baru** buatan
-AI Studio, atau hubungkan penagihan). Uji koneksi menampilkan tombol ke AI
-Studio, bukan ke Cloud Console — karena jalan keluarnya memang di tempat lain.
-
-`galatAi()` melempar `Error` yang **membawa bukti mentahnya** (`aiAlasan`,
-`aiRinci`, `aiTautan`, `aiKuotaMetrik`, `aiKuotaNol`), dan **Uji koneksi**
-menuliskannya di kartu Pengaturan —
-bukan hanya di toast. Toast menghilang sesudah sembilan detik; diagnosis yang
-perlu dibaca sambil membuka Google Cloud Console di tab lain tidak boleh ikut
-menghilang. Tautan pengaktifannya tampil sebagai tombol yang bisa langsung
-diklik.
-- **Apa pun yang ditimpa bisa dikembalikan.** Menimpa tulisan orang tanpa jalan
-  pulang adalah hal yang tidak sopan dilakukan perangkat lunak. Di Pengumuman,
-  potret cadangannya menyimpan **judul dan isi sekaligus**.
-
-### Menyiapkannya
-
-> ### ⚠ Dua API bernama nyaris sama — dan yang salah muncul lebih dulu
->
-> | | Nama di Console | Service name | Untuk fitur ini |
-> |---|---|---|---|
-> | ✅ | **Gemini API** | `generativelanguage.googleapis.com` | **Ini yang benar.** Gratis, tanpa penagihan |
-> | ❌ | Cloud Natural Language API | `language.googleapis.com` | Produk lain. Minta penagihan. Tidak menolong sama sekali |
->
-> Mengetik "language" di API Library memunculkan yang **salah** lebih dulu.
-> Menyalakannya tidak menghasilkan galat baru — 403 yang sama berulang — jadi
-> orang menyimpulkan kuncinya yang rusak, lalu membuat kunci baru, lalu gagal
-> lagi. Kekeliruan ini benar-benar terjadi, dan sesudahnya rambu yang sama
-> dipasang di dua tempat: di kartu Pengaturan sebelum orang tersesat, dan di
-> dalam pesan `SERVICE_DISABLED` sesudahnya.
-
-1. Ambil kunci di [Google AI Studio](https://aistudio.google.com/apikey).
-   **Catat proyek Cloud yang dipilih saat membuatnya** — inilah sumber
-   kesalahan yang paling sering: kunci dibuat di proyek yang Gemini API-nya
-   belum aktif.
-2. Buka **Pengaturan → AI Asisten**, tempel kuncinya, tekan **Simpan**.
-3. Tekan **Uji koneksi** lebih dulu, sebelum yang lain. Bila gagal, kotak
-   diagnosis di bawah tombol menyebutkan kode alasan Google dan — bila
-   sebabnya API yang belum aktif — tombol yang langsung membuka halaman
-   pengaktifan proyek yang benar.
-4. Sesudah Uji koneksi berhasil, tekan **Muat daftar** untuk melihat model yang
-   tersedia dan pilih salah satu.
-
-> **Yang perlu disadari sebelum menyalakannya:** isi jurnal dan laporan siswa
-> dikirim ke server Google untuk diproses. Namanya tidak ikut, tetapi isi
-> pekerjaannya iya. Untuk sekolah, itu keputusan yang sebaiknya diambil sadar.
-> Saklar **Nonaktif** di Pengaturan mematikannya sepenuhnya tanpa mencabut kunci.
+Di layar di bawah 760px `.hero-art` disembunyikan seluruhnya — pada lebar itu,
+sapaan dan tombolnya yang lebih berguna.
 
 ---
 
