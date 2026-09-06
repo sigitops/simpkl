@@ -757,9 +757,9 @@ return '' +
 // kalau di atas, ia terbaca sebagai coretan, bukan sebagai sambungan.
 '<g fill="none" stroke="var(--primary)" stroke-width="1.6" opacity=".32"' +
 ' stroke-dasharray="3.5 4" stroke-linecap="round">' +
-'<path d="M84 46C96 52 102 47 112 43"/>' +
-'<path d="M78 100C92 102 102 100 112 96"/>' +
-'<path d="M234 68C226 68 218 68 210 68"/>' +
+'<path class="sbAlir sbAlir1" d="M77 44C92 52 102 47 117 40"/>' +
+'<path class="sbAlir sbAlir2" d="M71 99C92 103 102 100 117 95"/>' +
+'<path class="sbAlir sbAlir3" d="M241 68C230 68 216 68 204 68"/>' +
 '</g>' +
 '<g fill="var(--primary)" opacity=".38">' +
 '<circle cx="112" cy="43" r="2"/><circle cx="112" cy="96" r="2"/>' +
@@ -767,7 +767,7 @@ return '' +
 '</g>' +
 
 // Kartu pusat: aplikasinya sendiri.
-'<g>' +
+'<g class="sbApung sbApungInti"><g class="sbGoyang sbGoyangInti">' +
 ilKartu(110, 28, 100, 86, 10) +
 '<path d="M110 38a10 10 0 0 1 10-10h80a10 10 0 0 1 10 10v8H110Z"' +
 ' fill="var(--il-kartu-isi)" opacity=".06"/>' +
@@ -782,19 +782,21 @@ batang +
 '<path d="M124 96l14-5 14 3 14-7 14-6" fill="none" stroke="var(--primary)"' +
 ' stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>' +
 '<circle cx="180" cy="81" r="3.8" fill="var(--il-kartu)"/>' +
-'<circle cx="180" cy="81" r="2.4" fill="var(--primary)"/>' +
-'</g>' +
+'<circle class="sbDenyut" cx="180" cy="81" r="2.4" fill="var(--primary)"/>' +
+'</g></g>' +
 
 // Keping presensi.
+'<g class="sbApung sbApungA"><g class="sbGoyang sbGoyangA">' +
 '<g transform="rotate(-5 51 33)">' +
 ilKartu(16, 14, 70, 38, 8) +
 '<circle cx="34" cy="33" r="9" fill="var(--success)"/>' +
 '<path d="M30.2 33.2l2.6 2.8 5-5.6" fill="none" stroke="#FFFFFF" stroke-width="2"' +
 ' stroke-linecap="round" stroke-linejoin="round"/>' +
 ilPil(50, 26, 26, 5, '.24') + ilPil(50, 35, 18, 4.5, '.14') +
-'</g>' +
+'</g></g></g>' +
 
 // Keping jurnal.
+'<g class="sbApung sbApungB"><g class="sbGoyang sbGoyangB">' +
 '<g transform="rotate(4 45 103)">' +
 ilKartu(10, 84, 70, 38, 8) +
 '<rect x="21" y="93" width="18" height="20" rx="3" fill="var(--primary)" opacity=".18"/>' +
@@ -804,9 +806,10 @@ ilKartu(10, 84, 70, 38, 8) +
 '<rect x="24.5" y="107" width="7" height="2" rx="1"/>' +
 '</g>' +
 ilPil(46, 96, 24, 5, '.24') + ilPil(46, 105, 16, 4.5, '.14') +
-'</g>' +
+'</g></g></g>' +
 
 // Keping penilaian.
+'<g class="sbApung sbApungC"><g class="sbGoyang sbGoyangC">' +
 '<g transform="rotate(5 270 68)">' +
 ilKartu(234, 48, 72, 40, 8) +
 '<circle cx="252" cy="68" r="11" fill="none" stroke="var(--il-kartu-isi)"' +
@@ -815,7 +818,7 @@ ilKartu(234, 48, 72, 40, 8) +
 ' stroke-width="3.4" stroke-linecap="round" stroke-dasharray="48 69.1"' +
 ' transform="rotate(-90 252 68)"/>' +
 ilPil(270, 61, 26, 5, '.24') + ilPil(270, 70, 17, 4.5, '.14') +
-'</g>' +
+'</g></g></g>' +
 '</svg>';
 }
 
@@ -1604,4 +1607,4 @@ await muatJadwalShift();
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '6.1';
+window.__SIMPKL_EOF = '6.2';

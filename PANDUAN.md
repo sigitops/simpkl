@@ -996,7 +996,7 @@ sana.
 
 ---
 
-## Layar sambutan (v6.1)
+## Layar sambutan (v6.2)
 
 Pembukaan PERTAMA di sebuah perangkat dulu langsung mendarat di form login:
 dua kolom isian dan sebuah tombol, tanpa satu kalimat pun yang menjelaskan
@@ -1148,6 +1148,65 @@ terbaca sebagai satu keluarga gambar. `.sambutan-art` memakai
 `aspect-ratio:320/150` dengan alasan yang sama dengan `min-height` di
 `.hero-art`: kotaknya punya tinggi sebelum SVG-nya sempat digambar, jadi
 kartunya tidak melompat.
+
+### Ilustrasinya melayang (v6.2)
+
+Empat kartu di ilustrasi bergerak pelan dan terus-menerus. Angkanya diambil
+dari skill motion-design SVGator — pola **Floating / Drift** dan **Depth
+(Layered-Loop Parallax)** — lalu diperkecil ke ukuran ilustrasi ini.
+
+| Elemen | Melayang | Miring | Amplitudo |
+|---|---|---|---|
+| Kartu pusat | 9,4 s | 13,1 s | ±0,7 × ±1,1 satuan |
+| Keping presensi | 6,5 s | 9,7 s | ±1,4 × ±2,0 |
+| Keping jurnal | 8,1 s | 11,3 s | ±1,2 × ±2,3 |
+| Keping penilaian | 7,3 s | 10,6 s | ±1,5 × ±1,8 |
+| Garis penghubung | aliran `stroke-dashoffset` 2,4 s | — | satu periode dasharray |
+| Titik tren | denyut skala 2,8 s | — | 1,00 → 1,06 |
+
+**Tiga hal yang membuatnya terbaca acak padahal sepenuhnya pasti:**
+
+1. **Durasinya tidak harmonis.** Tidak ada satu pun yang kelipatan yang lain,
+   jadi susunan posisi keempat kartu praktis tidak pernah berulang. Angka acak
+   sungguhan justru lebih buruk di sini: ia tidak bisa diuji, dan peralihannya
+   tidak mulus.
+2. **Jeda awalnya negatif.** Tiap elemen mulai di tengah siklusnya sendiri,
+   jadi tidak pernah ada saat semuanya diam serentak di titik nol.
+3. **Melayang dan miring dipisah ke dua lapis `<g>`.** Kalau digabung dalam
+   satu `transform`, keduanya terkunci pada satu durasi dan geraknya langsung
+   terbaca sebagai pola. Dua lapis juga sebabnya atribut `rotate` bawaan tiap
+   kartu tetap utuh — **transform CSS MENIMPA atribut transform, bukan
+   menumpuknya**, jadi tanpa pembungkus, kemiringan asli kartunya hilang.
+
+> **"Tetap berjarak" itu diukur, bukan diperkirakan.** `uji-sambutan.js`
+> menjeda seluruh animasi, lalu menggeser waktunya 100 ms demi 100 ms sampai
+> 14 detik — melewati satu periode penuh setiap animasi — dan menghitung jarak
+> terdekat antarkartu di tiap langkah. Hasilnya **21px**, jauh di atas ambang
+> 12px yang dituntut uji. Amplitudonya memang sengaja kecil: 1,1–2,3 satuan
+> viewBox terhadap jarak antarkartu 24 satuan.
+
+Untuk jalur melingkar dipakai **delapan kunci bersudut sama dengan timing
+`linear`**, bukan empat kunci berkurva. Delapan kunci linear menghasilkan
+sinus murni di kedua sumbu — persis kurva yang diminta pola ambien SVGator —
+sementara empat kunci berkurva selalu tersendat di tiap sudutnya.
+
+Ujung garis penghubung dipanjangkan beberapa satuan supaya tetap tersembunyi
+di bawah kartunya saat kartu itu melayang; tanpa itu, ujung garisnya sesekali
+menyembul dan sambungannya terlihat putus.
+
+> **Seluruh blok ini dikurung `@media (prefers-reduced-motion:no-preference)`.**
+> Ujinya membuka halaman dengan `reducedMotion: 'reduce'` dan menuntut
+> `document.querySelector('.sambutan-art').getAnimations({subtree:true})`
+> mengembalikan **nol** — benar-benar diam, bukan sekadar pelan.
+
+**Kenapa tidak memakai SVG ekspor dari SVGator.** Konektornya dipakai — untuk
+skill motion-design-nya, yang angkanya ada di tabel atas. Tetapi asetnya
+sendiri tetap SVG sebaris yang digerakkan CSS, sebab SVG ekspor akan
+memanggang warnanya (mode gelap mati, karena ilustrasi ini memakai
+`var(--primary)` dan `var(--il-*)`) dan menambah satu unduhan berkas di layar
+yang justru dirancang tanpa permintaan jaringan sama sekali. Skill SVGator
+sendiri menyebut batas itu: ia untuk aset SVG mandiri, bukan untuk motion di
+DOM aplikasi hidup.
 
 ### Di ponsel kartunya memenuhi layar
 
