@@ -603,6 +603,333 @@ if (typeof setelKontrolKamera === 'function' && !AppState.fotoTerambil) setelKon
 window.addEventListener('beforeunload', () => { hentikanKamera(); hentikanPantauLokasi(); });
 }
 
+// ── Layar sambutan ─────────────────────────────────────────────────────────
+//
+// Muncul SEKALI di perangkat yang baru pertama kali membuka aplikasi, tepat
+// sebelum form login. Tiga hal yang menentukan bentuk kodenya:
+//
+//   1. NOL PERMINTAAN SERVER. Seluruh isinya digambar di klien, jadi ia siap
+//      pada gambaran yang sama dengan splash. Layar sambutan yang harus
+//      menunggu server justru menambah satu detik ke pembukaan pertama —
+//      persis pengalaman yang ingin diperbaiki oleh layar ini.
+//   2. DIPASANG SEBELUM SPLASH DIREDUPKAN. Form login digambar lebih dulu di
+//      baliknya, lalu overlay ini ditempel, baru splash meredup. Urutan
+//      terbalik akan memperlihatkan form login sekejap sebelum tertutup —
+//      kedipan yang membuat aplikasi terasa gugup.
+//   3. TIDAK MENUNGGU. mulaiAplikasi() tidak boleh menggantung menunggu
+//      pengguna menekan tombol, sebab splash baru diredupkan sesudahnya.
+//      Karena itu fungsinya menempel overlay lalu langsung kembali.
+//
+// Penandanya disimpan di localStorage lewat Simpanan, yang sudah punya
+// cadangan di memori bila localStorage diblokir. Bila benar-benar diblokir,
+// layar ini muncul tiap kali aplikasi dibuka — merepotkan, tapi jauh lebih
+// baik daripada gagal boot.
+
+const KUNCI_SAMBUTAN = 'sambutanDilihat';
+
+function perluSambutan() {
+return !Simpanan.ambil(KUNCI_SAMBUTAN);
+}
+
+/**
+* Nama aplikasi, tagline, dan nama sekolah — yang diisi admin di Pengaturan.
+*
+* Sumber pertamanya adalah HALAMAN LOGIN yang baru saja digambar di balik
+* overlay ini. Itu bukan akal-akalan: halaman login dirakit server dari
+* getAllConfigObj(), jadi isinya persis nilai terbaru dari Pengaturan, dan
+* membacanya dari DOM tidak memerlukan satu pun permintaan tambahan.
+*
+* localStorage baru menjadi cadangan, sebab `identitas` di sana hanya tersimpan
+* SETELAH seseorang pernah berhasil masuk di perangkat ini — pada pembukaan
+* pertama yang sesungguhnya ia masih kosong. Urutan terbalik akan membuat layar
+* ini memakai nama basi setiap kali admin mengganti nama aplikasi.
+*/
+function identitasSambutan() {
+const out = { appName: '', tagline: '', sekolah: '' };
+const ambilTeks = (sel) => {
+const el = document.querySelector('#app-container ' + sel);
+return el ? (el.textContent || '').trim() : '';
+};
+out.appName = ambilTeks('.auth-app');
+out.tagline = ambilTeks('.auth-tagline');
+out.sekolah = ambilTeks('.auth-sekolah-pill span:last-child');
+
+if (!out.appName || !out.sekolah) {
+let id = {};
+try { id = JSON.parse(Simpanan.ambil('identitas') || '{}') || {}; } catch (e) { id = {}; }
+out.appName = out.appName || id.appName || '';
+out.tagline = out.tagline || id.appTagline || '';
+out.sekolah = out.sekolah || id.namaSekolah || '';
+}
+// Nama bawaan harus tetap masuk akal berdiri sendiri: pada perangkat yang
+// benar-benar baru DAN sedang luring, kedua sumber di atas bisa kosong.
+out.appName = out.appName || 'SIM PKL';
+return out;
+}
+
+/**
+* Ikon garis, digambar sebagai SVG sebaris — bukan dari font ikon.
+*
+* Alasannya bukan selera. Layar ini tampil pada gambaran PERTAMA aplikasi, dan
+* font ikon Material baru tiba beberapa ratus milidetik kemudian: memakainya di
+* sini berarti tiga kotak kosong dulu, lalu ikonnya menyusul. SVG sebaris
+* tergambar bersama HTML-nya. Semuanya memakai stroke `currentColor`, jadi
+* warnanya ikut wadahnya dan otomatis benar di mode gelap.
+*/
+const IKON_SAMBUTAN = {
+// Presensi: penanda lokasi bercentang — lokasi yang sudah terverifikasi.
+pin: '<path d="M12 21.2s6.7-5.2 6.7-10.9a6.7 6.7 0 1 0-13.4 0c0 5.7 6.7 10.9 6.7 10.9Z"/>' +
+'<path d="M9.4 10.2l1.9 2 3.4-3.5"/>',
+// Jurnal: buku catatan bergaris dengan punggung di kiri.
+jurnal: '<rect x="4.4" y="3.5" width="15.2" height="17" rx="2.6"/><path d="M8.6 3.5v17"/>' +
+'<path d="M11.9 8.7h4.6M11.9 12h4.6M11.9 15.3h3"/>',
+// Monitoring: layar dengan garis tren menanjak.
+pantau: '<rect x="3.4" y="4.4" width="17.2" height="12.3" rx="2.6"/>' +
+'<path d="M7 13.1l3.1-3.2 2.4 2 4.5-4.5"/><path d="M9.4 20.5h5.2M12 16.7v3.8"/>',
+panah: '<path d="M5 12h12.6"/><path d="m12.4 6.6 5.4 5.4-5.4 5.4"/>',
+chevron: '<path d="m6.5 9.5 5.5 5.5 5.5-5.5"/>',
+kilau: '<path d="M12 3.4 13.6 8.4 18.6 10 13.6 11.6 12 16.6 10.4 11.6 5.4 10 10.4 8.4Z"/>'
+};
+
+function ikonSvg(nama, ukuran) {
+return '<svg viewBox="0 0 24 24" width="' + ukuran + '" height="' + ukuran + '" fill="none"' +
+' stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"' +
+' aria-hidden="true" focusable="false">' + IKON_SAMBUTAN[nama] + '</svg>';
+}
+
+/**
+* Ilustrasi sambutan: satu kartu pusat dengan tiga cabang.
+*
+* Bentuknya mengikuti kalimat di atasnya — "Presensi, Jurnal, dan Penilaian
+* secara TERINTEGRASI". Tiga keping mengelilingi satu kartu pusat dan
+* tersambung ke sana dengan garis putus-putus: itulah gambar dari kata
+* "terintegrasi", bukan sekadar tiga ikon yang kebetulan berjejer.
+*
+* Bahasa bentuknya sama persis dengan ilustrasi hero — kartu bersudut membulat,
+* pil, bayangan tipis, dan aksen var(--primary)/var(--success) — supaya kedua
+* gambar terbaca sebagai satu keluarga, bukan dua gaya yang kebetulan bertemu
+* di satu aplikasi.
+*/
+function ilustrasiSambutanSvg() {
+const ilPil = (x, y, w, h, op) =>
+'<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h +
+'" rx="' + (h / 2) + '" fill="var(--il-kartu-isi)" opacity="' + op + '"/>';
+const ilKartu = (x, y, w, h, r) =>
+'<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + r +
+'" fill="var(--il-kartu)" filter="url(#sbBayang)"/>' +
+'<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + r +
+'" fill="none" stroke="var(--il-kartu-tepi)" stroke-width="1.1"/>';
+
+let batang = '';
+[10, 16, 12, 20, 26].forEach(function (t, i) {
+batang += '<rect x="' + (120 + i * 14) + '" y="' + (106 - t) + '" width="9" height="' + t +
+'" rx="2" fill="var(--il-kartu-isi)" opacity=".13"/>';
+});
+
+return '' +
+'<svg viewBox="0 0 320 150" aria-hidden="true" focusable="false">' +
+'<defs>' +
+'<filter id="sbBayang" x="-40%" y="-40%" width="180%" height="180%">' +
+'<feDropShadow dx="0" dy="3" stdDeviation="4"' +
+' flood-color="var(--il-bayang)" flood-opacity="1"/>' +
+'</filter>' +
+'<radialGradient id="sbAmbien" cx=".5" cy=".5" r=".5">' +
+'<stop offset="0" stop-color="var(--il-hias)" stop-opacity=".18"/>' +
+'<stop offset="1" stop-color="var(--il-hias)" stop-opacity="0"/>' +
+'</radialGradient>' +
+'</defs>' +
+
+'<ellipse cx="70" cy="118" rx="86" ry="54" fill="url(#sbAmbien)"/>' +
+'<ellipse cx="262" cy="34" rx="70" ry="46" fill="url(#sbAmbien)"/>' +
+
+'<g fill="var(--il-hias)" opacity=".3">' +
+'<circle cx="288" cy="118" r="1.6"/><circle cx="296" cy="118" r="1.6"/>' +
+'<circle cx="304" cy="118" r="1.6"/>' +
+'<circle cx="288" cy="126" r="1.6"/><circle cx="296" cy="126" r="1.6"/>' +
+'<circle cx="304" cy="126" r="1.6"/>' +
+'</g>' +
+'<rect x="96" y="8" width="13" height="13" rx="4.4" fill="none" stroke="var(--il-hias)"' +
+' stroke-width="1.5" opacity=".26" transform="rotate(16 102.5 14.5)"/>' +
+'<path d="M14 60v6M11 63h6" stroke="var(--il-hias)" stroke-width="1.5"' +
+' stroke-linecap="round" opacity=".3"/>' +
+
+// Garis penghubung digambar LEBIH DULU supaya melintas di bawah kartunya —
+// kalau di atas, ia terbaca sebagai coretan, bukan sebagai sambungan.
+'<g fill="none" stroke="var(--primary)" stroke-width="1.6" opacity=".32"' +
+' stroke-dasharray="3.5 4" stroke-linecap="round">' +
+'<path d="M84 46C96 52 102 47 112 43"/>' +
+'<path d="M78 100C92 102 102 100 112 96"/>' +
+'<path d="M234 68C226 68 218 68 210 68"/>' +
+'</g>' +
+'<g fill="var(--primary)" opacity=".38">' +
+'<circle cx="112" cy="43" r="2"/><circle cx="112" cy="96" r="2"/>' +
+'<circle cx="210" cy="68" r="2"/>' +
+'</g>' +
+
+// Kartu pusat: aplikasinya sendiri.
+'<g>' +
+ilKartu(110, 28, 100, 86, 10) +
+'<path d="M110 38a10 10 0 0 1 10-10h80a10 10 0 0 1 10 10v8H110Z"' +
+' fill="var(--il-kartu-isi)" opacity=".06"/>' +
+'<g fill="var(--il-kartu-isi)" opacity=".28">' +
+'<circle cx="121" cy="38" r="1.8"/><circle cx="127.5" cy="38" r="1.8"/>' +
+'<circle cx="134" cy="38" r="1.8"/>' +
+'</g>' +
+ilPil(142, 35, 30, 6, '.2') +
+ilPil(120, 56, 44, 6, '.22') +
+ilPil(120, 66, 28, 5, '.13') +
+batang +
+'<path d="M124 96l14-5 14 3 14-7 14-6" fill="none" stroke="var(--primary)"' +
+' stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>' +
+'<circle cx="180" cy="81" r="3.8" fill="var(--il-kartu)"/>' +
+'<circle cx="180" cy="81" r="2.4" fill="var(--primary)"/>' +
+'</g>' +
+
+// Keping presensi.
+'<g transform="rotate(-5 51 33)">' +
+ilKartu(16, 14, 70, 38, 8) +
+'<circle cx="34" cy="33" r="9" fill="var(--success)"/>' +
+'<path d="M30.2 33.2l2.6 2.8 5-5.6" fill="none" stroke="#FFFFFF" stroke-width="2"' +
+' stroke-linecap="round" stroke-linejoin="round"/>' +
+ilPil(50, 26, 26, 5, '.24') + ilPil(50, 35, 18, 4.5, '.14') +
+'</g>' +
+
+// Keping jurnal.
+'<g transform="rotate(4 45 103)">' +
+ilKartu(10, 84, 70, 38, 8) +
+'<rect x="21" y="93" width="18" height="20" rx="3" fill="var(--primary)" opacity=".18"/>' +
+'<g fill="var(--primary)" opacity=".5">' +
+'<rect x="24.5" y="97" width="11" height="2" rx="1"/>' +
+'<rect x="24.5" y="102" width="11" height="2" rx="1"/>' +
+'<rect x="24.5" y="107" width="7" height="2" rx="1"/>' +
+'</g>' +
+ilPil(46, 96, 24, 5, '.24') + ilPil(46, 105, 16, 4.5, '.14') +
+'</g>' +
+
+// Keping penilaian.
+'<g transform="rotate(5 270 68)">' +
+ilKartu(234, 48, 72, 40, 8) +
+'<circle cx="252" cy="68" r="11" fill="none" stroke="var(--il-kartu-isi)"' +
+' stroke-width="3.4" opacity=".14"/>' +
+'<circle cx="252" cy="68" r="11" fill="none" stroke="var(--primary)"' +
+' stroke-width="3.4" stroke-linecap="round" stroke-dasharray="48 69.1"' +
+' transform="rotate(-90 252 68)"/>' +
+ilPil(270, 61, 26, 5, '.24') + ilPil(270, 70, 17, 4.5, '.14') +
+'</g>' +
+'</svg>';
+}
+
+const FITUR_SAMBUTAN = [
+['pin', 'Presensi Akurat', 'Selfie & lokasi real-time'],
+['jurnal', 'Jurnal Harian', 'Catat kegiatan setiap hari'],
+['pantau', 'Monitoring Mudah', 'Guru & Admin pantau real-time']
+];
+
+// Alur PKL dari sudut pandang orang yang baru pertama kali membukanya. Sengaja
+// lima langkah dan bukan daftar fitur: yang dicari orang di tombol "Pelajari
+// Lebih Lanjut" adalah URUTAN kerjanya, bukan pengulangan tiga fitur di atas.
+const ALUR_SAMBUTAN = [
+['Pendaftaran', 'Ajukan tempat PKL, lalu tunggu verifikasi dari Pokja PKL.'],
+['Penempatan', 'Anda ditempatkan di DUDIKA beserta guru pembimbingnya.'],
+['Presensi harian', 'Absen masuk dan pulang dengan selfie serta titik lokasi.'],
+['Jurnal kegiatan', 'Catat pekerjaan tiap hari untuk diperiksa pembimbing.'],
+['Penilaian', 'Nilai dari pembimbing industri dan guru menjadi laporan akhir.']
+];
+
+function sambutanHtml() {
+const id = identitasSambutan();
+
+const fitur = FITUR_SAMBUTAN.map(function (f) {
+return '<li><span class="sambutan-ikon">' + ikonSvg(f[0], 22) + '</span>' +
+'<span class="sambutan-teks"><b>' + esc(f[1]) + '</b>' +
+'<span>' + esc(f[2]) + '</span></span></li>';
+}).join('');
+
+const alur = ALUR_SAMBUTAN.map(function (a) {
+return '<li><b>' + esc(a[0]) + '</b><span>' + esc(a[1]) + '</span></li>';
+}).join('');
+
+return '' +
+'<div class="sambutan" id="sambutan" role="dialog" aria-modal="true"' +
+' aria-labelledby="sambutanJudul">' +
+'<div class="sambutan-kartu">' +
+'<span class="sambutan-pita" aria-hidden="true"></span>' +
+'<div class="sambutan-atas">' +
+(id.tagline ? '<span class="sambutan-kilau">' + ikonSvg('kilau', 13) +
+esc(id.tagline) + '</span>' : '') +
+'<p class="sambutan-halo">Selamat Datang di</p>' +
+'<h1 class="sambutan-nama" id="sambutanJudul">' + esc(id.appName) + '</h1>' +
+(id.sekolah ? '<span class="sambutan-sekolah">' + ikonSvg('pin', 13) +
+esc(id.sekolah) + '</span>' : '') +
+'<p class="sambutan-desc">Platform digital untuk manajemen Presensi, Jurnal, ' +
+'dan Penilaian PKL secara terintegrasi.</p>' +
+'<div class="sambutan-art">' + ilustrasiSambutanSvg() + '</div>' +
+'</div>' +
+'<div class="sambutan-bawah">' +
+'<ul class="sambutan-fitur">' + fitur + '</ul>' +
+'<div class="sambutan-alur" id="sambutanAlur" hidden>' +
+'<h2>Bagaimana PKL berjalan di sini</h2>' +
+'<ol>' + alur + '</ol>' +
+'</div>' +
+'<button type="button" class="btn btn-primary btn-block btn-lg"' +
+' id="sambutanMulai">Ayo Mulai' + ikonSvg('panah', 19) + '</button>' +
+'<button type="button" class="sambutan-tautan" id="sambutanLanjut"' +
+' aria-expanded="false" aria-controls="sambutanAlur">' +
+'<span>Pelajari Lebih Lanjut</span>' + ikonSvg('chevron', 17) + '</button>' +
+'</div>' +
+'</div>' +
+'</div>';
+}
+
+/**
+* Menempel overlay sambutan dan langsung kembali — TIDAK menunggu pengguna.
+* mulaiAplikasi() meredupkan splash tepat sesudah ini, jadi menggantung di sini
+* berarti splash tidak pernah turun.
+*/
+function pasangSambutan() {
+if (document.getElementById('sambutan')) return;
+const bungkus = document.createElement('div');
+bungkus.innerHTML = sambutanHtml();
+const layar = bungkus.firstChild;
+document.body.appendChild(layar);
+
+const fokusSebelumnya = document.activeElement;
+const tutup = function () {
+Simpanan.simpan(KUNCI_SAMBUTAN, '1');
+document.removeEventListener('keydown', padaTombol);
+layar.setAttribute('data-tutup', '1');
+// Dilepas setelah transisinya selesai. setTimeout dipakai — bukan
+// transitionend — supaya overlay tetap terlepas walau animasinya dimatikan
+// oleh prefers-reduced-motion dan transitionend tidak pernah menyala.
+setTimeout(function () {
+if (layar.parentNode) layar.parentNode.removeChild(layar);
+const kolom = document.getElementById('loginUser');
+if (kolom && typeof kolom.focus === 'function') kolom.focus();
+else if (fokusSebelumnya && typeof fokusSebelumnya.focus === 'function') fokusSebelumnya.focus();
+}, 300);
+};
+const padaTombol = function (e) { if (e.key === 'Escape') tutup(); };
+
+layar.querySelector('#sambutanMulai').addEventListener('click', tutup);
+document.addEventListener('keydown', padaTombol);
+
+const tombolLanjut = layar.querySelector('#sambutanLanjut');
+const panelAlur = layar.querySelector('#sambutanAlur');
+const labelLanjut = tombolLanjut.querySelector('span');
+tombolLanjut.addEventListener('click', function () {
+const terbuka = !panelAlur.hidden;
+panelAlur.hidden = terbuka;
+tombolLanjut.setAttribute('aria-expanded', String(!terbuka));
+labelLanjut.textContent = terbuka ? 'Pelajari Lebih Lanjut' : 'Tutup Penjelasan';
+if (!terbuka) panelAlur.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+});
+
+// Fokus dipindah ke tombol utamanya supaya pengguna papan ketik tidak
+// terdampar di belakang overlay.
+const mulai = layar.querySelector('#sambutanMulai');
+if (mulai && typeof mulai.focus === 'function') mulai.focus();
+}
+
 let BOOT_SEDANG_JALAN = false;
 async function mulaiAplikasi() {
 if (BOOT_SEDANG_JALAN) return;
@@ -656,6 +983,11 @@ AppState.sessionToken = null;
 tampilkanKerangkaAplikasi(false);
 clearTimeout(batasBoot);
 await navigateTo('login');
+// Overlay sambutan ditempel SEBELUM splash diredupkan: form login sudah
+// tergambar di baliknya, jadi tidak ada kedipan form yang muncul sekejap
+// lalu tertutup. Sengaja tidak di-await — mulaiAplikasi() tidak boleh
+// menggantung menunggu pengguna menekan tombol.
+if (perluSambutan()) pasangSambutan();
 sembunyikanSplash();
 } catch (e) {
 clearTimeout(batasBoot);
@@ -1272,4 +1604,4 @@ await muatJadwalShift();
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '5.9';
+window.__SIMPKL_EOF = '6.1';

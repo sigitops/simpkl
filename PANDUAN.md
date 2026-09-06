@@ -996,6 +996,169 @@ sana.
 
 ---
 
+## Layar sambutan (v6.1)
+
+Pembukaan PERTAMA di sebuah perangkat dulu langsung mendarat di form login:
+dua kolom isian dan sebuah tombol, tanpa satu kalimat pun yang menjelaskan
+aplikasi apa ini. Untuk siswa kelas XI yang baru diberi tautannya lewat grup
+kelas, itu tempat yang canggung untuk memulai. Sekarang ada satu layar
+sambutan di depannya — sekali saja, lalu tidak pernah lagi.
+
+| | |
+|---|---|
+| Muncul | pembukaan pertama di perangkat itu, saat belum ada sesi tersimpan |
+| Penanda | `sambutanDilihat` di `Simpanan` (localStorage berikut cadangan memorinya) |
+| Isi | sapaan, nama aplikasi, tiga baris fitur, ilustrasi, dan alur PKL yang bisa dibuka |
+| Biaya | nol permintaan jaringan, nol pergeseran tata letak |
+
+### Urutan pemasangannya, dan kenapa persis begitu
+
+Tiga baris di `mulaiAplikasi()` ini urutannya tidak boleh ditukar:
+
+```js
+await navigateTo('login');        // form login digambar LEBIH DULU, di balik splash
+if (perluSambutan()) pasangSambutan();
+sembunyikanSplash();              // baru splash meredup
+```
+
+- **Sesudah `navigateTo('login')`.** Form login sudah tergambar utuh di balik
+  overlay. Kalau overlay dipasang lebih dulu lalu login digambar sesudahnya,
+  ada satu gambaran di mana form terlihat sekejap sebelum tertutup — kedipan
+  yang membuat aplikasi terasa gugup.
+- **Sebelum `sembunyikanSplash()`.** Splash baru turun setelah overlay
+  menempel, jadi yang pertama terlihat pengguna memang layar sambutan.
+- **TIDAK di-`await`.** `pasangSambutan()` menempel overlay lalu langsung
+  kembali. Kalau ditunggu sampai pengguna menekan "Ayo Mulai", baris
+  `sembunyikanSplash()` tidak pernah tercapai dan aplikasinya membeku di layar
+  pemuat. `uji-sambutan.js` memeriksa ketiga urutan ini dari sumbernya.
+
+Jalur "sesi masih tersimpan" pulang lebih dulu lewat `return`, jadi pengguna
+yang sudah pernah masuk tidak pernah melewati kode ini sama sekali.
+
+### z-index 8000
+
+Di bawah splash (9000) supaya splash tetap menutupinya sepanjang boot, tetapi
+di atas segalanya termasuk modal (2000) — layar ini memang mengambil alih
+layar penuh. Kalau angkanya naik melewati splash, ia akan menyembul di tengah
+boot; ujinya membandingkan keduanya, bukan menghafal angkanya.
+
+### Nol permintaan jaringan
+
+Seluruh isinya digambar di klien, termasuk ilustrasinya. Ini bukan penghematan
+kosmetik: layar yang tujuannya memperbaiki KESAN PERTAMA tidak boleh justru
+menambah satu detik ke pembukaan pertama. Nama aplikasi dan nama sekolah
+diambil dari `identitas` di localStorage bila ada — dan pada pembukaan pertama
+yang sesungguhnya memang belum ada, sebab identitas baru tersimpan setelah
+login berhasil. Karena itu nama bawaannya, "SIM PKL", harus tetap masuk akal
+berdiri sendiri.
+
+### "Pelajari Lebih Lanjut" berisi URUTAN, bukan ulangan
+
+Panelnya membuka lima langkah — pendaftaran, penempatan, presensi harian,
+jurnal, penilaian — di layar yang sama, tanpa pindah halaman. Godaannya adalah
+mengisinya dengan daftar fitur, padahal tiga fitur sudah tertulis tepat di
+atas tombolnya. Yang dicari orang ketika menekan "Pelajari Lebih Lanjut"
+adalah bagaimana urusannya akan berjalan, bukan pengulangan.
+
+> **Garis penyambung antarlangkah berhenti di langkah terakhir.** Garis yang
+> menggantung ke bawah menuju ketiadaan terbaca sebagai daftar yang terpotong,
+> bukan daftar yang selesai.
+
+### Namanya diambil dari Pengaturan, bukan ditebak (v6.1)
+
+Judul besar di layar ini harus persis nama yang diisi admin di menu
+Pengaturan. Sumbernya, berurutan:
+
+1. **Halaman login yang baru saja digambar di balik overlay ini.** Itu bukan
+   akal-akalan: halaman login dirakit server dari `getAllConfigObj()`, jadi
+   `.auth-app`, `.auth-tagline`, dan `.auth-sekolah-pill` membawa nilai terbaru
+   dari Pengaturan — dan membacanya dari DOM tidak memerlukan satu pun
+   permintaan tambahan.
+2. **`identitas` di localStorage**, sebagai cadangan.
+3. **"SIM PKL"**, bila keduanya kosong.
+
+Urutannya tidak boleh dibalik. `identitas` baru tersimpan SETELAH seseorang
+pernah berhasil masuk di perangkat ini, jadi menaruhnya di urutan pertama akan
+membuat layar ini memakai nama basi setiap kali admin mengganti nama aplikasi.
+`uji-sambutan.js` memeriksa urutan itu dari sumbernya, dan menguji ketiga
+tingkat cadangannya di peramban.
+
+Tagline dan nama sekolah ikut terpakai: tagline menjadi lencana kecil di atas
+sapaan, nama sekolah menjadi pil di bawah judul — keduanya memakai bentuk yang
+sama dengan `.auth-sekolah-pill` di halaman login, jadi kedua layar terbaca
+sebagai satu rangkaian.
+
+### Ikonnya SVG sebaris, bukan font ikon (v6.1)
+
+Tiga baris fitur memakai ikon garis yang digambar langsung sebagai SVG.
+Alasannya bukan selera: layar ini tampil pada gambaran PERTAMA aplikasi, dan
+font Material Symbols baru tiba beberapa ratus milidetik kemudian. Memakai
+`<span class="mi">` di sini berarti tiga kotak kosong dulu, lalu ikonnya
+menyusul — persis di layar yang tugasnya membentuk kesan pertama.
+
+Semuanya memakai `stroke="currentColor"` dan `fill="none"`, jadi warnanya ikut
+wadahnya dan otomatis benar di mode gelap tanpa satu pun aturan tambahan.
+Ujinya menolak `class="mi"` di dalam blok ini.
+
+| Baris | Ikonnya | Kenapa itu |
+|---|---|---|
+| Presensi Akurat | penanda lokasi bercentang | menggabungkan dua hal yang memang diperiksa: titik lokasi DAN keabsahannya |
+| Jurnal Harian | buku catatan bergaris | benda yang paling langsung berarti "mencatat tiap hari" |
+| Monitoring Mudah | layar dengan garis tren | yang dipantau guru dan pokja memang layar berisi grafik |
+
+### Yang membuatnya terasa matang, bukan sekadar rapi (v6.1)
+
+Versi pertama sudah benar tata letaknya tetapi terasa datar. Yang
+ditambahkan — dan alasannya:
+
+| Perubahan | Sebabnya |
+|---|---|
+| Pita 4px bergradien di puncak kartu | tanpa itu kartunya hanya kotak putih yang kebetulan berisi teks; satu batang tipis sudah cukup memberinya "kepala" |
+| Gradien atas berakhir di `--surface-card` | versi lama berhenti di warna langit dan menyisakan tepi keras yang membelah kartu jadi dua kotak |
+| Tiap baris fitur diberi permukaan sendiri | baris telanjang terbaca sebagai daftar; baris berpermukaan terbaca sebagai kartu |
+| Keping ikon 44px dengan gradien + garis rambut | memberi kedalaman tanpa bayangan tebal |
+| Panah di "Ayo Mulai", chevron berputar di tautan | arah dan keadaan terbaca tanpa membaca teksnya |
+| Masuk bertahap dari bawah | 320ms per bagian, jeda berhenti di 300ms — seluruhnya selesai di bawah 700ms |
+
+> **Animasi masuk memakai `both`, yang menahan keadaan AWAL (opacity 0) sebelum
+> jalan.** Karena itu seluruh aturannya dikurung di dalam
+> `@media (prefers-reduced-motion:no-preference)`. Tanpa kurungan itu, pengguna
+> yang mematikan animasi akan melihat kartu kosong selamanya. `uji-sambutan.js`
+> membuka halaman dengan `reducedMotion: 'reduce'` dan menuntut judul, daftar
+> fitur, dan tombolnya tetap ber-opacity 1.
+
+> **`.sambutan-atas` adalah kolom lentur, dan anak kolom lentur meregang penuh
+> secara bawaan.** Kedua pil (tagline dan sekolah) karena itu perlu
+> `align-self:flex-start` — tanpa itu keduanya melar selebar kartu dan terbaca
+> sebagai bilah, bukan lencana.
+
+Target sentuh keduanya diperiksa: tombol utama 52px, tautan sekunder 44px —
+batas terkecil yang masih nyaman di ponsel.
+
+### Ilustrasinya: satu pusat, tiga cabang
+
+Bentuknya mengikuti kalimat di atasnya — "Presensi, Jurnal, dan Penilaian
+secara **terintegrasi**". Tiga keping mengelilingi satu kartu pusat dan
+tersambung ke sana dengan garis putus-putus. Itu gambar dari kata
+"terintegrasi", bukan sekadar tiga ikon yang kebetulan berjejer.
+
+Bahasa bentuknya sama persis dengan ilustrasi hero — kartu bersudut membulat,
+pil, bayangan tipis, aksen `var(--primary)`/`var(--success)` — supaya keduanya
+terbaca sebagai satu keluarga gambar. `.sambutan-art` memakai
+`aspect-ratio:320/150` dengan alasan yang sama dengan `min-height` di
+`.hero-art`: kotaknya punya tinggi sebelum SVG-nya sempat digambar, jadi
+kartunya tidak melompat.
+
+### Di ponsel kartunya memenuhi layar
+
+Di bawah 440px bingkai, sudut membulat, dan bayangannya dilepas: pada lebar
+segitu ketiganya hanya menyisakan pinggiran sempit yang terlihat seperti
+kesalahan. Tombol utamanya juga turun ke dasar layar lewat `margin-top:auto`
+di kolom lentur — tanpa itu ia menggantung di tengah dengan bidang kosong
+lebar di bawahnya.
+
+---
+
 ## Ilustrasi hero (v5.9)
 
 Kotak di sebelah kanan sapaan dulu berisi **satu ikon Material raksasa** di atas
