@@ -2250,7 +2250,14 @@ ontouchstart="pramuatHalaman('${m.id}')">
 <span class="nav-count" id="count-${m.id}" hidden>0</span>
 </button>
 </li>`).join('');
-const utama = menu.filter(m => m.bottom).slice(0, 5);
+// Urutan bilah bawah ditentukan bottomUrut, BUKAN urutan menu di sidebar.
+// Keduanya memang tidak harus sama: sidebar disusun menurut alur kerja,
+// sedangkan bilah bawah menurut seberapa sering sebuah menu disentuh di
+// ponsel. Tanpa pemisahan ini, menata ulang bilah bawah berarti ikut menata
+// ulang sidebar — dua hal berbeda yang kebetulan memakai satu daftar.
+const utama = menu.filter(m => m.bottom)
+.sort((a, b) => (a.bottomUrut || 99) - (b.bottomUrut || 99))
+.slice(0, 5);
 $('bottomNav').innerHTML = utama.map(m => `
 <button class="bn-item" data-page="${m.id}"
 ${m.bottom === 'Lainnya' ? '' : `ontouchstart="pramuatHalaman('${m.id}')"`}
@@ -2563,6 +2570,7 @@ AppState.sessionToken = token;
 // pengguna yang tiba-tiba terlempar keluar hanya karena aplikasinya diperbarui.
 if (ingat === false) Simpanan.hapus('sesi');
 else Simpanan.simpan('sesi', token);
+pantauAktivitas();
 tampilkanTiraiMasuk();
 try {
 await muatBootstrap(awal);
@@ -2858,6 +2866,146 @@ AppState.tabel = {};
 AppState.htmlHalaman = {};
 tampilkanKerangkaAplikasi(false);
 navigateTo('login');
+}
+
+// ── Sesi berakhir karena tidak ada aktivitas ───────────────────────────────
+//
+// APA YANG MEMBUAT INI KEAMANAN, BUKAN SEKADAR TAMPILAN.
+//
+// Pewaktu di klien saja hanya menghias: token yang "berakhir" tetap sah di
+// server, dan siapa pun yang sempat menyalinnya masih bisa memakainya. Karena
+// itu ketika waktunya habis, token DICABUT di server lewat doLogout() — yang
+// menghapus singgahan sesi DAN barisnya di sheet Sesi. Sesudah itu token
+// tersebut mati di mana pun ia berada.
+//
+// Servernya pun tidak menggantungkan diri pada klien: validateSession()
+// menegakkan jendela geser 60 menit sendiri, dihitung dari permintaan
+// TERAKHIR. Jadi ada dua lapis yang saling menutupi — klien yang tahu soal
+// gerakan tetikus dan papan ketik, server yang tidak bisa dibohongi.
+//
+// Yang TIDAK ditutup oleh keduanya, dan sebaiknya dikatakan apa adanya:
+// seseorang yang sudah menyalin token lalu tabnya ditutup paksa sebelum
+// pewaktu sempat berjalan. Untuk itulah pemeriksaan saat boot di app6.js ada,
+// dan di atas semuanya masih ada batas mutlak enam jam dari server.
+const SESI_IDLE_MS = 60 * 60 * 1000;
+const KUNCI_AKTIF = 'aktifPada';
+let SESI_HABIS_DITAMPILKAN = false;
+
+/**
+ * Mencatat bahwa pengguna baru saja melakukan sesuatu.
+ *
+ * Ditulis paling sering sekali per 30 detik. Menulis di setiap gerakan berarti
+ * ratusan penulisan localStorage per menit hanya untuk menggeser angka yang
+ * dibandingkan dengan ambang 60 menit — ketelitian yang tidak ada gunanya
+ * dengan biaya yang nyata.
+ */
+function catatAktivitas() {
+const t = Date.now();
+if (t - (AppState.__aktifTerakhir || 0) < 30000) return;
+AppState.__aktifTerakhir = t;
+Simpanan.simpan(KUNCI_AKTIF, String(t));
+}
+
+/**
+ * Yang dihitung sebagai aktivitas adalah perbuatan PENGGUNA, bukan kesibukan
+ * aplikasi. Pewaktu jam, penyegaran latar, dan animasi sengaja tidak masuk
+ * daftar ini: kalau mereka ikut dihitung, sesi tidak akan pernah berakhir
+ * walaupun tidak ada seorang pun di depan layar.
+ */
+function pantauAktivitas() {
+if (AppState.__pantauAktif) return;
+AppState.__pantauAktif = true;
+catatAktivitas();
+['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(function (nama) {
+document.addEventListener(nama, catatAktivitas, { passive: true });
+});
+// Ponsel membekukan pewaktu pada tab yang tersembunyi. Tanpa pemeriksaan saat
+// tab kembali terlihat, aplikasi yang ditinggal semalam di latar belakang baru
+// menyadari sesinya berakhir satu menit SETELAH dibuka lagi.
+document.addEventListener('visibilitychange', function () {
+if (document.visibilityState === 'visible') periksaSesiIdle();
+});
+AppState.__pewaktuIdle = setInterval(periksaSesiIdle, 60000);
+}
+
+function jedaSejakAktif() {
+const t = Number(Simpanan.ambil(KUNCI_AKTIF) || 0);
+return t ? (Date.now() - t) : 0;
+}
+
+function periksaSesiIdle() {
+if (!AppState.sessionToken || SESI_HABIS_DITAMPILKAN) return;
+if (!Simpanan.ambil(KUNCI_AKTIF)) { catatAktivitas(); return; }
+if (jedaSejakAktif() > SESI_IDLE_MS) akhiriSesiIdle();
+}
+
+function akhiriSesiIdle() {
+if (SESI_HABIS_DITAMPILKAN) return;
+SESI_HABIS_DITAMPILKAN = true;
+const token = AppState.sessionToken;
+// Dicabut lebih dulu, dan tidak ditunggu: layarnya harus bersih SEKARANG,
+// bukan satu sampai tiga detik lagi ketika server selesai menjawab.
+if (token) panggil('doLogout', token).catch(function () {});
+if (AppState.__pewaktuIdle) { clearInterval(AppState.__pewaktuIdle); AppState.__pewaktuIdle = null; }
+Simpanan.hapus(KUNCI_AKTIF);
+keluarPaksa();
+tampilkanSesiBerakhir();
+}
+
+/** Jam pasir geometris, sebangun dengan ilustrasi lain di aplikasi ini. */
+function ilustrasiSesiHabis() {
+return '<svg viewBox="0 0 132 104" role="img" aria-label="Sesi berakhir">' +
+'<rect x="6" y="20" width="34" height="24" rx="6" fill="var(--il-kartu)" ' +
+'stroke="var(--il-kartu-tepi)" stroke-width="1.5"/>' +
+'<rect x="13" y="28" width="20" height="3.4" rx="1.7" fill="var(--il-kartu-tepi)"/>' +
+'<rect x="13" y="35" width="13" height="3.4" rx="1.7" fill="var(--il-kartu-tepi)"/>' +
+'<rect x="92" y="58" width="34" height="24" rx="6" fill="var(--il-kartu)" ' +
+'stroke="var(--il-kartu-tepi)" stroke-width="1.5"/>' +
+'<rect x="99" y="66" width="20" height="3.4" rx="1.7" fill="var(--il-kartu-tepi)"/>' +
+'<rect x="99" y="73" width="13" height="3.4" rx="1.7" fill="var(--il-kartu-tepi)"/>' +
+'<circle cx="66" cy="52" r="33" fill="var(--il-halo)" opacity=".55"/>' +
+'<circle cx="66" cy="52" r="26" fill="var(--il-kartu)" stroke="var(--primary)" stroke-width="3"/>' +
+'<path d="M66 36v17l11 7" fill="none" stroke="var(--primary)" stroke-width="3.4" ' +
+'stroke-linecap="round" stroke-linejoin="round"/>' +
+'<circle cx="66" cy="52" r="2.6" fill="var(--primary)"/></svg>';
+}
+
+/**
+ * Dialognya sengaja hanya punya SATU tombol.
+ *
+ * Rancangan yang dilampirkan memuat dua: "Masuk Kembali" dan "Kembali ke
+ * Beranda". Tetapi begitu sesi berakhir, Beranda tidak bisa dibuka tanpa masuk
+ * lagi — kedua tombol itu akan bermuara ke tempat yang sama persis. Dua tombol
+ * yang mengerjakan satu hal adalah tombol mati yang menyamar, dan halaman ini
+ * memegang aturan yang sama dengan halaman login: lebih baik tidak ada tombol
+ * daripada tombol yang tidak ke mana-mana.
+ */
+function tampilkanSesiBerakhir() {
+if (document.getElementById('sesiHabis')) return;
+const bungkus = document.createElement('div');
+bungkus.innerHTML =
+'<div class="sesi-habis" id="sesiHabis" role="alertdialog" aria-modal="true" ' +
+'aria-labelledby="sesiHabisJudul" aria-describedby="sesiHabisTeks">' +
+'<div class="sesi-habis-kartu">' +
+'<div class="sesi-habis-art">' + ilustrasiSesiHabis() + '</div>' +
+'<h2 id="sesiHabisJudul">Sesi Berakhir</h2>' +
+'<p id="sesiHabisTeks">Untuk keamanan akun Anda, sesi telah berakhir karena ' +
+'tidak ada aktivitas selama 60 menit. Silakan masuk kembali untuk melanjutkan.</p>' +
+'<button class="btn btn-primary btn-block btn-lg" id="sesiHabisMasuk" ' +
+'onclick="tutupSesiBerakhir()">Masuk Kembali</button>' +
+'</div></div>';
+const layar = bungkus.firstChild;
+document.body.appendChild(layar);
+const tombol = document.getElementById('sesiHabisMasuk');
+if (tombol && tombol.focus) tombol.focus();
+}
+
+function tutupSesiBerakhir() {
+const layar = document.getElementById('sesiHabis');
+if (layar && layar.parentNode) layar.parentNode.removeChild(layar);
+SESI_HABIS_DITAMPILKAN = false;
+const kolom = document.getElementById('loginUser');
+if (kolom && kolom.focus) kolom.focus();
 }
 // ── Balon keterangan untuk tombol beriko ───────────────────
 //

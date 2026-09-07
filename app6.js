@@ -269,13 +269,98 @@ box.innerHTML = `<div class="list">${data.map(p => `
 <div class="list-title">${esc(p.judul)}</div>
 <div class="list-sub">${esc(p.pembuat)} &middot; ${tglSingkat(p.tanggal)} &middot;
 ${p.target === 'semua' ? 'Semua siswa' : 'Siswa bimbingan'}</div>
-<div class="list-text">${esc(p.isi)}</div>
+<div class="list-text pg-ringkas" id="pgIsi-${esc(p.id)}">${esc(p.isi)}</div>
+<button type="button" class="pg-selengkapnya" hidden aria-expanded="false"
+aria-controls="pgIsi-${esc(p.id)}" onclick="togglePengumuman(this, '${esc(p.id)}')">
+<span>Lihat selengkapnya</span><span class="mi">expand_more</span></button>
 </div>
 ${p.milikSaya ? `<div class="list-tail">
+<button class="btn-icon" aria-label="Ubah pengumuman"
+onclick="editPengumumanUI('${esc(p.id)}')"><span class="mi">edit</span></button>
 <button class="btn-icon danger" aria-label="Hapus pengumuman"
 onclick="hapusPengumumanUI('${esc(p.id)}')"><span class="mi">delete</span></button>
 </div>` : ''}
 </div>`).join('')}</div>`;
+// Tombol "Lihat selengkapnya" baru DIPERLIHATKAN untuk pengumuman yang isinya
+// memang terpotong. Diukur, bukan ditebak dari jumlah huruf: satu baris memuat
+// huruf sebanyak apa pun tergantung lebar layar dan panjang katanya, jadi
+// ambang huruf akan salah di kedua arah sekaligus.
+data.forEach(function (p) {
+const teks = $('pgIsi-' + p.id);
+if (!teks) return;
+const tombol = teks.parentNode.querySelector('.pg-selengkapnya');
+if (tombol && teks.scrollHeight > teks.clientHeight + 2) tombol.hidden = false;
+});
+}
+
+/** Membuka atau menutup satu pengumuman yang diringkas. */
+function togglePengumuman(tombol, id) {
+const teks = $('pgIsi-' + id);
+if (!teks) return;
+const terbuka = teks.classList.toggle('pg-lengkap');
+teks.classList.toggle('pg-ringkas', !terbuka);
+tombol.setAttribute('aria-expanded', terbuka ? 'true' : 'false');
+tombol.querySelector('span').textContent = terbuka ? 'Ringkaskan' : 'Lihat selengkapnya';
+}
+
+/**
+ * Menyunting pengumuman yang pernah dibuat.
+ *
+ * Formnya memang sudah menyimpan `pgId` tersembunyi dan simpanPengumuman() di
+ * server sudah sejak awal menerima `id` untuk memperbarui — yang belum ada
+ * hanyalah jalan bagi pengguna untuk sampai ke sana. Jadi yang ditambahkan di
+ * sini pintunya, bukan mesinnya.
+ */
+function editPengumumanUI(id) {
+// dataTerproses() — bukan data mentah — memang yang benar di sini: tombol
+// Edit-nya digambar DARI daftar itu juga, jadi apa pun yang bisa diklik pasti
+// ada di dalamnya, filter dan pencarian apa pun sedang aktif.
+const p = (dataTerproses('pengumuman') || []).find(function (x) { return String(x.id) === String(id); });
+if (!p) { toast('Pengumuman tidak ditemukan. Coba muat ulang halaman.', 'warning'); return; }
+$('pgId').value = p.id;
+$('pgJudul').value = p.judul || '';
+$('pgIsi').value = p.isi || '';
+if ($('pgTarget')) { $('pgTarget').value = p.target || 'semua'; toggleTargetGuru(); }
+if ($('pgTargetId') && p.targetId) $('pgTargetId').value = p.targetId;
+tandaiModeSuntingPengumuman(p.judul || '');
+// Di ponsel form ini ada JAUH di atas daftarnya; tanpa digulir, menekan Edit
+// terasa seperti tidak terjadi apa-apa.
+const form = $('formPengumuman');
+if (form && form.scrollIntoView) form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+if ($('pgJudul').focus) $('pgJudul').focus();
+}
+
+/** Pita peringatan + label tombol, supaya mode sunting tidak pernah tersamar. */
+function tandaiModeSuntingPengumuman(judul) {
+const form = $('formPengumuman');
+if (!form) return;
+const tombol = form.querySelector('button[type="submit"]');
+let pita = $('pgPitaSunting');
+if (judul) {
+if (!pita) {
+pita = document.createElement('div');
+pita.id = 'pgPitaSunting';
+pita.className = 'pg-mode-sunting';
+form.insertBefore(pita, form.firstChild);
+}
+pita.innerHTML = '<span class="mi">edit_note</span><div><b>Mengubah pengumuman</b>' +
+'<span>' + esc(judul) + '</span></div>' +
+'<button type="button" class="btn btn-outline btn-sm" ' +
+'onclick="batalEditPengumuman()">Batal</button>';
+if (tombol) tombol.innerHTML = '<span class="mi">save</span> Perbarui Pengumuman';
+} else {
+if (pita && pita.parentNode) pita.parentNode.removeChild(pita);
+if (tombol) tombol.innerHTML = '<span class="mi">send</span> Terbitkan';
+}
+}
+
+/** Kembali ke mode membuat pengumuman baru. */
+function batalEditPengumuman() {
+const form = $('formPengumuman');
+if (form) form.reset();
+if ($('pgId')) $('pgId').value = '';
+if ($('pgTarget')) toggleTargetGuru();
+tandaiModeSuntingPengumuman('');
 }
 async function kirimPengumuman(event) {
 event.preventDefault();
@@ -288,7 +373,7 @@ id: $('pgId').value || null, judul: judul, isi: isi,
 target: $('pgTarget').value, targetId: $('pgTargetId') ? $('pgTargetId').value : '' });
 sembunyikanSibuk();
 toast(res.message, res.success ? 'success' : 'error');
-if (res.success) { $('formPengumuman').reset(); $('pgId').value = ''; muatDaftarPengumuman(); }
+if (res.success) { batalEditPengumuman(); muatDaftarPengumuman(); }
 } catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
 }
 async function hapusPengumumanUI(id) {
@@ -989,11 +1074,23 @@ try {
 terapkanTema(Simpanan.ambil('tema') || 'light');
 if ($('footerYear')) $('footerYear').textContent = new Date().getFullYear();
 pasangPendengarGlobal();
-const token = Simpanan.ambil('sesi');
+let token = Simpanan.ambil('sesi');
+// Perangkat yang ditinggal semalam dengan tab tertutup: pewaktu idle di klien
+// tidak pernah sempat berjalan, dan token itu masih tersimpan. Jeda sejak
+// aktivitas TERAKHIR yang menutup celah itu — diperiksa sebelum sesinya
+// dipulihkan, bukan sesudah dashboard terlanjur tergambar.
+if (token && jedaSejakAktif() > SESI_IDLE_MS) {
+console.info('Sesi lama dilewati: sudah terlalu lama tidak ada aktivitas.');
+panggil('doLogout', token).catch(function () {});
+Simpanan.hapus('sesi');
+Simpanan.hapus(KUNCI_AKTIF);
+token = null;
+}
 if (token) {
 AppState.sessionToken = token;
 try {
 await muatBootstrap();
+pantauAktivitas();
 clearTimeout(batasBoot);
 // Splash bertahan sampai dashboard tergambar, bukan sampai datanya tiba.
 await navigateTo('beranda');
@@ -1642,4 +1739,4 @@ await muatJadwalShift();
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '6.6';
+window.__SIMPKL_EOF = '6.7';

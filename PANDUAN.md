@@ -996,6 +996,166 @@ sana.
 
 ---
 
+## Sesi berakhir karena tidak ada aktivitas (v6.7)
+
+Seluruh pengguna — siswa, guru, dan admin — diminta masuk kembali setelah
+**60 menit tanpa aktivitas**.
+
+### Apa yang membuatnya keamanan, bukan tampilan
+
+Pewaktu di peramban saja hanya menghias. Ia menampilkan dialog, menghapus token
+dari localStorage, dan terlihat persis seperti fitur keamanan — padahal
+tokennya masih sah di server, dan siapa pun yang sempat menyalinnya tetap bisa
+memakainya. Dialognya bekerja; keamanannya tidak.
+
+Karena itu ada **dua lapis yang saling menutupi**:
+
+| Lapis | Yang ia tahu | Yang ia lakukan |
+|---|---|---|
+| Klien | gerakan tetikus, papan ketik, sentuhan — hal yang hanya terlihat di peramban | menghitung 60 menit, lalu **mencabut token lewat `doLogout()`** |
+| Server | waktu permintaan terakhir — hal yang tidak bisa dibohongi klien | menolak dan mencabut sendiri di `validateSession()` |
+
+`doLogout()` bukan sekadar melupakan: ia membuang singgahan sesi **dan**
+menghapus barisnya di sheet `Sesi`. Sesudah itu token tersebut mati di mana pun
+ia berada.
+
+Pemeriksaan di server penting justru karena pewaktu di peramban bisa dimatikan
+siapa saja yang membuka alat pengembang. `uji-sesi.js` bagian 2 menjalankan
+`validateSession()` yang sungguhan dengan CacheService dan sheet dipalsukan;
+ketika pemeriksaan idle-nya sengaja dilumpuhkan, sesi 61 menit **lolos** dan
+ujinya langsung merah.
+
+### Dua batas, berlaku bersamaan
+
+| Batas | Nilai | Dihitung sejak | Menjaga apa |
+|---|---|---|---|
+| `IDLE_TTL` | 60 menit | permintaan **terakhir** (menggeser) | perangkat yang ditinggalkan tidak tetap terbuka |
+| `SESSION_TTL` | 6 jam | **masuk** (mutlak) | sesi yang dipakai terus-menerus tidak hidup selamanya |
+
+Yang lebih dulu tiba, itu yang menutup sesi.
+
+### Yang dihitung sebagai aktivitas
+
+`pointerdown`, `keydown`, `wheel`, `touchstart` — perbuatan **pengguna**.
+
+Pewaktu jam, penyegaran latar, dan animasi **tidak** dihitung, dan itu bukan
+kelalaian: kalau kesibukan aplikasi ikut dihitung, sesi tidak akan pernah
+berakhir walaupun tidak ada seorang pun di depan layar. Ujinya memeriksa hal itu
+dari sumbernya.
+
+Penanda waktu ditulis paling sering **sekali per 30 detik**, dan singgahan sesi
+di server ditulis ulang paling sering **sekali per menit**. Menulis di setiap
+gerakan berarti ratusan penulisan per menit hanya untuk menggeser angka yang
+dibandingkan dengan ambang 60 menit — ketelitian tanpa guna, dengan biaya nyata.
+
+### Perangkat yang ditinggal semalam
+
+Bila tabnya ditutup, pewaktu klien tidak pernah sempat berjalan. Karena itu
+**boot juga memeriksa** jeda sejak aktivitas terakhir, **sebelum** sesinya
+dipulihkan — bukan sesudah dashboard terlanjur tergambar.
+
+> **Yang masih tersisa, dan sebaiknya dikatakan apa adanya:** seseorang yang
+> sudah menyalin token lalu tab korbannya ditutup paksa sebelum pewaktu sempat
+> berjalan. Ia tertutup pada pembukaan berikutnya oleh pemeriksaan boot, oleh
+> jendela geser di server begitu ada permintaan, dan di atas semuanya oleh batas
+> mutlak enam jam. Menutupnya lebih rapat lagi menuntut pencatatan aktivitas
+> per permintaan ke spreadsheet — satu penulisan sheet di setiap panggilan,
+> yang di Apps Script berarti aplikasi ini melambat untuk semua orang.
+
+### Dialognya hanya punya SATU tombol
+
+Rancangan yang dilampirkan memuat dua: &ldquo;Masuk Kembali&rdquo; dan
+&ldquo;Kembali ke Beranda&rdquo;. Tetapi begitu sesi berakhir, Beranda tidak
+bisa dibuka tanpa masuk lagi — kedua tombol itu bermuara ke tempat yang sama
+persis. Dua tombol yang mengerjakan satu hal adalah tombol mati yang menyamar,
+dan aturan yang dipegang halaman login berlaku juga di sini.
+
+z-index 8500 diletakkan di antara dua lapis yang sudah ada dengan sengaja: di
+bawah splash (9000) supaya boot tidak pernah tertutupi, dan di atas layar
+sambutan (8000) berikut modal biasa (2000) — sebab ketika sesi berakhir, apa pun
+yang terbuka di belakangnya sudah tidak relevan.
+
+---
+
+## Tiga penyesuaian tampilan modul admin (v6.7)
+
+### Pemeriksa Penempatan pindah ke kolom kanan
+
+Kartunya turun ke bawah **Lokasi Penyimpanan**. Kolom kiri tinggal berisi
+Identitas Aplikasi, kolom kanan berisi Akun Pengguna → Lokasi Penyimpanan →
+Pemeriksa Penempatan.
+
+> `uji-tampilan-baru.js` dulu mengunci posisi lamanya, dan itu memang tugasnya.
+> Yang berubah kebutuhannya, bukan ujinya yang keliru — jadi yang dijaga
+> sekarang susunan yang baru, bukan ambangnya yang dilonggarkan.
+
+### Bilah navigasi bawah admin
+
+| Urutan | Menu | Label |
+|---|---|---|
+| 1 | Dashboard | Beranda |
+| 2 | Data Siswa | Siswa |
+| 3 | Guru Pembimbing | Guru |
+| 4 | Tempat PKL | Tempat PKL |
+| 5 | Pengaturan | Pengaturan |
+
+Sisanya lewat tombol hamburger, yang isinya memang sudah daftar menu lengkap.
+Tombol &ldquo;Lainnya&rdquo; yang dulu menempati posisi kelima karena itu tidak
+diperlukan lagi.
+
+**Urutan bilah bawah dan urutan sidebar sekarang dipisah,** lewat `bottomUrut`:
+
+```js
+const utama = menu.filter(m => m.bottom)
+  .sort((a, b) => (a.bottomUrut || 99) - (b.bottomUrut || 99))
+  .slice(0, 5);
+```
+
+Keduanya memang tidak harus sama — sidebar disusun menurut alur kerja, bilah
+bawah menurut seberapa sering sebuah menu disentuh di ponsel. Tanpa pemisahan
+ini, menata ulang bilah bawah berarti ikut menata ulang sidebar; ujinya
+menuntut urutan sidebar tetap persis seperti sebelumnya.
+
+> **Label terpanjang diperiksa, bukan diperkirakan.** &ldquo;Tempat PKL&rdquo;
+> dan &ldquo;Pengaturan&rdquo; hampir tidak muat di 320px. Label kini
+> `white-space:nowrap` dan mengecil ke 9,5px di bawah 360px — bilah yang
+> tingginya berubah-ubah karena satu label melipat terbaca sebagai cacat.
+
+### Pengumuman: Edit dan ringkasan
+
+**Mesin suntingnya ternyata sudah ada sejak awal.** Form Pengumuman sudah
+menyimpan `pgId` tersembunyi, dan `simpanPengumuman()` di server sudah menerima
+`payload.id` untuk memperbarui. Yang belum ada hanyalah jalan bagi pengguna
+untuk sampai ke sana. Jadi yang ditambahkan v6.7 adalah **pintunya, bukan
+mesinnya**.
+
+| Bagian | Perilakunya |
+|---|---|
+| Tombol Edit | hanya pada pengumuman milik sendiri, sebelah tombol Hapus |
+| Pita mode sunting | menyebut judul yang sedang diubah, berikut tombol Batal |
+| Label tombol kirim | berubah menjadi &ldquo;Perbarui Pengumuman&rdquo; |
+| Setelah tersimpan | form kembali ke mode membuat baru dengan sendirinya |
+
+> **`TanggalTerbit` sengaja tidak ditulis ulang saat menyunting.** Menyetelnya
+> ke hari ini akan melemparkan pengumuman lama ke urutan teratas seolah baru
+> terbit — memperbaiki satu salah ketik tidak boleh mengubah kapan sesuatu
+> diumumkan. `perbaruiBaris()` mempertahankan kolom yang tidak dikirim, jadi
+> cukup dengan tidak menyertakannya.
+
+**Ringkasan tiga baris.** Isi pengumuman boleh sampai 1500 huruf, dan daftar
+yang menampilkan semuanya memaksa orang menggulir jauh hanya untuk melihat
+judul berikutnya. Dipotong dengan `-webkit-line-clamp:3`, yaitu **tepat di batas
+baris** — bukan di jumlah huruf, sebab satu baris memuat huruf sebanyak apa pun
+tergantung lebar layar dan panjang katanya.
+
+> **Tombol &ldquo;Lihat selengkapnya&rdquo; baru diperlihatkan setelah DIUKUR
+> bahwa teksnya memang terpotong** (`scrollHeight > clientHeight`). Tanpa itu,
+> pengumuman satu kalimat pun ikut menawarkan tombol yang tidak membuka apa-apa.
+> Teks lengkapnya tetap ada di DOM — hanya dipotong secara visual — jadi
+> pencarian di halaman tetap menemukannya.
+
+---
+
 ## Halaman login (v6.4, diperluas v6.5 dan v6.6)
 
 Ditulis ulang mengikuti rancangan yang diminta: logo heksagon, judul
