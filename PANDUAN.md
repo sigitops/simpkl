@@ -996,7 +996,7 @@ sana.
 
 ---
 
-## Layar sambutan (v6.2)
+## Layar sambutan (v6.2, diperbaiki v6.3)
 
 Pembukaan PERTAMA di sebuah perangkat dulu langsung mendarat di form login:
 dua kolom isian dan sebuah tombol, tanpa satu kalimat pun yang menjelaskan
@@ -1210,11 +1210,106 @@ DOM aplikasi hidup.
 
 ### Di ponsel kartunya memenuhi layar
 
-Di bawah 440px bingkai, sudut membulat, dan bayangannya dilepas: pada lebar
+Di bawah 448px bingkai, sudut membulat, dan bayangannya dilepas: pada lebar
 segitu ketiganya hanya menyisakan pinggiran sempit yang terlihat seperti
 kesalahan. Tombol utamanya juga turun ke dasar layar lewat `margin-top:auto`
 di kolom lentur — tanpa itu ia menggantung di tengah dengan bidang kosong
 lebar di bawahnya.
+
+### Layar yang terpotong di ponsel, dan kenapa 62 uji hijau tidak melihatnya (v6.3)
+
+Di v6.2, menekan "Pelajari Lebih Lanjut" di ponsel membuat layar sambutan
+terpotong: tombol "Ayo Mulai" hilang di bawah lipatan layar, tautan untuk
+menutup penjelasannya juga, dan **menggulir tidak melakukan apa-apa**. Layarnya
+buntu — satu-satunya jalan keluar adalah memuat ulang aplikasi.
+
+**Akarnya satu baris, dan rantainya tiga langkah.**
+
+```css
+/* v6.2 — sumber masalahnya */
+@media (max-width:448px){
+  .sambutan{padding:0;place-items:stretch}
+  .sambutan-kartu{…;overflow:hidden}   /* overflow:hidden diwarisi dari aturan dasar */
+}
+```
+
+1. `place-items:stretch` → `align-self:stretch`. Karena `.sambutan` adalah
+   `position:fixed;inset:0`, satu-satunya barisnya setinggi layar, jadi
+   `.sambutan-kartu` **dipaku tepat setinggi layar** — tingginya berhenti
+   berasal dari isinya.
+2. `overflow:hidden` pada kartu itu membuat **ukuran minimum otomatisnya
+   menjadi 0**. Kotak yang tingginya dipaku dan ukuran minimumnya nol tidak
+   punya cara untuk tumbuh: isi yang tidak muat tidak melebarkannya, hanya
+   **terpotong**.
+3. Karena kartunya tidak pernah melampaui `.sambutan`, `overflow-y:auto` di
+   `.sambutan` **tidak punya apa pun untuk digulir**. `scrollHeight` sama
+   dengan `clientHeight` di setiap ukuran layar.
+
+Terukur di enam ponsel: isi kartunya 1157–1194px, tinggi yang diizinkan
+560–932px, dan `scrollHeight/clientHeight` selalu kembar. Tombolnya berada di
+y=837 sampai y=1059 — permanen di luar jangkauan.
+
+Yang penting disadari: **jalur lebar > 448px tidak pernah rusak.** Di sana
+kartunya memakai `margin:auto` dan tingginya tetap berasal dari isinya, jadi ia
+memanjang dan `.sambutan` menggulir dengan benar — bahkan di jendela 1280×500
+dan ponsel mendatar 844×390. Yang merusak justru *pengecualian ponsel* yang
+ditulis belakangan.
+
+**Perbaikannya mengembalikan tinggi kartu ke isinya, tanpa mengubah rupa:**
+
+```css
+@media (max-width:448px){
+  .sambutan{padding:0;display:flex;flex-direction:column;place-items:stretch}
+  .sambutan-kartu{…;overflow:visible;flex:1 0 auto}
+}
+```
+
+| Bagian | Tugasnya |
+|---|---|
+| `display:flex;flex-direction:column` | mengganti peregangan kaku grid dengan peregangan yang bisa mengalah pada isi |
+| `place-items:stretch` (tetap) | `align-items:stretch` — kartunya tetap selebar layar penuh |
+| `flex:1 0 auto` — **grow 1** | memenuhi layar saat isinya pendek: tampilan penuh yang memang dirancang |
+| `flex:1 0 auto` — **shrink 0** | tidak pernah dipadatkan di bawah tinggi isinya; panel terbuka → kartu memanjang → `.sambutan` menggulir |
+| `overflow:visible` | di lebar ini tidak ada sudut membulat yang perlu dipangkas, jadi kliping tidak punya alasan hidup — dan jerat "ukuran minimum 0" lenyap untuk selamanya |
+
+> **Aturan yang tidak boleh dilanggar lagi di blok ini:** tinggi
+> `.sambutan-kartu` SELALU berasal dari isinya, tidak pernah dari tinggi layar.
+> Yang seukuran layar hanya `.sambutan`, dan dialah satu-satunya yang menggulir.
+
+**Kenapa 62 uji hijau tidak melihatnya — dan apa yang berubah.**
+
+`uji-sambutan.js` v6.2 memeriksa gulir pada satu baris saja:
+
+```js
+out.gulirMendatar = layar.scrollWidth > layar.clientWidth + 1;   // MENDATAR
+```
+
+Tiga meleset sekaligus, dan ketiganya adalah pola kesalahan yang layak diingat:
+
+| Yang diperiksa v6.2 | Yang sebenarnya rusak |
+|---|---|
+| gulir **mendatar** | meluap ke **bawah** |
+| **satu** ukuran layar (390×844) | ukuran **lain**, terutama ponsel pendek |
+| panel dibuka lalu **langsung ditutup lagi** | panel **tetap terbuka** |
+
+Kerusakan tata letak seperti ini tidak melempar galat, tidak menggeser apa pun,
+dan tidak menyisakan jejak di konsol. Ia hanya diam-diam memotong. Karena itu
+**bagian 13** di `uji-sambutan.js` tidak mengunci nilai CSS mana pun — nilai
+bisa ditulis ulang besok — melainkan mengunci **janji perilakunya**:
+
+> Setiap kendali layar sambutan harus bisa dicapai dengan menggulir, pada setiap
+> ukuran layar yang didukung, dalam setiap keadaan panel.
+
+14 ukuran × 2 keadaan = 28 keadaan, lima hal diperiksa di tiap keadaan: tombol
+"Ayo Mulai" terjangkau, tautan penjelasan terjangkau (jadi panelnya selalu bisa
+DITUTUP lagi), kartunya tidak memotong isinya sendiri, puncak kartunya tidak
+tertinggal di atas layar, dan tidak ada gulir mendatar.
+
+Matriksnya sengaja memuat yang paling menyakitkan — ponsel pendek 360×560,
+ponsel mendatar 844×390, jendela desktop pendek 1280×500 — tiga tempat yang
+tidak pernah dilihat orang saat merancang di layar besar. Penjaganya sudah
+dibuktikan: dijalankan terhadap CSS v6.2, tiga dari lima pemeriksaan itu
+**merah**; terhadap v6.3, ke-28 keadaan hijau.
 
 ---
 

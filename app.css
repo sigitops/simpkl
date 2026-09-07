@@ -531,11 +531,32 @@
 
 /* Di ponsel kartunya dibiarkan memenuhi layar: bingkai, sudut membulat, dan
    bayangan pada lebar segitu hanya menyisakan pinggiran sempit yang terlihat
-   seperti kesalahan. */
+   seperti kesalahan.
+
+   ATURAN YANG TIDAK BOLEH DILANGGAR DI SINI — tinggi .sambutan-kartu SELALU
+   berasal dari isinya, tidak pernah dari tinggi layar. Yang seukuran layar
+   hanya .sambutan, dan dialah satu-satunya yang menggulir.
+
+   Versi 6.2 melanggarnya dengan place-items:stretch. Rantai kerusakannya:
+   align-self:stretch memaku kartu tepat setinggi layar → overflow:hidden pada
+   kartu membuat ukuran minimum otomatisnya 0, jadi ia tidak pernah tumbuh,
+   hanya MEMOTONG → karena kartunya tidak pernah melampaui .sambutan,
+   overflow-y:auto di .sambutan tidak punya apa pun untuk digulir. Tombol
+   "Ayo Mulai" dan tautan "Tutup Penjelasan" jatuh di bawah lipatan layar
+   tanpa satu pun cara untuk mencapainya. Diam, tanpa pesan galat.
+
+   flex:1 0 auto adalah pasangan yang benar untuk kedua keadaan sekaligus:
+   grow 1 → memenuhi layar saat isinya pendek (tampilan penuh yang memang
+   dirancang); shrink 0 → tidak pernah dipadatkan di bawah tinggi isinya, jadi
+   saat panel alur dibuka kartunya memanjang dan .sambutan yang menggulir.
+   overflow:visible melepas jerat itu untuk selamanya: di lebar ini tidak ada
+   sudut membulat yang perlu dipangkas, jadi kliping tidak punya alasan hidup.
+   uji-sambutan.js bagian 13 mengunci aturan ini pada 14 ukuran layar. */
 @media (max-width:448px){
-  .sambutan{padding:0;place-items:stretch}
-  .sambutan-kartu{max-width:none;margin:0;border:0;border-radius:0;box-shadow:none}
+  .sambutan{padding:0;display:flex;flex-direction:column;place-items:stretch}
+  .sambutan-kartu{max-width:none;margin:0;border:0;border-radius:0;box-shadow:none;
+    overflow:visible;flex:1 0 auto}
 }
 @media (prefers-reduced-motion:reduce){ .sambutan{transition:none} }
 
-:root{--versi-aset:"6.2"}
+:root{--versi-aset:"6.3"}
