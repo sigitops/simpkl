@@ -38,7 +38,7 @@ box.innerHTML = emptyState('inbox', 'Tidak ada pendaftaran',
 'Belum ada pengajuan dengan status "' + AppState.filterPendaftaran + '".');
 return;
 }
-box.innerHTML = `<table class="data-table">
+box.innerHTML = `<div class="table-wrap"><table class="data-table">
 <thead><tr><th>Siswa</th><th>Tempat Diajukan</th><th>Kuota</th><th>Tanggal</th><th>Status</th><th></th></tr></thead>
 <tbody>${res.data.map(p => `
 <tr>
@@ -65,7 +65,7 @@ ${p.bisaBatalPenempatan ? `
 <button class="btn-icon danger" aria-label="Batalkan penempatan ${esc(p.namaSiswa)}"
 onclick="bukaBatalPenempatan('${esc(p.id)}')"><span class="mi">undo</span></button>` : ''}
 </div></td>
-</tr>`).join('')}</tbody></table>`;
+</tr>`).join('')}</tbody></table></div>`;
 }
 function bukaTerimaPendaftaran(id) {
 const p = (AppState.dataPendaftaran || []).find(x => x.id === id);

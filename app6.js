@@ -1739,4 +1739,4 @@ await muatJadwalShift();
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '6.7';
+window.__SIMPKL_EOF = '6.8';

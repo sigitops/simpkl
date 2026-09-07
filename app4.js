@@ -76,7 +76,7 @@ box.innerHTML = emptyState('group_off', 'Belum ada siswa PKL aktif',
 'Data muncul setelah pendaftaran siswa diterima.');
 return;
 }
-box.innerHTML = `<table class="data-table">
+box.innerHTML = `<div class="table-wrap"><table class="data-table">
 <thead><tr><th>Nama Siswa</th><th>Kelas</th><th>Tempat PKL</th><th>Presensi</th><th>Jurnal</th><th></th></tr></thead>
 <tbody>${siswa.slice(0, 10).map(s => `
 <tr>
@@ -88,7 +88,7 @@ box.innerHTML = `<table class="data-table">
 <td>${chipStatus(s.statusJurnal)}</td>
 <td><div class="td-actions"><button class="btn-icon" aria-label="Detail ${esc(s.nama)}"
 onclick="bukaDetailSiswa('${esc(s.siswaId)}')"><span class="mi">visibility</span></button></div></td>
-</tr>`).join('')}</tbody></table>`;
+</tr>`).join('')}</tbody></table></div>`;
 }
 async function gambarGrafikMonitoring(d) {
 const c1 = $('chartTrenMonitoring'), c2awal = $('chartStatusHariIni');
