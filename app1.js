@@ -464,6 +464,14 @@ const b = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt',
 const d = new Date(Date.UTC(th, bl - 1, tg));
 return `${h[d.getUTCDay()]}, ${tg} ${b[bl - 1]} ${th}`;
 }
+// tglSingkat tanpa nama hari: "5 Mei 2026", bukan "Sel, 5 Mei 2026". Dipakai di
+// tempat sempit — kotak Mulai/Selesai dan label tonggak progres — yang nama
+// harinya justru memaksa teks membungkus tanpa menambah keterangan apa pun.
+// Sengaja dibangun DI ATAS tglSingkat, bukan menyalin logikanya, supaya
+// penanganan zona waktu di sana tidak perlu dijaga di dua tempat.
+function tglRingkas(iso) {
+return tglSingkat(iso).replace(/^[A-Za-z]{3}, /, '');
+}
 function jamTampil(nilai) {
 const s = String(nilai == null ? '' : nilai).trim();
 if (!s) return '-';

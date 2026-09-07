@@ -31,6 +31,9 @@ AppState.penempatan = d.penempatan;
 renderStatusPresensiBeranda(d);
 renderJurnalBeranda(d);
 renderInstansiBeranda(d);
+renderProgresPkl(d);
+renderStatistikSaya(d);
+renderTugasMendatang(d);
 renderInsight('insightSiswa', d.insights);
 renderPengumumanBeranda(d.pengumuman);
 gambarGrafikTrenSiswa(d.tren);
@@ -49,39 +52,41 @@ return;
 }
 const masuk = d.presensi.masuk, pulang = d.presensi.pulang;
 chip.className = 'chip ' + (masuk ? (masuk.Status === 'Hadir' ? 'chip-success' : 'chip-warning') : 'chip-error');
-chip.innerHTML = `<span class="mi">${masuk ? 'check_circle' : 'error'}</span>${masuk ? esc(masuk.Status) : 'Belum'}`;
+chip.innerHTML = `<span class="mi">${masuk ? 'check_circle' : 'error'}</span>${
+masuk ? esc(masuk.Status) : 'Belum Absen'}`;
+// Keadaan presensi hari ini punya tiga tahap, dan tombolnya harus mengikuti
+// tahap itu — bukan selalu "Presensi Sekarang". Siswa yang sudah absen masuk
+// tetapi belum pulang perlu diarahkan ke absen pulang, bukan ditawari lagi
+// sesuatu yang sudah dikerjakannya.
+const ket = !masuk ? 'Belum melakukan presensi masuk'
+: !pulang ? 'Sudah absen masuk ' + jamTampil(masuk.Waktu) + ' WIB — belum absen pulang'
+: 'Masuk ' + jamTampil(masuk.Waktu) + ' · Pulang ' + jamTampil(pulang.Waktu) + ' WIB';
+const labelTombol = !masuk ? 'Absen Masuk' : !pulang ? 'Absen Pulang' : 'Halaman Presensi';
 box.innerHTML = `
-<div class="info-tonal">
-<span class="mi">schedule</span>
-<div>
-<div class="info-eyebrow">Shift Hari Ini</div>
-<div class="info-strong">${jamTampil(d.penempatan.jamMasuk)} – ${jamTampil(d.penempatan.jamPulang)} WIB</div>
-<div class="info-sub">${esc(d.penempatan.hariKerja || '')}</div>
+<div class="presensi-sorot">
+<div class="ps-tgl">${tglSingkat(new Date().toISOString().slice(0, 10))}</div>
+<div class="ps-jam">${jamTampil(d.penempatan.jamMasuk)} - ${jamTampil(d.penempatan.jamPulang)}</div>
+<div class="ps-ket">${esc(ket)}</div>
 </div>
-</div>
-<div class="list">
-<div class="list-item">
-<div class="list-lead ${masuk ? 'ok' : ''}"><span class="mi">login</span></div>
-<div class="list-main">
-<div class="list-title">Presensi Masuk</div>
-<div class="list-sub">${masuk ? jamTampil(masuk.Waktu) + ' WIB' : 'Belum dilakukan'}</div>
-</div>
-<div class="list-tail">${masuk ? chipStatus(masuk.Status) : ''}</div>
-</div>
-<div class="list-item">
-<div class="list-lead ${pulang ? 'ok' : ''}"><span class="mi">logout</span></div>
-<div class="list-main">
-<div class="list-title">Presensi Pulang</div>
-<div class="list-sub">${pulang ? jamTampil(pulang.Waktu) + ' WIB' : 'Belum dilakukan'}</div>
-</div>
-<div class="list-tail">${pulang ? chipStatus(pulang.Status) : ''}</div>
-</div>
-</div>
-<button class="btn ${masuk && pulang ? 'btn-outline' : 'btn-primary'} btn-block" style="margin-top:16px"
+<div class="stack" style="gap:10px;margin-top:14px">
+<button class="btn ${masuk && pulang ? 'btn-outline' : 'btn-primary'} btn-block"
 onclick="navigateTo('presensi')">
-<span class="mi">how_to_reg</span>
-${masuk && pulang ? 'Lihat Halaman Presensi' : (masuk ? 'Presensi Pulang' : 'Presensi Sekarang')}
-</button>`;
+<span class="mi">${masuk && pulang ? 'how_to_reg' : 'photo_camera'}</span> ${labelTombol}</button>
+<button class="btn btn-outline btn-block" onclick="navigateTo('riwayat-presensi')">
+<span class="mi">history</span> Riwayat Presensi</button>
+</div>`;
+}
+// Menggulir ke sebuah kartu di halaman yang sama. Dipakai pintasan "Pengumuman"
+// di Aksi Cepat: siswa tidak punya halaman pengumuman tersendiri, jadi daripada
+// menautkannya ke halaman yang akan ditolak server, tombolnya membawa mata ke
+// kartu yang memang sudah memuat isinya.
+function gulirKe(id) {
+const el = $(id);
+if (!el) return;
+const kartu = el.closest('.card') || el;
+kartu.scrollIntoView({ behavior: 'smooth', block: 'center' });
+kartu.classList.add('kartu-disorot');
+setTimeout(() => kartu.classList.remove('kartu-disorot'), 1600);
 }
 function renderJurnalBeranda(d) {
 const box = $('boxJurnalHariIni');
@@ -116,35 +121,147 @@ box.innerHTML = `
 <span class="mi">edit_note</span> Kelola Jurnal</button>`;
 }
 function renderInstansiBeranda(d) {
-const box = $('boxInstansi');
+const box = $('boxInstansi'), chip = $('chipStatusPkl');
 if (!box) return;
 if (!d.penempatan) {
-box.innerHTML = emptyState('domain_disabled', 'Belum ada instansi', 'Data tampil setelah pendaftaran diterima.');
+if (chip) { chip.className = 'chip chip-neutral'; chip.textContent = 'Belum Ada'; }
+box.innerHTML = emptyState('domain_disabled', 'Belum ditempatkan',
+'Ajukan pendaftaran tempat PKL terlebih dahulu.',
+`<button class="btn btn-primary btn-sm" onclick="navigateTo('tempat-pkl')">Pilih Tempat PKL</button>`);
 return;
 }
 const p = d.penempatan, pr = d.progres;
+// Chip status dibaca dari progres, bukan dari kolom mana pun: selama tanggal
+// hari ini berada di antara mulai dan selesai, PKL-nya memang sedang berjalan.
+if (chip) {
+const habis = pr && pr.persen >= 100;
+chip.className = 'chip ' + (habis ? 'chip-neutral' : 'chip-success');
+chip.textContent = habis ? 'Selesai' : 'Berjalan';
+}
 box.innerHTML = `
-<div class="info-tonal">
-<span class="mi">domain</span>
-<div><div class="info-strong">${esc(p.namaInstansi)}</div>
-<div class="info-sub">${esc(p.alamat)}</div></div>
+<div class="pkl-kotak">
+<div class="pkl-nama">${esc(p.namaInstansi)}</div>
+<div class="pkl-alamat">${esc(p.alamat)}</div>
+<div class="pkl-pembimbing">
+<div class="data-label">Pembimbing Lapangan</div>
+<div class="data-value">${esc(p.pic && p.pic !== '-' ? p.pic : p.guruNama)}</div>
 </div>
-<div class="list">
-<div class="list-item"><div class="list-main">
-<div class="data-label">Guru Pembimbing</div><div class="data-value">${esc(p.guruNama)}</div></div></div>
-<div class="list-item"><div class="list-main">
-<div class="data-label">Periode PKL</div>
-<div class="data-value">${tglSingkat(p.tanggalMulai)} – ${tglSingkat(p.tanggalSelesai)}</div></div></div>
+<div class="pkl-tanggal">
+<div class="pkl-tgl-item"><span class="mi">event_available</span>
+<div><div class="data-label">Mulai</div>
+<div class="data-value">${tglRingkas(p.tanggalMulai)}</div></div></div>
+<div class="pkl-tgl-item"><span class="mi">event_busy</span>
+<div><div class="data-label">Selesai</div>
+<div class="data-value">${tglRingkas(p.tanggalSelesai)}</div></div></div>
 </div>
-${pr ? `<div style="margin-top:16px">
-<div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px">
-<span style="color:var(--on-surface-muted)">Progres Waktu</span>
-<strong>Bulan ${pr.bulanKe} dari ${pr.bulanTotal}</strong>
 </div>
-<div class="progress"><div class="progress-bar" style="width:${Math.min(100, pr.persen)}%"></div></div>
-<div style="font-size:11.5px;color:var(--on-surface-muted);margin-top:5px">
-${pr.hariLewat} dari ${pr.hariTotal} hari berjalan (${pr.persen}%)</div>
-</div>` : ''}`;
+<button class="btn-ghost btn-block pkl-detail" onclick="navigateTo('tempat-pkl')">
+Lihat Detail <span class="mi">chevron_right</span></button>`;
+}
+function renderProgresPkl(d) {
+const box = $('boxProgresPkl');
+if (!box) return;
+const pr = d.progres, p = d.penempatan;
+if (!pr || !p) {
+box.innerHTML = emptyState('trending_up', 'Progres belum berjalan',
+'Tampil setelah tanggal PKL Anda ditetapkan.');
+return;
+}
+const persen = Math.min(100, Math.max(0, pr.persen));
+// Tanggal tiap tonggak dihitung dari tanggal mulai + porsi durasinya, jadi
+// steppernya menunjukkan KAPAN, bukan sekadar berapa persen.
+const mulai = new Date(String(p.tanggalMulai).slice(0, 10) + 'T00:00:00');
+const selesai = new Date(String(p.tanggalSelesai).slice(0, 10) + 'T00:00:00');
+// Tonggak 0% dan 100% memakai tanggal aslinya, bukan hasil hitungan — supaya
+// ujung steppernya selalu persis sama dengan tanggal di kartu Status PKL.
+// Menghitung 100% dari hariTotal terlihat benar, tetapi meleset sehari setiap
+// kali durasinya dibulatkan, dan selisih itu justru muncul di angka yang paling
+// diperhatikan siswa: kapan PKL-nya berakhir.
+const tonggakTgl = (bagian) => {
+const t = bagian <= 0 ? mulai : bagian >= 1 ? selesai
+: new Date(mulai.getTime() + (selesai - mulai) * bagian);
+return tglRingkas(t.toISOString().slice(0, 10));
+};
+const tonggak = [
+{ lbl: 'Mulai', pada: 0 }, { lbl: '20%', pada: 20 },
+{ lbl: '50%', pada: 50 }, { lbl: '100%', pada: 100 }
+];
+box.innerHTML = `
+<div class="progres-atas">
+<div class="progres-teks">Berjalan <strong>${pr.hariLewat}</strong> dari ${pr.hariTotal} hari</div>
+<div class="progres-persen">${persen}%</div>
+</div>
+<div class="progress"><div class="progress-bar" style="width:${persen}%"></div></div>
+<div class="tonggak">${tonggak.map(t => `
+<div class="tonggak-item ${persen >= t.pada ? 'lewat' : ''}">
+<span class="tonggak-titik">${persen >= t.pada ? '<span class="mi">check</span>' : ''}</span>
+<span class="tonggak-lbl">${t.lbl}</span>
+<span class="tonggak-tgl">${tonggakTgl(t.pada / 100)}</span>
+</div>`).join('')}</div>`;
+}
+function renderStatistikSaya(d) {
+const box = $('boxStatistikSaya');
+if (!box) return;
+const r = d.rekapPresensi || {};
+// `sakit` dipisahkan dari `izin` mulai v6.9. Bila server lama masih mengirim
+// gabungannya saja, angkanya tetap terbaca lewat `izinSakit` daripada
+// menampilkan nol yang menyesatkan.
+const stat = [
+{ ikon: 'task_alt', nada: 'ok',     nilai: r.hadir || 0,  lbl: 'Hadir' },
+{ ikon: 'chat',     nada: 'info',   nilai: r.izin != null ? r.izin : (r.izinSakit || 0), lbl: 'Izin' },
+{ ikon: 'sick',     nada: 'warn',   nilai: r.sakit || 0,  lbl: 'Sakit' },
+{ ikon: 'schedule', nada: 'danger', nilai: r.telat || 0,  lbl: 'Terlambat' }
+];
+box.innerHTML = `<div class="statistik-grid">${stat.map(s => `
+<div class="stat-mini">
+<span class="stat-ikon ${s.nada}"><span class="mi">${s.ikon}</span></span>
+<div><div class="stat-nilai">${s.nilai}</div><div class="stat-lbl">${s.lbl}</div></div>
+</div>`).join('')}</div>`;
+}
+function renderTugasMendatang(d) {
+const box = $('boxTugasMendatang');
+if (!box) return;
+// Tidak ada permintaan baru ke server: seluruh daftar ini disimpulkan dari
+// data yang MEMANG sudah dikirim getDashboardSiswa. Menambah endpoint untuk
+// tiga baris yang bisa dihitung di sini hanya menambah satu perjalanan bolak-
+// balik tanpa menambah satu pun informasi.
+const tugas = [];
+if (d.penempatan) {
+if (!d.jurnalHariIni) {
+tugas.push({ ikon: 'menu_book', nada: 'info', judul: 'Jurnal Harian',
+sub: 'Buat jurnal hari ini', tanda: 'Hari ini', mendesak: true, ke: 'jurnal' });
+}
+if (d.presensi.masuk && !d.presensi.pulang) {
+tugas.push({ ikon: 'photo_camera', nada: 'ok', judul: 'Presensi Pulang',
+sub: 'Jangan lupa absen pulang', tanda: 'Hari ini', mendesak: true, ke: 'presensi' });
+} else if (!d.presensi.masuk) {
+tugas.push({ ikon: 'photo_camera', nada: 'ok', judul: 'Presensi Masuk',
+sub: 'Belum absen masuk hari ini', tanda: 'Hari ini', mendesak: true, ke: 'presensi' });
+}
+if (d.penempatan.tanggalSelesai) {
+const sisa = Math.ceil(
+(new Date(String(d.penempatan.tanggalSelesai).slice(0, 10) + 'T00:00:00') - new Date()) / 86400000);
+tugas.push({ ikon: 'description', nada: 'warn', judul: 'Laporan Akhir',
+sub: 'Unggah laporan akhir PKL',
+tanda: tglRingkas(d.penempatan.tanggalSelesai),
+mendesak: sisa <= 14, ke: 'laporan' });
+}
+}
+if (!tugas.length) {
+box.innerHTML = emptyState('task_alt', 'Tidak ada tugas tertunda',
+'Semua kewajiban hari ini sudah Anda selesaikan.');
+return;
+}
+box.innerHTML = `<div class="list">${tugas.map(t => `
+<div class="list-item tugas-item" onclick="navigateTo('${t.ke}')" role="button" tabindex="0"
+onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();navigateTo('${t.ke}')}">
+<div class="list-lead ${t.nada}"><span class="mi">${t.ikon}</span></div>
+<div class="list-main">
+<div class="list-title">${t.judul}</div>
+<div class="list-sub">${t.sub}</div>
+</div>
+<div class="list-tail"><span class="chip ${t.mendesak ? 'chip-error' : 'chip-warning'}">${t.tanda}</span></div>
+</div>`).join('')}</div>`;
 }
 function renderInsight(idElemen, daftar) {
 const el = $(idElemen);
