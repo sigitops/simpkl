@@ -1251,6 +1251,45 @@ perbaruiLencanaFilter(pfx);
 if (typeof st.cfg.saatFilter === 'function') st.cfg.saatFilter();
 else renderTabel(id);
 }
+// ── Penyaring untuk halaman yang bukan tabel ──────────────────────────
+// Panelnya sama persis dengan milik modul admin & guru; yang berbeda hanya
+// tempat nilainya disimpan. Filter tabel hidup di AppState.tabel[id] bersama
+// data, urutan, dan halamannya; halaman seperti Riwayat Presensi dan Jurnal
+// tidak punya keadaan tabel sama sekali, jadi nilainya ditaruh terpisah.
+//
+// Fungsi yang MENERAPKAN saringan didaftarkan per awalan, bukan dipanggil
+// langsung dari sini: dengan begitu komponen ini tidak perlu tahu apa pun
+// tentang halaman yang memakainya, dan halaman baru cukup mendaftar.
+const SARING_TERAPKAN = {};
+function daftarkanSaring(pfx, fn) { SARING_TERAPKAN[pfx] = fn; }
+function nilaiSaring(pfx, kunci) {
+return (((AppState.saring || {})[pfx]) || {})[kunci] || '';
+}
+function ubahSaring(pfx, kunci, nilai) {
+AppState.saring = AppState.saring || {};
+AppState.saring[pfx] = AppState.saring[pfx] || {};
+if (nilai) AppState.saring[pfx][kunci] = nilai;
+else delete AppState.saring[pfx][kunci];
+perbaruiLencanaSaring(pfx);
+if (typeof SARING_TERAPKAN[pfx] === 'function') SARING_TERAPKAN[pfx]();
+}
+function resetSaring(pfx) {
+AppState.saring = AppState.saring || {};
+AppState.saring[pfx] = {};
+// Kontrolnya ikut dikembalikan; kalau hanya nilainya yang dihapus, panelnya
+// tetap memperlihatkan pilihan lama dan berbohong tentang keadaan saringan.
+$$('#' + pfx + 'FilterPanel select').forEach(function (s) { s.value = ''; });
+perbaruiLencanaSaring(pfx);
+if (typeof SARING_TERAPKAN[pfx] === 'function') SARING_TERAPKAN[pfx]();
+}
+function perbaruiLencanaSaring(pfx) {
+const nilai = (AppState.saring || {})[pfx] || {};
+let n = 0;
+Object.keys(nilai).forEach(function (k) { if (nilai[k]) n++; });
+const lencana = $(pfx + 'FilterBadge'), tombol = $(pfx + 'FilterBtn');
+if (lencana) { lencana.textContent = String(n); lencana.hidden = (n === 0); }
+if (tombol) tombol.classList.toggle('filter-aktif', n > 0);
+}
 function bukaPanelFilter(pfx) {
 const panel = $(pfx + 'FilterPanel'), tombol = $(pfx + 'FilterBtn');
 if (!panel || !tombol) return;

@@ -82,11 +82,11 @@ if (leg) leg.innerHTML = isi.map(k =>
 function renderJejakPresensi(items, rentang) {
 AppState.riwayatItems = items;
 AppState.riwayatRentang = rentang;
-const sel = $('rwFilterStatus');
-if (sel && !sel.dataset.terpasang) {
-sel.dataset.terpasang = '1';
-sel.onchange = () => gambarJejakPresensi();
-}
+// Panel saring memanggil balik lewat pendaftaran ini, bukan lewat onchange
+// yang dipasang tangan — panelnya sendiri sama persis dengan milik modul
+// admin dan guru, dan tidak perlu tahu apa pun tentang halaman ini.
+daftarkanSaring('rw', gambarJejakPresensi);
+perbaruiLencanaSaring('rw');
 gambarJejakPresensi();
 }
 function gambarJejakPresensi() {
@@ -95,7 +95,7 @@ const chip = $('chipJumlahRiwayat');
 if (!list) return;
 const semua = AppState.riwayatItems || [];
 const rentang = AppState.riwayatRentang || { label: 'rentang ini' };
-const saring = $('rwFilterStatus') ? $('rwFilterStatus').value : '';
+const saring = nilaiSaring('rw', 'status');
 const items = saring
 ? semua.filter(r => String(r.status) === saring || String(r.jenis) === saring)
 : semua;
@@ -181,52 +181,82 @@ if (!res.success) { toast(res.message, 'error'); return; }
 const items = res.data.items;
 AppState.dataJurnal = items;
 AppState.jurnalRentang = res.data.rentang.label;
+daftarkanSaring('jr', saringJurnal);
+perbaruiLencanaSaring('jr');
 gambarRingkasJurnal(items);
 saringJurnal();
 } catch (err) {
 list.innerHTML = emptyState('error', 'Gagal memuat jurnal', err.message);
 }
 }
-// Ringkasan status sekaligus penyaringnya. Angka dan filter sengaja jadi satu
-// benda: begitu siswa melihat "3 Ditolak", hal berikutnya yang ingin dia
-// lakukan adalah melihat ketiganya — bukan mencari kontrol filter terpisah.
+// Ringkasan jurnal memakai komponen yang SAMA dengan Riwayat Presensi —
+// .rw-skor, .rw-kartu-baris, .rw-bar — bukan tiruan yang mirip. Dua halaman
+// yang menjawab pertanyaan sejenis ("bagaimana catatan saya sejauh ini?")
+// sebaiknya juga terbaca dengan cara yang sama, dan satu-satunya cara menjaga
+// itu tetap benar dalam jangka panjang adalah memakai kelas yang sama persis.
 function gambarRingkasJurnal(items) {
 const box = $('jrRingkas');
 if (!box) return;
-const n = { semua: items.length, Disetujui: 0, Menunggu: 0, Ditolak: 0 };
+const n = { Disetujui: 0, Menunggu: 0, Ditolak: 0 };
 items.forEach(j => { if (n[j.status] !== undefined) n[j.status]++; });
-const aktif = AppState.jurnalFilterStatus || 'semua';
-const tab = [
-{ k: 'semua', lbl: 'Semua', nada: '' },
-{ k: 'Menunggu', lbl: 'Menunggu', nada: 'warn' },
-{ k: 'Disetujui', lbl: 'Disetujui', nada: 'ok' },
-{ k: 'Ditolak', lbl: 'Ditolak', nada: 'danger' }
+const kartu = [
+{ nama: 'Disetujui', angka: n.Disetujui, ikon: 'check_circle', nada: 'var(--success)' },
+{ nama: 'Menunggu', angka: n.Menunggu, ikon: 'hourglass_top', nada: 'var(--warning)' },
+{ nama: 'Ditolak', angka: n.Ditolak, ikon: 'cancel', nada: 'var(--error)' },
+{ nama: 'Total', angka: items.length, ikon: 'menu_book', nada: 'var(--primary)' }
 ];
-box.innerHTML = tab.map(t => `
-<button class="jr-pil ${t.nada} ${aktif === t.k ? 'aktif' : ''}"
-aria-pressed="${aktif === t.k}" onclick="setFilterStatusJurnal('${t.k}')">
-<span class="jr-pil-n">${n[t.k]}</span><span class="jr-pil-l">${t.lbl}</span></button>`).join('');
-}
-function setFilterStatusJurnal(status) {
-AppState.jurnalFilterStatus = status;
-gambarRingkasJurnal(AppState.dataJurnal || []);
-saringJurnal();
+const total = items.length;
+const persen = total ? Math.round(n.Disetujui / total * 100) : 0;
+box.innerHTML = `
+<div class="rw-skor">
+<div class="rw-skor-cincin" style="--isi:${persen}">
+<span class="rw-skor-angka">${persen}<small>%</small></span>
+</div>
+<div class="rw-skor-teks">
+<div class="rw-skor-judul">Jurnal Disetujui</div>
+<div class="rw-skor-sub">${n.Disetujui} disetujui dari ${total} jurnal tercatat</div>
+</div>
+</div>
+<div class="rw-kartu-baris">
+${kartu.map(k => `
+<div class="rw-kartu" style="--nada:${k.nada}">
+<span class="rw-kartu-ikon"><span class="mi">${k.ikon}</span></span>
+<span class="rw-kartu-angka">${k.angka}</span>
+<span class="rw-kartu-nama">${esc(k.nama)}</span>
+</div>`).join('')}
+</div>`;
+// Bilah proporsi hanya menghitung KETIGA status; "Total" adalah jumlahnya,
+// bukan bagian dari komposisinya — memasukkannya akan membuat setiap bilah
+// selalu setengah panjang tanpa arti apa pun.
+const wrap = $('jrBarWrap'), bar = $('jrBar'), leg = $('jrBarLegenda');
+if (!wrap || !bar) return;
+if (!total) { wrap.hidden = true; return; }
+wrap.hidden = false;
+const isi = kartu.slice(0, 3).filter(k => k.angka > 0);
+bar.innerHTML = isi.map(k =>
+`<span class="rw-seg" style="width:${(k.angka / total * 100).toFixed(1)}%;background:${k.nada}"
+title="${esc(k.nama)}: ${k.angka}"></span>`).join('');
+if (leg) leg.innerHTML = isi.map(k =>
+`<span class="rw-leg"><i style="background:${k.nada}"></i>${esc(k.nama)}
+<b>${Math.round(k.angka / total * 100)}%</b></span>`).join('');
 }
 // Penyaringan dikerjakan DI KLIEN atas data yang sudah di tangan. Rentang
 // tanggalnya memang sudah dibatasi server; menyaring status dan kata kunci di
 // sini membuat hasilnya muncul seketika tanpa satu pun perjalanan ke server.
 function saringJurnal() {
 const list = $('listJurnal');
+const chip = $('chipJumlahJurnal');
 if (!list) return;
 const semua = AppState.dataJurnal || [];
-const status = AppState.jurnalFilterStatus || 'semua';
+const status = nilaiSaring('jr', 'status');
 const kunci = (($('jrCari') || {}).value || '').trim().toLowerCase();
 const items = semua.filter(function (j) {
-if (status !== 'semua' && j.status !== status) return false;
+if (status && j.status !== status) return false;
 if (!kunci) return true;
 return (String(j.kegiatan || '') + ' ' + String(j.kendala || '') + ' ' +
         String(j.komentar || '')).toLowerCase().indexOf(kunci) !== -1;
 });
+if (chip) chip.textContent = items.length + ' jurnal';
 if (!semua.length) {
 list.innerHTML = emptyState('note_add', 'Belum ada jurnal',
 'Tidak ada jurnal pada rentang ' + String(AppState.jurnalRentang || '').toLowerCase() + '.',
@@ -239,23 +269,35 @@ list.innerHTML = emptyState('search_off', 'Tidak ada yang cocok',
 `<button class="btn btn-outline btn-sm" onclick="resetSaringJurnal()">Tampilkan semua</button>`);
 return;
 }
-list.innerHTML = `<div class="jr-daftar">${items.map(function (j) {
+const hariNama = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+const bulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+const kunciHariIni = new Date().toISOString().slice(0, 10);
+const kemarin = new Date(); kemarin.setDate(kemarin.getDate() - 1);
+const kunciKemarin = kemarin.toISOString().slice(0, 10);
+
+list.innerHTML = `<div class="rw-jejak">${items.map(function (j) {
 // Indeksnya dicari pada daftar ASLI, bukan pada hasil saringan — kalau
 // memakai indeks hasil saringan, tombol Ubah akan membuka jurnal yang salah
 // begitu ada satu saja kata kunci diketik.
 const i = semua.indexOf(j);
 const nada = j.status === 'Disetujui' ? 'ok' : j.status === 'Ditolak' ? 'danger' : 'warn';
-const ikon = j.status === 'Disetujui' ? 'check' : j.status === 'Ditolak' ? 'close' : 'hourglass_top';
-return `
-<article class="jr-kartu ${nada}">
-<header class="jr-kepala">
-<span class="jr-ikon ${nada}"><span class="mi">${ikon}</span></span>
-<div class="jr-judul">
-<div class="list-title">${tglSingkat(j.tanggal)}</div>
-${j.tanggalReview ? `<div class="list-sub">Direview ${tglRingkas(j.tanggalReview)}</div>` : ''}
+const d = new Date(String(j.tanggal).slice(0, 10) + 'T00:00:00');
+const tanda = j.tanggal === kunciHariIni ? 'Hari ini'
+  : j.tanggal === kunciKemarin ? 'Kemarin' : '';
+return `<section class="rw-hari nada-${nada}">
+<header class="rw-hari-kepala">
+<div class="rw-hari-tgl">
+<span class="rw-hari-angka">${String(d.getDate()).padStart(2, '0')}</span>
+<span class="rw-hari-bulan">${bulan[d.getMonth()]}</span>
+</div>
+<div class="rw-hari-info">
+<div class="rw-hari-nama">${hariNama[d.getDay()]}${tanda ? ` <span class="rw-tanda">${tanda}</span>` : ''}</div>
+<div class="rw-hari-sub">${j.tanggalReview
+  ? 'Direview ' + tglRingkas(j.tanggalReview) : 'Menunggu review guru'}</div>
 </div>
 ${chipStatus(j.status)}
 </header>
+<div class="rw-hari-isi">
 <div class="jr-isi">
 <div class="list-text">${esc(j.kegiatan)}</div>
 ${j.kendala ? `<div class="jr-kendala"><span class="data-label">Kendala</span>
@@ -264,21 +306,20 @@ ${j.komentar ? `<div class="alert ${j.status === 'Ditolak' ? 'alert-error' : 'al
 <span class="mi">comment</span><div><strong>Komentar Guru</strong><p>${esc(j.komentar)}</p></div></div>` : ''}
 ${j.foto ? `<img src="${esc(j.foto)}" alt="Dokumentasi ${tglRingkas(j.tanggal)}" class="review-thumb" loading="lazy"
 onclick="bukaPratinjau('Dokumentasi','${esc(j.foto)}','','gambar')">` : ''}
-</div>
-${j.status !== 'Disetujui' ? `<footer class="jr-aksi">
+${j.status !== 'Disetujui' ? `<div class="jr-aksi">
 <button class="btn btn-outline btn-xs" onclick="bukaFormJurnalKe(${i})">
 <span class="mi">edit</span> Ubah</button>
 <button class="btn btn-danger btn-xs" onclick="konfirmasiHapusJurnal(${i})">
 <span class="mi">delete</span> Hapus</button>
-</footer>` : ''}
-</article>`;
+</div>` : ''}
+</div>
+</div>
+</section>`;
 }).join('')}</div>`;
 }
 function resetSaringJurnal() {
-AppState.jurnalFilterStatus = 'semua';
 if ($('jrCari')) $('jrCari').value = '';
-gambarRingkasJurnal(AppState.dataJurnal || []);
-saringJurnal();
+resetSaring('jr');
 }
 function bukaFormJurnalKe(indeks) {
 const d = (AppState.dataJurnal || [])[indeks];

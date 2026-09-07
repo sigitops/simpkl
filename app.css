@@ -999,53 +999,19 @@
   .aksi-cepat{gap:12px}
 }
 
-/* ── Jurnal: alat saring, kartu, dan aksi massal (v7.0) ─────────────── */
+/* ── Jurnal: mengikuti bahasa desain Riwayat Presensi (v7.1) ────────────
+   Kartu jurnal TIDAK punya kelas sendiri lagi. Ia memakai .rw-jejak, .rw-hari,
+   dan .rw-hari-kepala yang sama persis dengan Riwayat Presensi — bukan salinan
+   yang mirip. Salinan yang mirip akan menyimpang begitu salah satunya disentuh,
+   dan penyimpangan itu tidak akan tertangkap oleh apa pun. Yang tersisa di sini
+   hanyalah bagian yang memang khas jurnal: isi, kendala, komentar, dan aksi. */
 
-.jr-alat{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:14px;
-  padding-top:14px;border-top:1px solid var(--outline-variant)}
-.cari-kotak{position:relative;flex:1 1 240px;min-width:0;display:flex;align-items:center}
-.cari-kotak .mi{position:absolute;left:11px;font-size:19px;color:var(--on-surface-muted);
-  pointer-events:none}
-.cari-kotak .field-input{padding-left:38px}
-/* Pil ringkasan sekaligus penyaring: angkanya dan filternya sengaja satu benda,
-   sebab begitu siswa membaca "3 Ditolak", yang ingin dilakukannya berikutnya
-   adalah melihat ketiganya — bukan mencari kontrol filter yang lain. */
-.jr-ringkas{display:flex;flex-wrap:wrap;gap:8px}
-.jr-pil{display:flex;align-items:center;gap:7px;padding:7px 13px;cursor:pointer;
-  font:inherit;color:var(--on-surface-variant);background:var(--surface-container-low);
-  border:1px solid var(--outline-variant);border-radius:var(--r-full);
-  transition:background .16s ease,border-color .16s ease,color .16s ease}
-.jr-pil:hover{background:var(--surface-hover)}
-.jr-pil-n{font-weight:700;font-variant-numeric:tabular-nums}
-.jr-pil-l{font-size:12.5px}
-.jr-pil.aktif{background:var(--primary-soft);border-color:var(--primary);color:var(--primary)}
-.jr-pil.warn.aktif{background:var(--warning-bg);border-color:var(--warning);color:var(--warning)}
-.jr-pil.ok.aktif{background:var(--success-bg);border-color:var(--success);color:var(--success)}
-.jr-pil.danger.aktif{background:var(--error-bg);border-color:var(--error);color:var(--error)}
-
-.jr-daftar{display:flex;flex-direction:column;gap:12px}
-.jr-kartu{background:var(--surface-card);border:1px solid var(--outline-variant);
-  border-radius:var(--r-lg);overflow:hidden}
-/* Garis status di tepi kiri: keadaan sebuah jurnal terbaca sebelum satu kata
-   pun dibaca, dan tetap terbaca saat menggulir cepat melewati puluhan kartu. */
-.jr-kartu{border-left:3px solid var(--outline)}
-.jr-kartu.ok{border-left-color:var(--success)}
-.jr-kartu.warn{border-left-color:var(--warning)}
-.jr-kartu.danger{border-left-color:var(--error)}
-.jr-kepala{display:flex;align-items:center;gap:11px;padding:13px var(--s-md);
-  border-bottom:1px solid var(--outline-variant)}
-.jr-ikon{width:32px;height:32px;flex:0 0 32px;border-radius:50%;display:grid;place-items:center;
-  background:var(--surface-container);color:var(--primary)}
-.jr-ikon .mi{font-size:18px}
-.jr-ikon.ok{background:var(--success-bg);color:var(--success)}
-.jr-ikon.warn{background:var(--warning-bg);color:var(--warning)}
-.jr-ikon.danger{background:var(--error-bg);color:var(--error)}
-.jr-judul{flex:1;min-width:0}
-.jr-isi{padding:13px var(--s-md);display:flex;flex-direction:column;gap:10px}
+.jr-isi{display:flex;flex-direction:column;gap:10px}
 .jr-kendala{padding:10px 12px;border-radius:var(--r-md);
   background:var(--surface-container-low);font-size:13.5px}
 .jr-komentar{margin:0;padding:10px 12px;font-size:13px}
-.jr-aksi{display:flex;flex-wrap:wrap;gap:8px;padding:0 var(--s-md) 13px}
+.jr-aksi{display:flex;flex-wrap:wrap;gap:8px;margin-top:2px}
+.jr-cari{flex:1 1 200px;min-width:0;max-width:280px}
 .jr-cuplik{margin-top:12px;padding:12px;border-radius:var(--r-md);
   background:var(--surface-container-low);border:1px solid var(--outline-variant);font-size:13.5px}
 .jr-foto-lama{display:flex;gap:12px;align-items:flex-start;margin-bottom:10px;padding:11px;
@@ -1074,6 +1040,5 @@
 .review-card.terpilih{border-color:var(--primary);
   box-shadow:0 0 0 2px var(--primary-soft)}
 
-@media (prefers-reduced-motion:reduce){ .jr-pil{transition:none} }
 
-:root{--versi-aset:"7.0"}
+:root{--versi-aset:"7.1"}
