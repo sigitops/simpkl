@@ -1638,7 +1638,8 @@ function ikonLogin(nama) {
 /**
  * Merakit seluruh HTML halaman login.
  *
- * @param {Object} o  nama, tagline, sekolah, kontak, wa, logoUrl, tahun, peringatan
+ * @param {Object} o  nama, tagline, sekolah, kontak, wa, clientId, logoUrl, tahun,
+ *                    peringatan
  *
  * PEMILIH PERAN BUKAN PENYARING. Server tetap membaca peran dari akunnya, dan
  * salah pilih tidak pernah menolak login — nilainya bahkan tidak ikut terkirim.
@@ -1671,6 +1672,15 @@ function rakitLogin(o) {
   // rasanya satu benda yang bergeser — bukan satu warna padam dan satu lagi
   // menyala di tempat lain.
   var peran = '<span class="auth-peran-pil" aria-hidden="true"></span>';
+  // Tombol Google hanya dirakit bila Client ID sudah diisi admin di Pengaturan.
+  // Tanpa Client ID ia DIPASTIKAN gagal, dan tombol yang dipastikan gagal lebih
+  // buruk daripada tidak ada tombol — itu aturan yang dipegang halaman ini sejak
+  // awal. Begitu Client ID diisi, tombolnya muncul sendiri.
+  var blokGoogle = o.clientId
+    ? '<div class="auth-divider"><span>atau masuk dengan</span></div>' +
+      '<button type="button" class="auth-merek" id="btnGoogle" onclick="handleLoginGoogle()">' +
+        ikonLogin('google') + '<span>Google Account</span></button>'
+    : '';
   for (var i = 0; i < daftarPeran.length; i++) {
     peran += '<button type="button" class="auth-peran-opsi" data-peran="' + daftarPeran[i][0] +
       '" aria-pressed="' + (i === 0 ? 'true' : 'false') +
@@ -1684,7 +1694,8 @@ function rakitLogin(o) {
       '<div class="auth-identity" data-app="' + esc(nama) + '" data-tagline="' +
         esc(o.tagline || '') + '" data-sekolah="' + esc(o.sekolah || '') +
         '" data-kontak="' + esc(o.kontak || '') +
-        '" data-wa="' + esc(o.wa || '') + '">' +
+        '" data-wa="' + esc(o.wa || '') +
+        '" data-google="' + esc(o.clientId || '') + '">' +
         logo +
         '<h1 class="auth-app">Masuk ke <span class="auth-app-nama">' + esc(nama) + '</span></h1>' +
         '<p class="auth-tagline">Gunakan akun yang diberikan oleh sekolah Anda.</p>' +
@@ -1720,9 +1731,7 @@ function rakitLogin(o) {
         '</div>' +
         '<button type="submit" class="btn btn-primary btn-block btn-lg" id="btnLogin">Masuk</button>' +
       '</form>' +
-      '<div class="auth-divider"><span>atau masuk dengan</span></div>' +
-      '<button type="button" class="auth-merek" id="btnGoogle" onclick="handleLoginGoogle()">' +
-        ikonLogin('google') + '<span>Google Account</span></button>' +
+      blokGoogle +
       '<p class="auth-kaki">Belum punya akun? ' +
         '<button type="button" class="auth-tautan" onclick="bukaHubungiAdmin()">' +
         'Hubungi Admin</button></p>' +
@@ -1748,6 +1757,7 @@ function loginCadangan() {
     sekolah: ident.namaSekolah || '',
     kontak:  ident.kontakAdmin || '',
     wa:      ident.waAdmin || '',
+    clientId: ident.googleClientId || '',
     logoUrl: ident.logoUrl || '',
     tahun:   new Date().getFullYear(),
     peringatan:
@@ -2438,16 +2448,94 @@ if (kotakGalat) kotakGalat.textContent = pesan || 'Gagal masuk.';
 else toast(pesan || 'Gagal masuk.', 'error', 6000);
 if (kolomPass) { kolomPass.value = ''; kolomPass.classList.add('invalid'); kolomPass.focus(); }
 }
+/**
+ * Memuat pustaka Google Identity Services — SATU KALI, dan hanya saat diperlukan.
+ *
+ * Halaman login ini dirancang tanpa satu pun permintaan jaringan saat dibuka.
+ * Menaruh gsi/client di <head> akan melanggarnya untuk SETIAP pengunjung,
+ * padahal yang menekan tombol Google hanya sebagian kecil. Jadi pustakanya baru
+ * diunduh pada klik pertama: gambaran pertama tetap bersih, dan yang menunggu
+ * sepersekian detik hanyalah orang yang memang memintanya.
+ */
+function muatGis() {
+if (window.__gisSiap) return window.__gisSiap;
+window.__gisSiap = new Promise(function (selesai, gagal) {
+if (window.google && google.accounts && google.accounts.oauth2) return selesai();
+const s = document.createElement('script');
+s.src = 'https://accounts.google.com/gsi/client';
+s.async = true; s.defer = true;
+s.onload = function () {
+if (window.google && google.accounts && google.accounts.oauth2) selesai();
+else gagal(new Error('Pustaka Google termuat tetapi tidak lengkap.'));
+};
+s.onerror = function () {
+// Sebab paling sering: jaringan sekolah memblokir accounts.google.com.
+gagal(new Error('Pustaka Google tidak dapat dimuat. Periksa koneksi Anda, ' +
+'atau masuk memakai NIS/NIP dan password.'));
+};
+document.head.appendChild(s);
+});
+return window.__gisSiap;
+}
+
+/**
+ * Masuk dengan Akun Google.
+ *
+ * URUTANNYA BEDA dengan handleLogin, dan itu disengaja. Bagian yang lama di
+ * sini adalah pengguna MEMILIH AKUN di jendela Google — itu interaksi, bukan
+ * penantian, dan menutupinya dengan tirai justru menyembunyikan jendela yang
+ * harus ia lihat. Tirai baru naik sesudah token di tangan, menemani satu-satunya
+ * bagian yang benar-benar menunggu: perjalanan ke server.
+ *
+ * Token yang didapat di sini TIDAK dipercaya klien sedikit pun — ia hanya
+ * diteruskan. Yang memutuskan sah atau tidak adalah doLoginGoogle() di server,
+ * yang memverifikasinya ke Google dan memeriksa bahwa `aud`-nya memang milik
+ * aplikasi ini.
+ */
 async function handleLoginGoogle() {
+const kepala = document.querySelector('.auth-identity');
+const clientId = kepala ? (kepala.getAttribute('data-google') || '') : '';
+if (!clientId) {
+toast('Login Google belum disiapkan admin.', 'warning', 5000);
+return;
+}
 const ingat = ingatSayaDipilih();
-// Alasan yang sama seperti handleLogin: yang ditemani harus bagian yang lama.
-tampilkanTiraiMasuk();
+const tombol = $('btnGoogle');
+if (tombol) { tombol.disabled = true; tombol.setAttribute('aria-busy', 'true'); }
+let tiraiNaik = false;
 try {
-const res = await panggil('doLoginGoogle');
+await muatGis();
+const token = await new Promise(function (selesai, gagal) {
+const klien = google.accounts.oauth2.initTokenClient({
+client_id: clientId,
+scope: 'openid email profile',
+callback: function (r) {
+if (r && r.access_token) selesai(r.access_token);
+else gagal(new Error('Google tidak memberikan izin yang diperlukan.'));
+},
+error_callback: function (e) {
+const tipe = e && e.type;
+gagal(new Error(tipe === 'popup_closed'
+? 'Jendela Google ditutup sebelum selesai.'
+: tipe === 'popup_failed_to_open'
+? 'Jendela Google diblokir peramban. Izinkan pop-up untuk situs ini.'
+: 'Google menolak permintaan masuk.'));
+}
+});
+klien.requestAccessToken();
+});
+if (tombol) { tombol.disabled = false; tombol.removeAttribute('aria-busy'); }
+tampilkanTiraiMasuk();
+tiraiNaik = true;
+const res = await panggil('doLoginGoogle', token);
 if (!res.success) { await kembalikanFormLogin('', res.message); return; }
 await mulaiSesi(res.data.token, null, ingat);
 } catch (err) {
-await kembalikanFormLogin('', err.message);
+if (tombol) { tombol.disabled = false; tombol.removeAttribute('aria-busy'); }
+// Bila tirai belum naik, form login masih utuh di layar — cukup toast, tidak
+// perlu menggambar ulang halaman yang tidak ke mana-mana.
+if (tiraiNaik) await kembalikanFormLogin('', err.message);
+else toast(err.message || 'Gagal masuk dengan Google.', 'error', 6000);
 }
 }
 // Layar peralihan saat masuk. Bukan sekadar hiasan: sebelumnya form login tetap
@@ -2593,7 +2681,8 @@ tampilkanKerangkaAplikasi(true);
 const identitas = {
 appName: c.appName || 'SIM PKL', appTagline: c.appTagline || '',
 namaSekolah: c.namaSekolah || '', logoUrl: c.logoUrl || '',
-kontakAdmin: c.kontakAdmin || '', waAdmin: c.waAdmin || ''
+kontakAdmin: c.kontakAdmin || '', waAdmin: c.waAdmin || '',
+googleClientId: c.googleClientId || ''
 };
 try { Simpanan.simpan('identitas', JSON.stringify(identitas)); } catch (e) {}
 // Masuk pertama kali di perangkat ini: localStorage masih kosong saat splash

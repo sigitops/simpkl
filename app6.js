@@ -332,6 +332,7 @@ isi('stLogo', c.logoUrl); isi('stNamaSekolah', c.namaSekolah); isi('stAlamatSeko
 isi('stKepsek', c.kepalaSekolah); isi('stNipKepsek', c.nipKepalaSekolah);
 isi('stRadius', c.radiusDefault); isi('stToleransi', c.toleransiTelat); isi('stAdminEmail', c.adminEmail);
 isi('stKontakAdmin', c.kontakAdmin); isi('stWaAdmin', c.waAdmin);
+isi('stGoogleClientId', c.googleClientId);
 if ($('stNotif')) $('stNotif').value = c.notifikasiEmail || 'aktif';
 pratinjauLogo();
 const box = $('boxPenyimpanan');
@@ -382,7 +383,17 @@ const radius = Number($('stRadius').value);
 if (radius && (radius < 20 || radius > 1000)) { toast('Radius harus antara 20 dan 1000 meter.', 'warning'); return; }
 tampilkanSibuk('Menyimpan pengaturan…');
 try {
-const res = await panggil('simpanPengaturan', AppState.sessionToken, {
+// Hanya kolom yang BENAR-BENAR ADA di form ini yang dikirim.
+//
+// Bentuk lamanya, `$('stX') ? $('stX').value.trim() : ''`, punya cacat yang
+// tidak terlihat sampai ia menggigit: bila kerangka Pengaturan yang sedang
+// tampil berasal dari versi aplikasi yang lebih lama — tab yang sudah lama
+// terbuka, misalnya — kolom yang baru belum ada di sana, dan menekan Simpan
+// akan mengirim '' untuk kolom itu. Server menulis '' itu apa adanya, jadi
+// nomor WhatsApp atau Client ID yang sudah diisi TERHAPUS tanpa satu pun
+// pesan. Menghilangkan kuncinya membuat server tidak menyentuhnya sama
+// sekali — perubahan sebagian, bukan penimpaan menyeluruh.
+const isian = {
 appName: $('stAppName').value.trim() || 'SIM PKL',
 appTagline: $('stTagline').value.trim(),
 appDesc: $('stAppDesc').value.trim(),
@@ -394,10 +405,14 @@ nipKepalaSekolah: $('stNipKepsek').value.trim(),
 radiusDefault: String(radius || 100),
 toleransiTelat: String(Number($('stToleransi').value) || 15),
 notifikasiEmail: $('stNotif').value,
-adminEmail: $('stAdminEmail').value.trim(),
-kontakAdmin: $('stKontakAdmin') ? $('stKontakAdmin').value.trim() : '',
-waAdmin: $('stWaAdmin') ? $('stWaAdmin').value.trim() : ''
+adminEmail: $('stAdminEmail').value.trim()
+};
+[['kontakAdmin', 'stKontakAdmin'], ['waAdmin', 'stWaAdmin'],
+ ['googleClientId', 'stGoogleClientId']].forEach(function (pasangan) {
+const el = $(pasangan[1]);
+if (el) isian[pasangan[0]] = el.value.trim();
 });
+const res = await panggil('simpanPengaturan', AppState.sessionToken, isian);
 sembunyikanSibuk();
 toast(res.message, res.success ? 'success' : 'error');
 if (res.success) { batalkanPaketData(); await muatBootstrap(); }
@@ -1627,4 +1642,4 @@ await muatJadwalShift();
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '6.5';
+window.__SIMPKL_EOF = '6.6';

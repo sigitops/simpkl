@@ -996,7 +996,7 @@ sana.
 
 ---
 
-## Halaman login (v6.4, diperluas v6.5)
+## Halaman login (v6.4, diperluas v6.5 dan v6.6)
 
 Ditulis ulang mengikuti rancangan yang diminta: logo heksagon, judul
 &ldquo;Masuk ke &lt;nama&gt;&rdquo;, pemilih peran tersegmen, baris ingat-saya,
@@ -1306,6 +1306,141 @@ Yang paling sering merusak halaman login bukan lebar yang menyempit, melainkan
 TINGGI yang menyusut — dan itulah dua baris tengah di tabel itu.
 `uji/potret-login-responsif.js` menggambar sembilan mode di kedua tema untuk
 diperiksa mata, sebab lolos aturan dan enak dipandang adalah dua hal berbeda.
+
+### Dua bug v6.6, dan akar keduanya berbeda jauh
+
+#### 1. Pengaturan tersimpan, tetapi halaman login tidak berubah
+
+Gejalanya: admin mengisi nomor WhatsApp, menyimpan, memuat ulang, dan tombolnya
+tetap tidak muncul. Kesimpulan yang wajar — fiturnya rusak. Yang sebenarnya
+terjadi lain sekali.
+
+Halaman login **dirakit** memakai nilai konfigurasi, lalu hasil rakitannya ikut
+disinggah:
+
+```
+kunci = 'hal_' + APP_VERSI + '_' + peran + '_' + halaman + '_' + versiData()
+TTL   = 1800 detik
+```
+
+`simpanPengaturan()` dahulu hanya melakukan satu hal:
+
+```js
+CacheService.getScriptCache().remove('appconfig');   // ← hanya ini
+```
+
+Itu membuat **pembacaan** konfigurasi berikutnya segar, tetapi tidak menyentuh
+satu pun halaman yang **sudah terlanjur dirakit** memakai nilai lama. Selama
+setengah jam berikutnya, halaman login yang disajikan masih halaman yang
+dirakit sebelum nomor itu ada.
+
+> **Aturannya: batalkan setiap HASIL OLAHAN dari data yang baru diubah, bukan
+> cuma singgahan datanya.** Ini kesalahan pembatalan singgahan yang paling
+> klasik, dan paling sulit dikenali justru karena semuanya "berhasil" —
+> penyimpanan berhasil, pembacaan berhasil, hanya hasilnya yang basi.
+
+Perbaikannya satu baris, dan bekerja untuk SEMUA halaman sekaligus karena
+`versiData()` memang sudah menjadi bagian tiap kunci:
+
+```js
+CacheService.getScriptCache().remove('appconfig');
+naikkanVersiData();                                   // ← ditambahkan v6.6
+```
+
+**Cacat kedua yang ikut ditemukan saat menelusurinya.** Form Pengaturan dahulu
+mengirim setiap kolom baru begini:
+
+```js
+kontakAdmin: $('stKontakAdmin') ? $('stKontakAdmin').value.trim() : ''
+```
+
+Bila kerangka Pengaturan yang sedang tampil berasal dari versi lama — sebuah
+tab yang sudah lama dibuka, misalnya — kolom itu belum ada, dan menekan Simpan
+mengirim `''`. Server menulisnya apa adanya, jadi nomor WhatsApp atau Client ID
+yang sudah diisi **terhapus tanpa satu pun pesan.** Sekarang kunci yang
+kolomnya tidak ada tidak ikut dikirim sama sekali: perubahan sebagian, bukan
+penimpaan menyeluruh.
+
+#### 2. Login Google gagal — dan tidak akan pernah berhasil dengan cara lama
+
+Ini bukan salah setelan. Ini arsitektur.
+
+```js
+const email = Session.getActiveUser().getEmail();     // selalu '' di sini
+```
+
+Frontend aplikasi ini berada di Vercel dan memanggil Apps Script lewat
+`fetch()` — baik langsung dari peramban maupun lewat proxy `/api/gas`. Pada
+kedua jalur itu **Apps Script tidak pernah memegang sesi Google milik
+pengguna**; pada jalur proxy, permintaannya bahkan berasal dari server Vercel,
+bukan dari peramban siapa pun. `getActiveUser()` karena itu selalu mengembalikan
+string kosong, dan tidak ada kombinasi setelan penerapan yang mengubahnya.
+
+**Pola bakunya** untuk frontend yang terpisah dari backend: peramban meminta
+token ke Google, dan **server yang memverifikasi token itu** sebelum
+mempercayai satu huruf pun di dalamnya.
+
+| Langkah | Di mana | Apa yang terjadi |
+|---|---|---|
+| 1 | Peramban | Pengguna menekan tombol → pustaka Google Identity Services diunduh |
+| 2 | Peramban | Google menampilkan pemilih akun, lalu menerbitkan token |
+| 3 | Peramban | Token diteruskan apa adanya ke `doLoginGoogle(token)` |
+| 4 | **Server** | Token ditanyakan ke `oauth2.googleapis.com/tokeninfo` |
+| 5 | **Server** | `aud`, `email_verified`, dan pendaftaran email diperiksa |
+| 6 | Server | Baru sesudah itu `buatSesi()` dipanggil |
+
+**Tiga pemeriksaan di langkah 5, dan yang kedua yang paling penting:**
+
+1. Tokennya sah — dijawab 200 oleh Google.
+2. **`aud` sama dengan Client ID aplikasi ini.** Tanpa ini, token yang
+   diterbitkan untuk aplikasi Google **mana pun di dunia** bisa dikirim ke sini
+   dan diterima. Itu celah *confused deputy*, dan pemeriksaan inilah
+   satu-satunya yang menutupnya.
+3. `email_verified` bernilai `true`.
+
+> **Penjaganya sudah dibuktikan.** `uji-login.js` bagian 15 menjalankan
+> `doLoginGoogle()` yang sungguhan dengan `UrlFetchApp` dan sheet dipalsukan.
+> Ketika pemeriksaan `aud` sengaja dilumpuhkan, token milik aplikasi lain
+> **berhasil masuk** — dan ujinya langsung merah. Sembilan keadaan diuji:
+> token sah, token aplikasi lain, email belum diverifikasi, token ditolak
+> Google, email belum ditautkan, akun nonaktif, Client ID kosong, tanpa token,
+> dan pencocokan email lintas huruf besar-kecil.
+
+**Pustaka Google dimuat MALAS.** Halaman login ini dirancang tanpa satu pun
+permintaan jaringan saat dibuka. Menaruh `gsi/client` di `<head>` akan
+melanggarnya untuk setiap pengunjung, padahal yang menekan tombol Google hanya
+sebagian. Jadi pustakanya baru diunduh pada klik pertama — gambaran pertama
+tetap bersih, dan yang menunggu hanya orang yang memang memintanya.
+
+**Tirai masuk naik SESUDAH token di tangan,** kebalikan dari jalur NIS/password.
+Bagian yang lama di sini adalah pengguna *memilih akun* di jendela Google — itu
+interaksi, bukan penantian, dan menutupinya dengan tirai justru menyembunyikan
+jendela yang harus ia lihat.
+
+### Menyiapkan login Google (yang harus dikerjakan admin)
+
+Tombolnya **tidak akan muncul** sampai Client ID diisi. Itu disengaja: tombol
+yang dipastikan gagal lebih buruk daripada tidak ada tombol.
+
+1. Buka **Google Cloud Console** → pilih project yang sama dengan Apps Script
+   ini → **APIs & Services → Credentials**.
+2. **Create Credentials → OAuth client ID**, jenis **Web application**.
+3. Pada **Authorized JavaScript origins**, tambahkan alamat aplikasi ini
+   (contoh: `https://pklpro.vercel.app`). Tanpa ini Google menolak permintaannya
+   dari peramban.
+4. Salin **Client ID** (berakhiran `.apps.googleusercontent.com`).
+5. Tempelkan di **Pengaturan → Google Client ID**, lalu Simpan.
+6. Pastikan email Google tiap pengguna sudah tertaut di kolom **Email** pada
+   sheet **Akun** — bisa lewat menu **Profil Saya** sesudah masuk dengan NIS/NIP.
+
+> **PENTING — izin baru satu kali.** `doLoginGoogle()` memakai `UrlFetchApp`,
+> yang belum pernah dipakai proyek ini. Apps Script karena itu akan meminta izin
+> **layanan eksternal** saat versi ini diterapkan. Jalankan fungsi apa pun sekali
+> dari editor Apps Script dan setujui permintaannya. **Selama izin itu belum
+> diberikan, SELURUH aplikasi akan menjawab "Authorization required"** — bukan
+> hanya tombol Google.
+
+---
 
 ### Aturan tinggi yang sama dengan layar sambutan
 

@@ -477,6 +477,10 @@
   transition:background-color .15s ease,border-color .15s ease,transform .12s ease}
 .auth-merek:hover{background:var(--surface-hover);border-color:var(--primary)}
 .auth-merek:active{transform:scale(.99)}
+/* Selagi jendela Google terbuka, tombolnya dinonaktifkan supaya tidak ada yang
+   menekannya dua kali dan membuka dua jendela sekaligus. */
+.auth-merek:disabled{opacity:.55;cursor:progress;transform:none}
+.auth-merek:disabled:hover{background:var(--surface-card);border-color:var(--outline)}
 .auth-merek svg{flex:none}
 /* Tombol WhatsApp di dalam dialog. Aksennya var(--success) — hijau milik
    aplikasi ini — sebab hijau merek WhatsApp sudah dipakai di lambangnya, dan
@@ -769,4 +773,4 @@
 }
 @media (prefers-reduced-motion:reduce){ .sambutan{transition:none} }
 
-:root{--versi-aset:"6.5"}
+:root{--versi-aset:"6.6"}
