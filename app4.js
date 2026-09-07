@@ -372,9 +372,30 @@ box.innerHTML = emptyState('task_alt', 'Tidak ada jurnal menunggu',
 'Semua jurnal siswa sudah direview. Kerja bagus!');
 return;
 }
-box.innerHTML = res.data.map(j => `
-<article class="review-card">
+AppState.antreanJurnal = res.data;
+AppState.jurnalTerpilih = [];
+// Bilah aksi massal. Seorang guru bisa memegang puluhan siswa, dan sampai v6.9
+// menyetujui antrean berarti satu perjalanan ke server untuk SETIAP jurnal —
+// pada Apps Script itu 1-2 detik masing-masing. Itulah alasan paling sering
+// antrean dibiarkan menumpuk, dan itu masalah alur kerja, bukan masalah tombol.
+box.innerHTML = `
+<div class="antrean-alat">
+<label class="pilih-semua">
+<input type="checkbox" id="jrPilihSemua" onchange="pilihSemuaJurnal(this.checked)">
+<span>Pilih semua (${res.data.length})</span>
+</label>
+<div class="antrean-aksi" id="jrAksiMassal" hidden>
+<span class="antrean-jml" id="jrJumlahPilih">0 dipilih</span>
+<button class="btn btn-success btn-sm" onclick="setujuiJurnalTerpilih()">
+<span class="mi">done_all</span> Setujui Terpilih</button>
+</div>
+</div>` + res.data.map(j => `
+<article class="review-card" id="rvk-${esc(j.id)}">
 <div class="review-head">
+<label class="rv-pilih">
+<input type="checkbox" value="${esc(j.id)}" aria-label="Pilih jurnal ${esc(j.namaSiswa)}"
+onchange="tandaiJurnal('${esc(j.id)}', this.checked)">
+</label>
 <div class="list-lead warn"><span class="mi">hourglass_top</span></div>
 <div style="flex:1;min-width:0">
 <div class="list-title">${esc(j.namaSiswa)}</div>
@@ -400,6 +421,75 @@ onclick="bukaPratinjau('Dokumentasi ${esc(j.namaSiswa)}','${esc(j.foto)}','','ga
 } catch (err) {
 box.innerHTML = emptyState('error', 'Gagal memuat antrean', err.message);
 }
+}
+function tandaiJurnal(id, pilih) {
+const set = AppState.jurnalTerpilih || (AppState.jurnalTerpilih = []);
+const i = set.indexOf(id);
+if (pilih && i === -1) set.push(id);
+else if (!pilih && i !== -1) set.splice(i, 1);
+const kartu = $('rvk-' + id);
+if (kartu) kartu.classList.toggle('terpilih', pilih);
+// Kotak "pilih semua" mengikuti keadaan sebenarnya, bukan klik terakhir:
+// tanpa ini ia tetap tercentang setelah satu baris dilepas, dan menjadi
+// kontrol yang berbohong tentang isi daftarnya.
+const semua = $('jrPilihSemua');
+if (semua) {
+const total = (AppState.antreanJurnal || []).length;
+semua.checked = set.length === total && total > 0;
+semua.indeterminate = set.length > 0 && set.length < total;
+}
+perbaruiBilahJurnal();
+}
+function pilihSemuaJurnal(pilih) {
+const daftar = AppState.antreanJurnal || [];
+AppState.jurnalTerpilih = pilih ? daftar.map(j => j.id) : [];
+$$('.rv-pilih input').forEach(function (c) { c.checked = pilih; });
+daftar.forEach(function (j) {
+const kartu = $('rvk-' + j.id);
+if (kartu) kartu.classList.toggle('terpilih', pilih);
+});
+const semua = $('jrPilihSemua');
+if (semua) semua.indeterminate = false;
+perbaruiBilahJurnal();
+}
+function perbaruiBilahJurnal() {
+const n = (AppState.jurnalTerpilih || []).length;
+const bar = $('jrAksiMassal'), lbl = $('jrJumlahPilih');
+if (bar) bar.hidden = n === 0;
+if (lbl) lbl.textContent = n + ' dipilih';
+}
+function setujuiJurnalTerpilih() {
+const ids = (AppState.jurnalTerpilih || []).slice();
+if (!ids.length) { toast('Belum ada jurnal yang dipilih.', 'warning'); return; }
+bukaModal('Setujui ' + ids.length + ' Jurnal', `
+<p>Seluruh jurnal yang dipilih akan ditandai <strong>Disetujui</strong>.</p>
+<div class="field">
+<label class="field-label" for="rvKomentarMassal">Komentar untuk semua (opsional)</label>
+<textarea class="field-input" id="rvKomentarMassal" rows="3" maxlength="600"
+placeholder="Misalnya: Uraian sudah lengkap, pertahankan."></textarea>
+<p class="field-help">Komentar yang sama dikirim ke setiap jurnal yang dipilih.</p>
+</div>`,
+[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
+{ label: '<span class="mi">done_all</span> Setujui Semua', kelas: 'btn-success',
+aksi: () => {
+const k = ($('rvKomentarMassal') || {}).value || '';
+tutupModal();
+kirimReviewMassal(ids, k.trim());
+} }]);
+}
+async function kirimReviewMassal(ids, komentar) {
+tampilkanSibuk('Menyetujui ' + ids.length + ' jurnal…');
+try {
+const res = await panggil('reviewJurnalMassal', AppState.sessionToken, ids, komentar);
+sembunyikanSibuk();
+toast(res.message, res.success ? 'success' : 'error', 6000);
+if (res.success) {
+batalkanPaketData();
+suntikBaris('getAntreanJurnal', [AppState.sessionToken], null, ids, 'id');
+AppState.jurnalTerpilih = [];
+muatAntreanJurnal(); muatRekapJurnal();
+}
+} catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
 }
 function prosesJurnal(id, status, perluKomentar) {
 if (!perluKomentar) { kirimReviewJurnal(id, status, ''); return; }

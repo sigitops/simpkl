@@ -34,9 +34,7 @@ renderInstansiBeranda(d);
 renderProgresPkl(d);
 renderStatistikSaya(d);
 renderTugasMendatang(d);
-renderInsight('insightSiswa', d.insights);
 renderPengumumanBeranda(d.pengumuman);
-gambarGrafikTrenSiswa(d.tren);
 } catch (err) { toast(err.message, 'error'); }
 }
 function renderStatusPresensiBeranda(d) {

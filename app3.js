@@ -180,45 +180,148 @@ const res = await panggil('getRiwayatJurnal', AppState.sessionToken, filter);
 if (!res.success) { toast(res.message, 'error'); return; }
 const items = res.data.items;
 AppState.dataJurnal = items;
-if (!items.length) {
-list.innerHTML = emptyState('note_add', 'Belum ada jurnal',
-'Tidak ada jurnal pada rentang ' + res.data.rentang.label.toLowerCase() + '.',
-`<button class="btn btn-primary" onclick="bukaFormJurnal()"><span class="mi">add</span> Tulis Jurnal</button>`);
-return;
-}
-list.innerHTML = `<div class="list">${items.map((j, i) => `
-<div class="list-item" style="align-items:flex-start">
-<div class="list-lead ${j.status === 'Disetujui' ? 'ok' : j.status === 'Ditolak' ? 'danger' : 'warn'}">
-<span class="mi">${j.status === 'Disetujui' ? 'check' : j.status === 'Ditolak' ? 'close' : 'hourglass_top'}</span></div>
-<div class="list-main">
-<div class="list-title">${tglSingkat(j.tanggal)}</div>
-<div class="list-text">${esc(j.kegiatan)}</div>
-${j.kendala ? `<div class="list-sub" style="margin-top:6px"><strong>Kendala:</strong> ${esc(j.kendala)}</div>` : ''}
-${j.komentar ? `<div class="alert ${j.status === 'Ditolak' ? 'alert-error' : 'alert-info'}"
-style="margin-top:10px;padding:10px 12px;font-size:13px">
-<span class="mi">comment</span><div><strong>Komentar Guru</strong><p>${esc(j.komentar)}</p></div></div>` : ''}
-${j.foto ? `<img src="${esc(j.foto)}" alt="Dokumentasi" class="review-thumb" loading="lazy"
-onclick="bukaPratinjau('Dokumentasi','${esc(j.foto)}','','gambar')">` : ''}
-</div>
-<div class="list-tail" style="flex-direction:column;align-items:flex-end;gap:8px">
-${chipStatus(j.status)}
-${j.status !== 'Disetujui' ? `<button class="btn-icon" aria-label="Ubah jurnal"
-onclick="bukaFormJurnalKe(${i})">
-<span class="mi">edit</span></button>` : ''}
-</div>
-</div>`).join('')}</div>`;
+AppState.jurnalRentang = res.data.rentang.label;
+gambarRingkasJurnal(items);
+saringJurnal();
 } catch (err) {
 list.innerHTML = emptyState('error', 'Gagal memuat jurnal', err.message);
 }
 }
+// Ringkasan status sekaligus penyaringnya. Angka dan filter sengaja jadi satu
+// benda: begitu siswa melihat "3 Ditolak", hal berikutnya yang ingin dia
+// lakukan adalah melihat ketiganya — bukan mencari kontrol filter terpisah.
+function gambarRingkasJurnal(items) {
+const box = $('jrRingkas');
+if (!box) return;
+const n = { semua: items.length, Disetujui: 0, Menunggu: 0, Ditolak: 0 };
+items.forEach(j => { if (n[j.status] !== undefined) n[j.status]++; });
+const aktif = AppState.jurnalFilterStatus || 'semua';
+const tab = [
+{ k: 'semua', lbl: 'Semua', nada: '' },
+{ k: 'Menunggu', lbl: 'Menunggu', nada: 'warn' },
+{ k: 'Disetujui', lbl: 'Disetujui', nada: 'ok' },
+{ k: 'Ditolak', lbl: 'Ditolak', nada: 'danger' }
+];
+box.innerHTML = tab.map(t => `
+<button class="jr-pil ${t.nada} ${aktif === t.k ? 'aktif' : ''}"
+aria-pressed="${aktif === t.k}" onclick="setFilterStatusJurnal('${t.k}')">
+<span class="jr-pil-n">${n[t.k]}</span><span class="jr-pil-l">${t.lbl}</span></button>`).join('');
+}
+function setFilterStatusJurnal(status) {
+AppState.jurnalFilterStatus = status;
+gambarRingkasJurnal(AppState.dataJurnal || []);
+saringJurnal();
+}
+// Penyaringan dikerjakan DI KLIEN atas data yang sudah di tangan. Rentang
+// tanggalnya memang sudah dibatasi server; menyaring status dan kata kunci di
+// sini membuat hasilnya muncul seketika tanpa satu pun perjalanan ke server.
+function saringJurnal() {
+const list = $('listJurnal');
+if (!list) return;
+const semua = AppState.dataJurnal || [];
+const status = AppState.jurnalFilterStatus || 'semua';
+const kunci = (($('jrCari') || {}).value || '').trim().toLowerCase();
+const items = semua.filter(function (j) {
+if (status !== 'semua' && j.status !== status) return false;
+if (!kunci) return true;
+return (String(j.kegiatan || '') + ' ' + String(j.kendala || '') + ' ' +
+        String(j.komentar || '')).toLowerCase().indexOf(kunci) !== -1;
+});
+if (!semua.length) {
+list.innerHTML = emptyState('note_add', 'Belum ada jurnal',
+'Tidak ada jurnal pada rentang ' + String(AppState.jurnalRentang || '').toLowerCase() + '.',
+`<button class="btn btn-primary" onclick="bukaFormJurnal()"><span class="mi">add</span> Tulis Jurnal</button>`);
+return;
+}
+if (!items.length) {
+list.innerHTML = emptyState('search_off', 'Tidak ada yang cocok',
+'Ubah kata kunci atau pilih status lain.',
+`<button class="btn btn-outline btn-sm" onclick="resetSaringJurnal()">Tampilkan semua</button>`);
+return;
+}
+list.innerHTML = `<div class="jr-daftar">${items.map(function (j) {
+// Indeksnya dicari pada daftar ASLI, bukan pada hasil saringan — kalau
+// memakai indeks hasil saringan, tombol Ubah akan membuka jurnal yang salah
+// begitu ada satu saja kata kunci diketik.
+const i = semua.indexOf(j);
+const nada = j.status === 'Disetujui' ? 'ok' : j.status === 'Ditolak' ? 'danger' : 'warn';
+const ikon = j.status === 'Disetujui' ? 'check' : j.status === 'Ditolak' ? 'close' : 'hourglass_top';
+return `
+<article class="jr-kartu ${nada}">
+<header class="jr-kepala">
+<span class="jr-ikon ${nada}"><span class="mi">${ikon}</span></span>
+<div class="jr-judul">
+<div class="list-title">${tglSingkat(j.tanggal)}</div>
+${j.tanggalReview ? `<div class="list-sub">Direview ${tglRingkas(j.tanggalReview)}</div>` : ''}
+</div>
+${chipStatus(j.status)}
+</header>
+<div class="jr-isi">
+<div class="list-text">${esc(j.kegiatan)}</div>
+${j.kendala ? `<div class="jr-kendala"><span class="data-label">Kendala</span>
+<div>${esc(j.kendala)}</div></div>` : ''}
+${j.komentar ? `<div class="alert ${j.status === 'Ditolak' ? 'alert-error' : 'alert-info'} jr-komentar">
+<span class="mi">comment</span><div><strong>Komentar Guru</strong><p>${esc(j.komentar)}</p></div></div>` : ''}
+${j.foto ? `<img src="${esc(j.foto)}" alt="Dokumentasi ${tglRingkas(j.tanggal)}" class="review-thumb" loading="lazy"
+onclick="bukaPratinjau('Dokumentasi','${esc(j.foto)}','','gambar')">` : ''}
+</div>
+${j.status !== 'Disetujui' ? `<footer class="jr-aksi">
+<button class="btn btn-outline btn-xs" onclick="bukaFormJurnalKe(${i})">
+<span class="mi">edit</span> Ubah</button>
+<button class="btn btn-danger btn-xs" onclick="konfirmasiHapusJurnal(${i})">
+<span class="mi">delete</span> Hapus</button>
+</footer>` : ''}
+</article>`;
+}).join('')}</div>`;
+}
+function resetSaringJurnal() {
+AppState.jurnalFilterStatus = 'semua';
+if ($('jrCari')) $('jrCari').value = '';
+gambarRingkasJurnal(AppState.dataJurnal || []);
+saringJurnal();
+}
 function bukaFormJurnalKe(indeks) {
 const d = (AppState.dataJurnal || [])[indeks];
 if (!d) { toast('Data jurnal tidak ditemukan. Muat ulang halaman.', 'warning'); return; }
-bukaFormJurnal({ tanggal: d.tanggal, kegiatan: d.kegiatan, kendala: d.kendala });
+bukaFormJurnal({ tanggal: d.tanggal, kegiatan: d.kegiatan, kendala: d.kendala, foto: d.foto });
+}
+function konfirmasiHapusJurnal(indeks) {
+const d = (AppState.dataJurnal || [])[indeks];
+if (!d) { toast('Data jurnal tidak ditemukan. Muat ulang halaman.', 'warning'); return; }
+// Menghapus tidak bisa dibatalkan, jadi yang ditampilkan bukan sekadar
+// "Anda yakin?" melainkan APA yang akan hilang — tanggal dan kutipan isinya.
+const cuplik = String(d.kegiatan || '');
+bukaModal('Hapus Jurnal', `
+<div class="alert alert-error"><span class="mi">warning</span>
+<div><strong>Tindakan ini tidak dapat dibatalkan.</strong>
+<p>Jurnal berikut akan dihapus permanen.</p></div></div>
+<div class="jr-cuplik">
+<div class="data-label">${esc(tglSingkat(d.tanggal))}</div>
+<div>${esc(cuplik.length > 180 ? cuplik.slice(0, 180) + '…' : cuplik)}</div>
+</div>`,
+[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
+{ label: '<span class="mi">delete</span> Hapus Permanen', kelas: 'btn-danger',
+aksi: () => kirimHapusJurnal(d.id) }]);
+}
+async function kirimHapusJurnal(id) {
+tutupModal();
+tampilkanSibuk('Menghapus jurnal…');
+try {
+const res = await panggil('hapusJurnal', AppState.sessionToken, id);
+sembunyikanSibuk();
+toast(res.message, res.success ? 'success' : 'error');
+if (res.success) { batalkanPaketData(); muatRiwayatJurnal(); }
+} catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
 }
 function bukaFormJurnal(data) {
 const d = data || {};
 const hariIni = new Date().toISOString().slice(0, 10);
+// WAJIB dibersihkan setiap kali form dibuka. AppState.fotoJurnal dulu hanya
+// dikosongkan saat penyimpanan BERHASIL, jadi urutan ini menempelkan foto ke
+// jurnal yang salah: pilih foto untuk tanggal 5 → batal → buka form tanggal 6
+// → simpan. Fotonya masih tersimpan di AppState dan ikut terkirim. Tidak ada
+// galat, tidak ada peringatan — hanya jurnal dengan dokumentasi hari lain.
+AppState.fotoJurnal = null;
 bukaModal(d.tanggal ? 'Ubah Jurnal' : 'Tambah Jurnal Kegiatan', `
 <div class="field">
 <label class="field-label" for="jrTanggal">Tanggal Kegiatan</label>
@@ -228,8 +331,12 @@ value="${esc(d.tanggal || hariIni)}" ${d.tanggal ? 'readonly' : ''}>
 <div class="field">
 <label class="field-label" for="jrKegiatan">Uraian Kegiatan</label>
 <textarea class="field-input" id="jrKegiatan" rows="5" maxlength="1500"
+oninput="hitungKarakterJurnal()"
 placeholder="Tuliskan apa yang Anda kerjakan hari ini secara ringkas dan jelas.">${esc(d.kegiatan || '')}</textarea>
+<div class="field-kaki">
 <p class="field-help">Minimal 10 karakter.</p>
+<span class="field-hitung" id="jrHitung" aria-live="polite"></span>
+</div>
 <div class="field-error" id="errJrKegiatan"></div>
 </div>
 <div class="field">
@@ -238,15 +345,32 @@ placeholder="Tuliskan apa yang Anda kerjakan hari ini secara ringkas dan jelas."
 </div>
 <div class="field">
 <label class="field-label" for="jrFoto">Foto Dokumentasi (opsional)</label>
+${d.foto ? `<div class="jr-foto-lama">
+<img src="${esc(d.foto)}" alt="Dokumentasi tersimpan" class="review-thumb" loading="lazy">
+<div><strong>Sudah ada dokumentasi.</strong>
+<p>Biarkan kosong bila tidak ingin menggantinya — foto ini akan tetap tersimpan.</p></div>
+</div>` : ''}
 <div class="dropzone" onclick="document.getElementById('jrFoto').click()">
 <span class="mi">add_photo_alternate</span>
-<p id="jrNamaFoto">Ketuk untuk memilih atau memotret dokumentasi</p>
+<p id="jrNamaFoto">${d.foto ? 'Ketuk untuk mengganti dokumentasi' : 'Ketuk untuk memilih atau memotret dokumentasi'}</p>
 </div>
 <input type="file" id="jrFoto" accept=".jpg,.jpeg,.png,.webp,.heic,.heif" hidden onchange="pratinjauFotoJurnal(event)">
 <img id="jrPratinjau" class="review-thumb" hidden alt="Pratinjau dokumentasi">
 </div>`,
 [{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
 { label: '<span class="mi">save</span> Simpan Jurnal', kelas: 'btn-primary', aksi: kirimJurnal }]);
+}
+// Penghitung karakter yang hanya bersuara saat mendekati batas. Menampilkan
+// "12 / 1500" sejak huruf pertama hanya menambah keramaian; yang berguna adalah
+// peringatan ketika ruangnya benar-benar mau habis.
+function hitungKarakterJurnal() {
+const ta = $('jrKegiatan'), out = $('jrHitung');
+if (!ta || !out) return;
+const n = ta.value.length, batas = 1500;
+const sisa = batas - n;
+out.textContent = n < 10 ? (10 - n) + ' karakter lagi'
+: sisa <= 150 ? 'sisa ' + sisa + ' karakter' : '';
+out.classList.toggle('kritis', sisa <= 50 || n < 10);
 }
 function pratinjauFotoJurnal(event) {
 const file = event.target.files && event.target.files[0];
