@@ -1598,46 +1598,353 @@ function segarkanHtmlLogin() {
       const u = $('loginUser'), p = $('loginPass');
       if ((u && u.value) || (p && p.value)) return;
       const wadah = $('app-container');
-      if (wadah) wadah.innerHTML = res.html;
+      if (wadah) { wadah.innerHTML = res.html; siapkanFormLogin(); }
     })
     .catch(() => {});
 }
 
+// ── Halaman login: ikon dan perakit ────────────────────────────────────────
+//
+// DUA BERKAS memuat kedua fungsi di bawah ini dalam bentuk yang SAMA PERSIS:
+// Kode.gs (dipakai buildLogin(), jalur biasa — halaman login dirakit server)
+// dan web/app1.js (dipakai loginCadangan(), jalur luring saat server tidak
+// dapat dihubungi). Kalau keduanya menyimpang, pengguna yang jaringannya
+// putus akan melihat halaman login versi lain — cacat yang hanya muncul
+// justru pada keadaan yang paling sulit ditiru. uji-login.js bagian 1
+// mengambil keduanya lalu membandingkannya, dan gagal bila berbeda.
+//
+// IKONNYA SVG SEBARIS, bukan font ikon. Alasannya sama dengan di layar
+// sambutan: halaman ini adalah gambaran PERTAMA aplikasi, sedangkan font
+// Material Symbols baru tiba beberapa ratus milidetik kemudian. Memakai
+// <span class="mi"> di sini berarti pengguna melihat tulisan "person",
+// "lock", dan "visibility" dulu, baru ikonnya menyusul — tepat di layar yang
+// tugasnya membentuk kesan pertama.
+
+function ikonLogin(nama) {
+  var peta = {
+    logo: '<svg viewBox="0 0 64 64" width="64" height="64" role="img" aria-hidden="true"><path d="M32 6 55 19v26L32 58 9 45V19Z" fill="currentColor" stroke="currentColor" stroke-width="5" stroke-linejoin="round"/><g fill="none" stroke="var(--on-primary)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m21 30 11-7.5L43 30"/><path d="M24.5 30.5v12M32 30.5v12M39.5 30.5v12"/><path d="M19 42.5h26"/></g></svg>',
+    sekolah: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 14V6l4-2v10M6.5 14V2.6L11 5v9M2.5 14h11"/></svg>',
+    orang: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M4.8 20c0-3.5 3.2-5.8 7.2-5.8s7.2 2.3 7.2 5.8"/></svg>',
+    mata: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.2 12S6 5.6 12 5.6 21.8 12 21.8 12 18 18.4 12 18.4 2.2 12 2.2 12Z"/><circle cx="12" cy="12" r="3"/></svg>',
+    mataTutup: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.2 12S6 5.6 12 5.6 21.8 12 21.8 12 18 18.4 12 18.4 2.2 12 2.2 12Z"/><circle cx="12" cy="12" r="3"/><path d="m4 4 16 16"/></svg>',
+    centang: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3.5 8.4 3 3 6-6.4"/></svg>',
+    panah: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5m0 0 6-6m-6 6 6 6"/></svg>',
+    whatsapp: '<svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true"><path fill="#25D366" d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.87 9.87 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2Zm0 18.17h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.19 8.19 0 0 1-1.26-4.4c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.82c0 4.54-3.7 8.25-8.24 8.25Z"/><path fill="#25D366" d="M16.56 14.28c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.13-.16.24-.64.8-.78.97-.15.16-.29.18-.53.06-.25-.13-1.05-.39-2-1.23-.74-.66-1.24-1.47-1.38-1.72-.15-.25-.02-.38.1-.5.11-.11.25-.29.37-.44.12-.15.16-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.34-.76-1.84-.2-.48-.4-.42-.56-.43l-.47-.01c-.16 0-.43.06-.65.31-.22.25-.85.83-.85 2.03s.87 2.35.99 2.51c.12.16 1.71 2.61 4.14 3.66.58.25 1.03.4 1.38.51.58.19 1.11.16 1.53.1.47-.07 1.44-.59 1.64-1.16.2-.57.2-1.05.14-1.16-.06-.11-.22-.17-.47-.29Z"/></svg>',
+    google: '<svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>',
+  };
+  return peta[nama] || '';
+}
+
+/**
+ * Merakit seluruh HTML halaman login.
+ *
+ * @param {Object} o  nama, tagline, sekolah, kontak, wa, logoUrl, tahun, peringatan
+ *
+ * PEMILIH PERAN BUKAN PENYARING. Server tetap membaca peran dari akunnya, dan
+ * salah pilih tidak pernah menolak login — nilainya bahkan tidak ikut terkirim.
+ * Tugasnya hanya membuat kolom pertama menyebut dirinya dengan benar: "NIS"
+ * bagi siswa, "NIP" bagi guru, "Username" bagi admin. Label lama,
+ * "NIS / NIP / Username", memaksa setiap orang membaca dua pilihan yang bukan
+ * miliknya. Karena itu tombolnya <button type="button">, bukan <input>.
+ *
+ * data-app / data-tagline / data-sekolah / data-kontak pada .auth-identity
+ * adalah KONTRAK, bukan hiasan. Layar sambutan membaca nilai-nilai itu dari
+ * halaman login yang baru digambar di baliknya — satu-satunya sumber yang
+ * tersedia pada pembukaan pertama, sebab `identitas` di localStorage baru
+ * terisi sesudah seseorang berhasil masuk. Dulu ia mengorek teks yang tampil
+ * (.auth-app, .auth-tagline), dan itu pecah begitu judulnya berubah menjadi
+ * "Masuk ke <nama>". Atribut data tidak ikut berubah ketika tampilannya
+ * berubah — itulah gunanya.
+ */
+function rakitLogin(o) {
+  var nama = o.nama || 'SIM PKL';
+  var logo = o.logoUrl
+    ? '<img src="' + esc(o.logoUrl) + '" alt="Logo ' + esc(o.sekolah || '') + '" class="auth-logo-img">'
+    : '<div class="auth-logo">' + ikonLogin('logo') + '</div>';
+  var pilSekolah = o.sekolah
+    ? '<div class="auth-sekolah-pill">' + ikonLogin('sekolah') +
+      '<span>' + esc(o.sekolah) + '</span></div>'
+    : '';
+  var daftarPeran = [['siswa', 'Siswa'], ['guru', 'Guru'], ['admin', 'Admin']];
+  // Pil yang meluncur digambar SATU KALI sebagai elemen tersendiri, bukan
+  // sebagai latar tiap tombol. Yang berpindah hanya --peran-ke, jadi peralihan
+  // rasanya satu benda yang bergeser — bukan satu warna padam dan satu lagi
+  // menyala di tempat lain.
+  var peran = '<span class="auth-peran-pil" aria-hidden="true"></span>';
+  for (var i = 0; i < daftarPeran.length; i++) {
+    peran += '<button type="button" class="auth-peran-opsi" data-peran="' + daftarPeran[i][0] +
+      '" aria-pressed="' + (i === 0 ? 'true' : 'false') +
+      '" onclick="pilihPeranLogin(this)">' + daftarPeran[i][1] + '</button>';
+  }
+  return '<div class="auth-wrap">' +
+    '<div class="auth-card">' +
+      '<button type="button" class="auth-kembali" id="btnKembaliSambutan" ' +
+        'onclick="bukaSambutanDariLogin()" ' +
+        'aria-label="Kembali ke layar perkenalan">' + ikonLogin('panah') + '</button>' +
+      '<div class="auth-identity" data-app="' + esc(nama) + '" data-tagline="' +
+        esc(o.tagline || '') + '" data-sekolah="' + esc(o.sekolah || '') +
+        '" data-kontak="' + esc(o.kontak || '') +
+        '" data-wa="' + esc(o.wa || '') + '">' +
+        logo +
+        '<h1 class="auth-app">Masuk ke <span class="auth-app-nama">' + esc(nama) + '</span></h1>' +
+        '<p class="auth-tagline">Gunakan akun yang diberikan oleh sekolah Anda.</p>' +
+        pilSekolah +
+      '</div>' +
+      (o.peringatan || '') +
+      '<div class="auth-peran" role="group" aria-label="Jenis akun">' + peran + '</div>' +
+      '<form id="formLogin" onsubmit="handleLogin(event)" novalidate>' +
+        '<div class="field">' +
+          '<label class="field-label" for="loginUser" id="labelLoginUser">NIS</label>' +
+          '<div class="input-affix">' +
+            '<span class="affix-lead">' + ikonLogin('orang') + '</span>' +
+            '<input class="field-input has-lead" id="loginUser" type="text" ' +
+              'autocomplete="username" placeholder="Contoh: 12345678" required>' +
+          '</div><div class="field-error" id="errUser"></div>' +
+        '</div>' +
+        '<div class="field">' +
+          '<label class="field-label" for="loginPass">Password</label>' +
+          '<div class="input-affix">' +
+            '<input class="field-input" id="loginPass" type="password" ' +
+              'autocomplete="current-password" placeholder="Masukkan password" required>' +
+            '<button type="button" class="affix-btn" onclick="togglePassword(\'loginPass\', this)" ' +
+              'aria-label="Tampilkan password">' + ikonLogin('mata') + '</button>' +
+          '</div><div class="field-error" id="errPass"></div>' +
+        '</div>' +
+        '<div class="auth-baris">' +
+          '<label class="auth-ingat" for="loginIngat">' +
+            '<input type="checkbox" id="loginIngat" checked>' +
+            '<span class="auth-kotak">' + ikonLogin('centang') + '</span>' +
+            '<span>Ingat saya</span></label>' +
+          '<button type="button" class="auth-tautan" onclick="bukaLupaPassword()">' +
+            'Lupa Password?</button>' +
+        '</div>' +
+        '<button type="submit" class="btn btn-primary btn-block btn-lg" id="btnLogin">Masuk</button>' +
+      '</form>' +
+      '<div class="auth-divider"><span>atau masuk dengan</span></div>' +
+      '<button type="button" class="auth-merek" id="btnGoogle" onclick="handleLoginGoogle()">' +
+        ikonLogin('google') + '<span>Google Account</span></button>' +
+      '<p class="auth-kaki">Belum punya akun? ' +
+        '<button type="button" class="auth-tautan" onclick="bukaHubungiAdmin()">' +
+        'Hubungi Admin</button></p>' +
+    '</div>' +
+    '<p class="auth-footer">&copy; ' + o.tahun + ' ' + esc(nama) +
+      (o.sekolah ? ' &middot; ' + esc(o.sekolah) : '') + '</p>' +
+  '</div>';
+}
+
+/**
+ * Halaman login untuk jalur LURING — dipakai hanya saat kerangka dari server
+ * tidak dapat diambil. Strukturnya sama persis dengan buildLogin() di Kode.gs
+ * sebab keduanya memanggil rakitLogin() yang sama; bedanya cuma satu pita
+ * peringatan di atas pemilih peran, dan identitas yang diambil dari localStorage
+ * karena server memang sedang tidak bisa ditanya.
+ */
 function loginCadangan() {
   let ident = {};
   try { ident = JSON.parse(Simpanan.ambil('identitas') || '{}') || {}; } catch (e) { ident = {}; }
-  const nama = ident.appName || 'SIM PKL';
-  const logo = ident.logoUrl
-    ? '<img src="' + esc(ident.logoUrl) + '" alt="Logo" class="auth-logo-img">'
-    : '<div class="auth-logo"><span class="mi">school</span></div>';
-  const sekolah = ident.namaSekolah
-    ? '<div class="auth-sekolah-pill"><span class="mi">location_city</span><span>' +
-      esc(ident.namaSekolah) + '</span></div>' : '';
-  return '<div class="auth-wrap"><div class="auth-card">' +
-    '<div class="auth-identity">' + logo +
-    '<h1 class="auth-app">' + esc(nama) + '</h1>' +
-    '<p class="auth-tagline">' + esc(ident.appTagline || 'Manajemen Praktik Kerja Lapangan') + '</p>' +
-    sekolah + '</div>' +
-    '<div class="alert alert-warning" style="margin-bottom:16px"><span class="mi">cloud_off</span>' +
-    '<div><strong>Server sedang tidak dapat dihubungi</strong>' +
-    '<p>Silakan tetap masuk seperti biasa — aplikasi akan mencoba menyambung ulang ' +
-    'secara otomatis. Bila tetap gagal, periksa koneksi internet Anda.</p></div></div>' +
-    '<form id="formLogin" onsubmit="handleLogin(event)" novalidate>' +
-    '<div class="field"><label class="field-label" for="loginUser">NIS / NIP / Username</label>' +
-    '<div class="input-affix"><span class="mi affix-lead">person</span>' +
-    '<input class="field-input has-lead" id="loginUser" type="text" autocomplete="username" ' +
-    'placeholder="Masukkan NIS, NIP, atau username" required></div>' +
-    '<div class="field-error" id="errUser"></div></div>' +
-    '<div class="field"><label class="field-label" for="loginPass">Password</label>' +
-    '<div class="input-affix"><span class="mi affix-lead">lock</span>' +
-    '<input class="field-input has-lead" id="loginPass" type="password" ' +
-    'autocomplete="current-password" placeholder="Masukkan password" required>' +
-    '<button type="button" class="affix-btn" onclick="togglePassword(\'loginPass\', this)" ' +
-    'aria-label="Tampilkan password"><span class="mi">visibility</span></button></div>' +
-    '<div class="field-error" id="errPass"></div></div>' +
-    '<button type="submit" class="btn btn-primary btn-block btn-lg" id="btnLogin">' +
-    '<span class="mi">login</span> Masuk</button></form>' +
-    '</div><p class="auth-footer">&copy; ' + new Date().getFullYear() + ' ' + esc(nama) + '</p></div>';
+  return rakitLogin({
+    nama:    ident.appName || 'SIM PKL',
+    tagline: ident.appTagline || '',
+    sekolah: ident.namaSekolah || '',
+    kontak:  ident.kontakAdmin || '',
+    wa:      ident.waAdmin || '',
+    logoUrl: ident.logoUrl || '',
+    tahun:   new Date().getFullYear(),
+    peringatan:
+      '<div class="alert alert-warning" style="margin-bottom:16px">' +
+      '<span class="mi">cloud_off</span><div>' +
+      '<strong>Server sedang tidak dapat dihubungi</strong>' +
+      '<p>Silakan tetap masuk seperti biasa \u2014 aplikasi akan mencoba menyambung ulang ' +
+      'secara otomatis. Bila tetap gagal, periksa koneksi internet Anda.</p></div></div>'
+  });
+}
+
+// ── Perilaku halaman login ─────────────────────────────────────────────────
+
+const LABEL_PERAN_LOGIN = {
+  siswa: { label: 'NIS',      contoh: 'Contoh: 12345678' },
+  guru:  { label: 'NIP',      contoh: 'Contoh: 198504122010011008' },
+  admin: { label: 'Username', contoh: 'Masukkan username admin' }
+};
+
+/**
+ * Pemilih peran. Sekali lagi, dengan tegas: ini TIDAK menyaring apa pun.
+ * Nilainya tidak ikut terkirim ke server, dan salah pilih tidak pernah membuat
+ * login ditolak — server tetap membaca peran dari akunnya sendiri. Yang berubah
+ * hanya nama kolom pertama, supaya siswa tidak perlu membaca "NIS / NIP /
+ * Username" dan memilah bagian mana yang miliknya.
+ */
+function pilihPeranLogin(tombol) {
+  if (!tombol) return;
+  const peran = tombol.getAttribute('data-peran') || 'siswa';
+  const semua = document.querySelectorAll('.auth-peran-opsi');
+  for (let i = 0; i < semua.length; i++) {
+    semua[i].setAttribute('aria-pressed', semua[i] === tombol ? 'true' : 'false');
+  }
+  // Pil yang meluncur digeser lewat satu angka. Kalau raknya belum ada —
+  // kerangka login lama yang masih tersinggah — sisanya tetap berjalan.
+  const rak = document.querySelector('.auth-peran');
+  const ke = ['siswa', 'guru', 'admin'].indexOf(peran);
+  if (rak && ke >= 0) rak.style.setProperty('--peran-ke', String(ke));
+  const t = LABEL_PERAN_LOGIN[peran] || LABEL_PERAN_LOGIN.siswa;
+  const label = $('labelLoginUser'), kolom = $('loginUser');
+  if (label) label.textContent = t.label;
+  if (kolom) kolom.placeholder = t.contoh;
+  Simpanan.simpan('peranLogin', peran);
+}
+
+/**
+ * Memulihkan pilihan pengguna sesudah form login digambar.
+ *
+ * Sengaja hanya memulihkan PREFERENSI, tidak memasang satu pun perilaku:
+ * seluruh tombolnya sudah membawa onclick sendiri dari rakitLogin(). Jadi bila
+ * pemanggilan ini terlewat di salah satu jalur penggambaran — dan ada lima —
+ * halamannya tetap bekerja penuh dengan nilai bawaan, bukan mati separuh.
+ */
+function siapkanFormLogin() {
+  const kotak = $('loginIngat');
+  if (kotak) kotak.checked = Simpanan.ambil('ingatSaya') !== '0';
+  const peran = Simpanan.ambil('peranLogin');
+  if (peran && peran !== 'siswa') {
+    pilihPeranLogin(document.querySelector('.auth-peran-opsi[data-peran="' + peran + '"]'));
+  }
+}
+
+/**
+ * Dibaca SEBELUM tirai masuk naik. tampilkanTiraiMasuk() membuang form dari
+ * DOM, jadi sesudah itu kotak centangnya sudah tidak ada lagi untuk ditanya.
+ * Tanpa kotaknya — misalnya pada kerangka login lama yang masih tersinggah —
+ * jawabannya "ya", yaitu perilaku aplikasi ini sebelum v6.4.
+ */
+function ingatSayaDipilih() {
+  const kotak = $('loginIngat');
+  const ingat = kotak ? !!kotak.checked : true;
+  Simpanan.simpan('ingatSaya', ingat ? '1' : '0');
+  return ingat;
+}
+
+/** Identitas untuk kedua dialog. DOM lebih dulu, localStorage sebagai cadangan. */
+function identitasLogin() {
+  const el = document.querySelector('.auth-identity');
+  if (el && el.getAttribute('data-sekolah') !== null) {
+    return { app:     el.getAttribute('data-app') || 'SIM PKL',
+             sekolah: el.getAttribute('data-sekolah') || '',
+             kontak:  el.getAttribute('data-kontak') || '',
+             wa:      el.getAttribute('data-wa') || '' };
+  }
+  let id = {};
+  try { id = JSON.parse(Simpanan.ambil('identitas') || '{}') || {}; } catch (e) { id = {}; }
+  return { app: id.appName || 'SIM PKL', sekolah: id.namaSekolah || '',
+           kontak: id.kontakAdmin || '', wa: id.waAdmin || '' };
+}
+
+/**
+ * Menormalkan nomor WhatsApp menjadi bentuk yang diterima wa.me.
+ *
+ * Admin akan mengetiknya dengan cara apa pun — 0812-3456-7890,
+ * +62 812 3456 7890, (0812) 34567890 — dan ketiganya harus sampai ke
+ * percakapan yang sama. Yang bukan angka dibuang, awalan 0 dan 8 diangkat ke
+ * 62, dan hasilnya diperiksa panjangnya.
+ *
+ * Mengembalikan '' bila sisanya tidak masuk akal sebagai nomor. Itu disengaja:
+ * lebih baik tombolnya TIDAK MUNCUL daripada muncul lalu mengantar siswa ke
+ * percakapan yang tidak ada — persis jenis tombol mati yang dihindari halaman
+ * ini sejak awal.
+ */
+function nomorWa(teks) {
+  let d = String(teks == null ? '' : teks).replace(/[^0-9]/g, '');
+  if (!d) return '';
+  if (d.indexOf('62') === 0) { /* sudah internasional */ }
+  else if (d.indexOf('0') === 0) d = '62' + d.slice(1);
+  else if (d.indexOf('8') === 0) d = '62' + d;
+  return /^62[0-9]{8,13}$/.test(d) ? d : '';
+}
+
+/** wa.me membuka aplikasi WhatsApp bila terpasang, dan WhatsApp Web bila tidak. */
+function tautanWa(nomor, pesan) {
+  return 'https://wa.me/' + nomor + '?text=' + encodeURIComponent(pesan);
+}
+
+/**
+ * Blok kontak di kaki kedua dialog: label kontak (bila diisi) dan tombol chat
+ * WhatsApp (bila nomornya sah).
+ *
+ * Pesannya dibuat SETENGAH JADI, dengan baris kosong untuk diisi siswa. Itu
+ * bukan hiasan: pesan "Halo, saya lupa password" tanpa nama dan NIS memaksa
+ * Pokja PKL membalas menanyakan keduanya, dan satu percakapan yang seharusnya
+ * selesai sekali jalan menjadi tiga.
+ */
+function blokKontakLogin(id, pesan) {
+  let out = '';
+  if (id.kontak) out += '<div class="auth-kontak"><b>Kontak</b>' + esc(id.kontak) + '</div>';
+  const no = nomorWa(id.wa);
+  if (no) {
+    out += '<a class="auth-merek auth-wa" href="' + esc(tautanWa(no, pesan)) + '" ' +
+      'target="_blank" rel="noopener noreferrer">' + ikonLogin('whatsapp') +
+      '<span>Chat WhatsApp Pokja PKL</span></a>';
+  }
+  return out;
+}
+
+/**
+ * Panah kembali → layar perkenalan.
+ *
+ * NOL permintaan jaringan, dan itu keharusan, bukan kebetulan: pasangSambutan()
+ * menggambar seluruhnya dari kode yang sudah termuat, dan identitasnya dibaca
+ * dari DOM halaman login yang sedang tampil di belakangnya. Menekan panah ini
+ * terasa seketika karena memang seketika — tidak ada satu pun perjalanan ke
+ * server di dalamnya.
+ *
+ * Penjaga typeof-nya bukan basa-basi. rakitLogin() juga dipakai jalur luring,
+ * yang justru berjalan ketika ada yang tidak beres dengan pemuatan berkas.
+ */
+function bukaSambutanDariLogin() {
+  if (typeof pasangSambutan !== 'function') return;
+  pasangSambutan();
+}
+
+/**
+ * "Lupa Password?".
+ *
+ * Aplikasi ini TIDAK punya pengaturan ulang password mandiri, dan dialog ini
+ * mengatakannya apa adanya alih-alih berpura-pura mengirim surel yang tidak
+ * pernah berangkat. resetPassword() di server hanya dapat dipanggil admin dari
+ * tabel data, jadi jalan satu-satunya bagi siswa memang menghubungi Pokja PKL.
+ */
+function bukaLupaPassword() {
+  const id = identitasLogin();
+  bukaModal('Lupa Password',
+    '<div class="auth-dialog">' +
+    '<p>Password akun PKL hanya dapat diatur ulang oleh <b>Pokja PKL</b> atau admin ' +
+    (id.sekolah ? esc(id.sekolah) : 'sekolah Anda') + '. Aplikasi ini sengaja tidak ' +
+    'menyediakan pengaturan ulang sendiri.</p>' +
+    '<p>Hubungi mereka dengan menyebut NIS/NIP Anda. Password baru akan diberikan ' +
+    'langsung, dan sebaiknya segera Anda ganti lewat menu <b>Profil Saya</b> setelah ' +
+    'berhasil masuk.</p>' +
+    blokKontakLogin(id,
+      'Halo Pokja PKL' + (id.sekolah ? ' ' + id.sekolah : '') +
+      ', saya lupa password akun ' + id.app + '.\n\nNama: \nNIS/NIP: \n\n' +
+      'Mohon dibantu pengaturan ulang password saya. Terima kasih.') +
+    '</div>',
+    [{ label: 'Mengerti', kelas: 'btn-primary' }]);
+}
+
+/** "Belum punya akun? Hubungi Admin". */
+function bukaHubungiAdmin() {
+  const id = identitasLogin();
+  bukaModal('Belum punya akun',
+    '<div class="auth-dialog">' +
+    '<p>Akun PKL tidak dapat didaftarkan sendiri. Seluruh akun siswa dan guru ' +
+    'pembimbing dibuatkan oleh <b>Pokja PKL</b>' +
+    (id.sekolah ? ' ' + esc(id.sekolah) : '') + ' dari data sekolah.</p>' +
+    '<p>Bila Anda sudah terdaftar sebagai peserta PKL tetapi belum menerima akun, ' +
+    'hubungi Pokja PKL atau guru pembimbing Anda.</p>' +
+    blokKontakLogin(id,
+      'Halo Pokja PKL' + (id.sekolah ? ' ' + id.sekolah : '') +
+      ', saya belum menerima akun ' + id.app + '.\n\nNama: \nKelas/Jurusan: \n\n' +
+      'Mohon dibantu pendaftaran akun saya. Terima kasih.') +
+    '</div>',
+    [{ label: 'Mengerti', kelas: 'btn-primary' }]);
 }
 
 async function navigateTo(halaman, opsi = {}) {
@@ -1667,6 +1974,7 @@ const tersimpan = AppState.htmlLogin || Simpanan.ambil(kunciHtmlLogin());
 if (tersimpan) {
 AppState.htmlLogin = tersimpan;
 wadah.innerHTML = tersimpan;
+siapkanFormLogin();
 segarkanHtmlLogin();                       // perbarui diam-diam, jangan ditunggu
 return;
 }
@@ -1678,6 +1986,7 @@ else wadah.innerHTML = loginCadangan();
 console.warn('Kerangka login tidak dapat diambil:', e && e.message);
 wadah.innerHTML = loginCadangan();
 }
+siapkanFormLogin();
 return;
 }
 const html = AppState.htmlHalaman && AppState.htmlHalaman[halaman];
@@ -2071,7 +2380,10 @@ function togglePassword(idInput, tombol) {
 const inp = $(idInput);
 const sembunyi = inp.type === 'password';
 inp.type = sembunyi ? 'text' : 'password';
-tombol.querySelector('.mi').textContent = sembunyi ? 'visibility_off' : 'visibility';
+// Ikonnya bisa berupa glif font (form lain) atau SVG sebaris (halaman login).
+const glif = tombol.querySelector('.mi');
+if (glif) glif.textContent = sembunyi ? 'visibility_off' : 'visibility';
+else tombol.innerHTML = ikonLogin(sembunyi ? 'mataTutup' : 'mata');
 tombol.setAttribute('aria-label', sembunyi ? 'Sembunyikan password' : 'Tampilkan password');
 }
 async function handleLogin(event) {
@@ -2083,6 +2395,9 @@ let valid = true;
 if (!user) { $('errUser').textContent = 'NIS/NIP wajib diisi.'; $('loginUser').classList.add('invalid'); valid = false; }
 if (!pass) { $('errPass').textContent = 'Password wajib diisi.'; $('loginPass').classList.add('invalid'); valid = false; }
 if (!valid) return;
+// Dibaca SEKARANG, selagi formnya masih ada: tampilkanTiraiMasuk() di bawah
+// membuang form dari DOM berikut kotak centangnya.
+const ingat = ingatSayaDipilih();
 // Splash dinaikkan SEBELUM permintaan berangkat, bukan sesudahnya.
 //
 // Dahulu urutannya terbalik: tombol berputar "Memeriksa…" selama masukKilat
@@ -2097,7 +2412,7 @@ tampilkanTiraiMasuk();
 try {
 const res = await panggil('masukKilat', user, pass);
 if (!res.success) { await kembalikanFormLogin(user, res.message); return; }
-await mulaiSesi(res.data.token, res.data);
+await mulaiSesi(res.data.token, res.data, ingat);
 } catch (err) {
 await kembalikanFormLogin(user, err.message);
 }
@@ -2124,12 +2439,13 @@ else toast(pesan || 'Gagal masuk.', 'error', 6000);
 if (kolomPass) { kolomPass.value = ''; kolomPass.classList.add('invalid'); kolomPass.focus(); }
 }
 async function handleLoginGoogle() {
+const ingat = ingatSayaDipilih();
 // Alasan yang sama seperti handleLogin: yang ditemani harus bagian yang lama.
 tampilkanTiraiMasuk();
 try {
 const res = await panggil('doLoginGoogle');
 if (!res.success) { await kembalikanFormLogin('', res.message); return; }
-await mulaiSesi(res.data.token);
+await mulaiSesi(res.data.token, null, ingat);
 } catch (err) {
 await kembalikanFormLogin('', err.message);
 }
@@ -2145,10 +2461,20 @@ const wadah = $('app-container');
 if (wadah) { wadah.classList.add('plain'); wadah.innerHTML = ''; }
 tampilkanSplash();
 }
-async function mulaiSesi(token, awal) {
+async function mulaiSesi(token, awal, ingat) {
 SinggahData.bersihkan();
 AppState.sessionToken = token;
-Simpanan.simpan('sesi', token);
+// "Ingat saya" mengendalikan apakah token DITULIS ke perangkat — bukan berapa
+// lama ia sah. Masa berlakunya 6 jam, ditentukan SESSION_TTL di server, dan
+// tidak disentuh dari sini sama sekali.
+//
+// Tanpa centang, token hanya hidup di memori: menutup tab berarti harus masuk
+// lagi. Itu perlindungan yang nyata di komputer lab sekolah yang dipakai
+// bergantian, tempat perangkatnya memang bukan milik siapa pun. Nilai
+// `undefined` — dari pemanggil lama — tetap berarti "ingat", supaya tidak ada
+// pengguna yang tiba-tiba terlempar keluar hanya karena aplikasinya diperbarui.
+if (ingat === false) Simpanan.hapus('sesi');
+else Simpanan.simpan('sesi', token);
 tampilkanTiraiMasuk();
 try {
 await muatBootstrap(awal);
@@ -2266,7 +2592,8 @@ renderNavigation();
 tampilkanKerangkaAplikasi(true);
 const identitas = {
 appName: c.appName || 'SIM PKL', appTagline: c.appTagline || '',
-namaSekolah: c.namaSekolah || '', logoUrl: c.logoUrl || ''
+namaSekolah: c.namaSekolah || '', logoUrl: c.logoUrl || '',
+kontakAdmin: c.kontakAdmin || '', waAdmin: c.waAdmin || ''
 };
 try { Simpanan.simpan('identitas', JSON.stringify(identitas)); } catch (e) {}
 // Masuk pertama kali di perangkat ini: localStorage masih kosong saat splash

@@ -996,6 +996,332 @@ sana.
 
 ---
 
+## Halaman login (v6.4, diperluas v6.5)
+
+Ditulis ulang mengikuti rancangan yang diminta: logo heksagon, judul
+&ldquo;Masuk ke &lt;nama&gt;&rdquo;, pemilih peran tersegmen, baris ingat-saya,
+pembatas &ldquo;atau masuk dengan&rdquo;, tombol Google, dan tautan
+&ldquo;Hubungi Admin&rdquo; di kaki.
+
+### Yang diambil dari rancangannya, dan yang tidak
+
+| | |
+|---|---|
+| Diambil | susunan, bentuk, urutan, dan seluruh komponen barunya |
+| **Tidak diambil** | **paletnya.** Rancangannya hijau-teal; aplikasi ini berdiri di atas `var(--primary)` #1C7293 |
+| Tidak dipasang | panah kembali |
+
+Warna dipertahankan karena halaman login berwarna lain sendiri akan terputus
+dari sidebar, grafik, ilustrasi hero, dan layar sambutan yang mengapitnya.
+Mengganti palet aplikasi seluruhnya adalah pekerjaan lain, bukan pekerjaan
+halaman ini.
+
+Panah kembali tidak dipasang karena tidak ada tujuannya: login adalah layar
+paling awal, dan layar sambutan di depannya hanya muncul sekali seumur
+perangkat. Tombol kembali yang menuju ketiadaan lebih buruk daripada tidak ada
+tombol kembali.
+
+### Lima kontrol baru, dan mesin yang menopangnya
+
+Yang membedakan halaman ini dari sekadar gambar adalah bahwa setiap kontrolnya
+punya kerja sungguhan. Tidak satu pun dipasang hanya karena ada di rancangan.
+
+**1. Pemilih peran Siswa / Guru / Admin — BUKAN penyaring.**
+
+Ini keputusan yang paling mudah salah. Di sistem ini peran dibaca server dari
+akunnya; pengguna tidak pernah memilih peran. Menjadikan tab ini penyaring
+berarti menambah satu cara baru untuk gagal masuk: siswa yang tidak sengaja
+menekan &ldquo;Guru&rdquo; akan ditolak padahal password-nya benar.
+
+Jadi tugasnya lain, dan tetap nyata: membuat kolom pertama menyebut dirinya
+dengan benar.
+
+| Pilihan | Label | Contoh isian |
+|---|---|---|
+| Siswa | `NIS` | Contoh: 12345678 |
+| Guru | `NIP` | Contoh: 198504122010011008 |
+| Admin | `Username` | Masukkan username admin |
+
+Label lamanya, &ldquo;NIS / NIP / Username&rdquo;, memaksa setiap orang membaca
+dua pilihan yang bukan miliknya. Tombolnya `<button type="button">` tanpa
+atribut `name`, jadi nilainya bahkan tidak punya jalan untuk ikut terkirim.
+`uji-login.js` bagian 2 memeriksa itu dari sumbernya: `handleLogin()` tidak
+boleh menyebut kata &ldquo;peran&rdquo; sama sekali.
+
+> **Berpindah peran tidak boleh menghapus ketikan.** Diuji tersendiri, sebab
+> inilah yang paling mudah rusak tanpa disadari saat label diganti.
+
+**2. &ldquo;Ingat saya&rdquo; mengendalikan PENYIMPANAN, bukan masa berlaku.**
+
+Sesi aplikasi ini sudah bertahan 6 jam lewat `SESSION_TTL` di server, dan token
+selama ini SELALU ditulis ke perangkat. Yang ditambahkan v6.4 karena itu bukan
+masa berlaku baru, melainkan pilihan untuk tidak menuliskannya:
+
+```js
+if (ingat === false) Simpanan.hapus('sesi');
+else Simpanan.simpan('sesi', token);
+```
+
+Tanpa centang, token hanya hidup di memori — menutup tab berarti harus masuk
+lagi. Itu perlindungan nyata di komputer lab sekolah yang dipakai bergantian.
+`SESSION_TTL` tidak disentuh sama sekali dari klien, dan ujinya memastikan itu.
+
+> **Nilai `undefined` tetap berarti &ldquo;ingat&rdquo;.** Diperiksa dengan
+> `=== false`, bukan sekadar falsy, supaya pengguna yang perangkatnya masih
+> memegang kerangka login lama tanpa kotak centang tidak tiba-tiba terlempar
+> keluar hanya karena aplikasinya diperbarui.
+
+Kotaknya tercentang secara bawaan — sama dengan perilaku sebelum v6.4 — dan
+pilihannya diingat perangkat.
+
+**3 & 4. &ldquo;Lupa Password?&rdquo; dan &ldquo;Hubungi Admin&rdquo; berkata jujur.**
+
+Aplikasi ini TIDAK punya pengaturan ulang password mandiri: `resetPassword()`
+di server hanya dapat dipanggil admin dari tabel data. Maka dialognya
+mengatakan persis itu, alih-alih berpura-pura mengirim surel yang tidak pernah
+berangkat. Ujinya menuntut kata &ldquo;email&rdquo;, &ldquo;surel&rdquo;, dan
+&ldquo;tautan&rdquo; TIDAK muncul di dalamnya.
+
+Keduanya menampilkan kontak dari kunci `kontakAdmin` yang baru, bila diisi.
+
+> **`kontakAdmin` sengaja KOSONG secara bawaan, dan sengaja bukan
+> `adminEmail`.** Halaman login terbuka tanpa sesi, jadi apa pun yang
+> ditampilkan di sana ikut terbit ke umum. `adminEmail` terisi sendiri dari
+> akun Google yang memasang aplikasi — menerbitkannya berarti menyiarkan
+> alamat pribadi seseorang tanpa ia pernah memilihnya. Kunci baru ini hanya
+> terisi bila admin sendiri yang mengetiknya di menu Pengaturan, dan bila
+> dikosongkan kedua dialog itu tetap memberi petunjuk yang benar.
+
+**5. Tombol Google kini SELALU tampil.**
+
+Sebelumnya ia menyembunyikan diri bila `Session.getActiveUser().getEmail()`
+kosong — keadaan yang memang terjadi pada setelan penerapan &ldquo;Siapa
+saja&rdquo;. Yang menjaganya tetap jujur sekarang bukan penyembunyian,
+melainkan jawaban `doLoginGoogle()` yang bisa ditindaklanjuti: *&ldquo;Email
+Google tidak terbaca. Silakan masuk memakai NIS/NIP dan password.&rdquo;*
+
+> Pada setelan penerapan Bapak sekarang, tombol itu memang akan selalu menjawab
+> begitu. Ia baru berfungsi bila penerapan disetel &ldquo;Siapa saja yang
+> memiliki Akun Google&rdquo; DAN email pengguna sudah ditautkan lewat menu
+> Profil Saya.
+
+### Halaman ini ada DUA KALI, dan itu dijaga uji
+
+Jalur biasa dirakit server (`buildLogin()` di `Kode.gs`); jalur luring dirakit
+klien (`loginCadangan()` di `web/app1.js`) dan hanya terlihat ketika server
+tidak dapat dihubungi — keadaan yang hampir tidak pernah ditiru saat menguji
+dengan tangan. Kalau keduanya menyimpang, yang menemukannya adalah pengguna
+yang sedang bermasalah.
+
+Karena itu markupnya tidak ditulis dua kali. `ikonLogin()` dan `rakitLogin()`
+ada dalam bentuk yang **sama persis** di kedua berkas, dan `uji-login.js`
+bagian 1 mengambil keduanya lalu membandingkannya setelah spasi dinormalkan.
+Penjaganya sudah dibuktikan: mengganti satu kata pada label di salah satu
+salinan langsung membuatnya merah.
+
+### Kontrak `data-*`, dan kenapa ia harus ada
+
+Layar sambutan membaca nama aplikasi, tagline, dan nama sekolah dari DOM
+halaman login yang baru digambar di baliknya — satu-satunya sumber yang
+tersedia pada pembukaan pertama, sebab `identitas` di localStorage baru terisi
+sesudah seseorang berhasil masuk.
+
+Dulu ia mengorek teks yang tampil: `.auth-app` dan `.auth-tagline`. Rancangan
+v6.4 mematahkan keduanya sekaligus — judulnya kini &ldquo;Masuk ke Smart
+PKL&rdquo;, dan taglinenya berganti menjadi kalimat petunjuk. Tanpa penanganan,
+layar sambutan akan menyapa dengan judul &ldquo;Masuk ke Smart PKL&rdquo;.
+
+Maka `.auth-identity` sekarang membawa kontrak yang eksplisit:
+
+```html
+<div class="auth-identity" data-app="Smart PKL"
+     data-tagline="Cepat, Akurat dan Mudah"
+     data-sekolah="SMK HKTI 2 Purwareja Klampok" data-kontak="…">
+```
+
+Atribut data tidak ikut berubah ketika tampilannya berubah — justru itu
+gunanya. `identitasSambutan()` membacanya lebih dulu, lalu jatuh ke teks yang
+tampil bagi perangkat yang masih memegang kerangka login lama. Kedua jalur itu
+diuji.
+
+### Ikonnya SVG sebaris, bukan font ikon
+
+Alasannya sama dengan di layar sambutan: halaman ini adalah gambaran PERTAMA
+aplikasi, sedangkan font Material Symbols baru tiba beberapa ratus milidetik
+kemudian. Versi lamanya memakai `<span class="mi">`, dan akibatnya terlihat
+jelas pada potret &ldquo;sebelum&rdquo;: pengguna membaca tulisan
+`school`, `person`, `lock`, dan `visibility` dulu, baru ikonnya menyusul.
+
+Lambang Google adalah satu-satunya pengecualian yang memakai warna mentah:
+keempat warna resminya dipertahankan apa adanya, sebab lambang satu warna tidak
+lagi dikenali sebagai Google. Ujinya justru menuntut keempatnya tetap ada.
+
+### Panah kembali ke layar perkenalan (v6.5)
+
+Di v6.4 panah ini sengaja tidak dipasang karena tidak ada tujuannya. Sekarang
+tujuannya ditetapkan: layar perkenalan, dibuka kapan pun, bukan hanya sekali
+seumur perangkat.
+
+```js
+function bukaSambutanDariLogin() {
+  if (typeof pasangSambutan !== 'function') return;
+  pasangSambutan();
+}
+```
+
+Sependek itu karena `pasangSambutan()` memang sudah dirancang aman dipanggil
+ulang sejak v6.0: ia menolak menggambar overlay kedua, dan saat ditutup ia
+mengembalikan fokus ke kolom NIS. Kedua sifat itu diuji dari sisi panah ini.
+
+> **NOL permintaan jaringan, dan itu keharusan.** Halaman login dan layar
+> perkenalan sama-sama digambar tanpa menyentuh server; menambahkan satu
+> perjalanan di belakang tombol yang terasa remeh adalah cara paling halus
+> merusaknya. `uji-login.js` bagian 9 menghitung permintaan sepanjang
+> perjalanan pergi-pulang dan menuntut angkanya **nol** — bukan membaca kode,
+> melainkan mengukur lalu lintas yang benar-benar terjadi.
+
+Panahnya 44×44px, berlabel bagi pembaca layar, dan diletakkan mutlak supaya
+logo dan judul tetap terpusat. Pada 320px pun ia tidak menabrak logo: tepi
+kanannya berhenti di 56px sementara logo yang terpusat baru mulai di 128px.
+
+### Tombol chat WhatsApp (v6.5)
+
+Kedua dialog kini membawa tombol yang membuka percakapan WhatsApp dengan Pokja
+PKL — di ponsel langsung ke aplikasinya, di komputer ke WhatsApp Web, sebab
+`wa.me` yang memutuskan, bukan aplikasi ini.
+
+**Nomornya dinormalkan, bukan dituntut rapi.** Admin akan mengetiknya dengan
+cara apa pun, dan ketiganya harus sampai ke percakapan yang sama:
+
+| Yang diketik admin | Hasilnya |
+|---|---|
+| `0812-3456-7890` | `6281234567890` |
+| `+62 812 3456 7890` | `6281234567890` |
+| `(0812) 34567890` | `6281234567890` |
+| `812 3456 7890` | `6281234567890` |
+| `hubungi pokja`, `0812`, kosong | **ditolak** — tombolnya tidak muncul |
+
+Penolakan itu disengaja dan sama pentingnya dengan penerimaannya: lebih baik
+tombolnya tidak muncul daripada muncul lalu mengantar siswa ke percakapan yang
+tidak ada. Itu jenis tombol mati yang dihindari halaman ini sejak awal.
+
+**Pesannya setengah jadi, dan berbeda di tiap dialog.**
+
+| Dialog | Isi pesan yang sudah disiapkan |
+|---|---|
+| Lupa Password | salam, nama aplikasi, lalu baris kosong `Nama:` dan `NIS/NIP:` |
+| Belum punya akun | salam, nama aplikasi, lalu baris kosong `Nama:` dan `Kelas/Jurusan:` |
+
+Bukan hiasan: pesan "Halo, saya lupa password" tanpa nama dan NIS memaksa Pokja
+PKL membalas menanyakan keduanya, dan satu percakapan yang seharusnya selesai
+sekali jalan menjadi tiga.
+
+Tautannya `<a>` sungguhan dengan `target="_blank"` dan
+`rel="noopener noreferrer"` — bukan tombol ber-`onclick` yang memanggil
+`window.open()`, sebab yang terakhir bisa diblokir peramban sebagai jendela
+sembul.
+
+> **Hijau WhatsApp ada di LAMBANGNYA, bukan di latar tombolnya.** #25D366
+> dengan teks putih hanya mencapai kontras 1,9:1 — jauh di bawah 4,5:1 yang
+> dituntut WCAG AA — dan menggelapkannya sampai lolos berarti tidak lagi
+> memakai warna mereknya. Tombolnya karena itu memakai bentuk yang sama persis
+> dengan tombol Google: bergaris, berlatar permukaan kartu, dengan lambang
+> berwarna merek di depannya.
+
+Dua kunci baru di Pengaturan, **keduanya kosong secara bawaan**:
+
+| Kunci | Isinya |
+|---|---|
+| `kontakAdmin` | nama kontak, misal "Pokja PKL — Bu Rina Wijaya" |
+| `waAdmin` | nomor WhatsApp yang menjadi tombolnya |
+
+Alasan keduanya kosong tetap sama seperti v6.4: halaman login terbuka tanpa
+sesi, jadi apa pun yang ditampilkan di sana ikut terbit ke umum. Dikosongkan,
+kedua dialog jatuh ke petunjuk tertulis yang tetap benar.
+
+### Poles yang membuatnya terasa matang (v6.5)
+
+| Yang ditambahkan | Sebabnya |
+|---|---|
+| Pil peran yang **meluncur** | satu benda yang berpindah terbaca sebagai perpindahan; tiga latar yang bergantian menyala terbaca sebagai dua kejadian terpisah |
+| Kolom yang menyala saat diisi, berikut ikonnya | menegaskan tempat perhatian berada, tanpa melepas cincin `:focus-visible` yang dipakai pengguna papan ketik |
+| Kartunya masuk 340ms, naik 12px | memakai `transform` dan `opacity` saja — keduanya tidak menyentuh tata letak, jadi nol tambahan ke CLS |
+| Tekanan pada panah dan tombol merek | umpan balik sentuh yang langsung, tanpa menunggu apa pun |
+
+Durasi pil 260ms dipilih di dalam rentang 150–300ms, dan `uji-login.js` bagian
+11 mengukurnya: di bawah 150ms perpindahannya tidak terbaca sebagai gerakan, di
+atas 300ms ia mulai terasa memperlambat orang yang sudah tahu mau ke mana.
+
+> **Animasi masuknya dikurung `prefers-reduced-motion:no-preference`,** dengan
+> alasan yang sama seperti di layar sambutan: `both` MENAHAN keadaan awal
+> (`opacity 0`), jadi tanpa kurungan itu pengguna yang mematikan animasi akan
+> melihat kartu kosong selamanya.
+
+### Kontras diukur, bukan dikira (v6.5)
+
+`uji-login.js` bagian 12 mengukur rasio kontras 13 elemen di **kedua tema**,
+dari warna yang benar-benar dihitung peramban — bukan dari token yang dikira
+dipakai. Kartu login menumpuk beberapa lapis permukaan, dan tebakan di atas
+kertas kerap meleset satu lapis.
+
+Ia langsung menemukan tiga kegagalan: subjudul, kaki kartu, dan pembatas
+"atau masuk dengan" mendarat di **4,49:1** di tema terang — meleset 0,01 dari
+ambangnya. Penyebabnya `--on-surface-muted` (#70787E) di atas putih.
+
+Tokennya **tidak** diubah, sebab ia dipakai seluruh aplikasi. Yang dipakai:
+
+```css
+.auth-tagline,.auth-kaki,.auth-divider,.auth-footer,.auth-note{
+  color:var(--on-surface-muted)}                                   /* cadangan */
+.auth-tagline,.auth-kaki,.auth-divider,.auth-footer,.auth-note{
+  color:color-mix(in srgb,var(--on-surface-muted) 82%,var(--on-surface))}
+```
+
+Karena campurannya menuju warna teks utama, ia **menggelap di tema terang dan
+menerang di tema gelap** — satu aturan, dua tema, tanpa satu pun angka warna
+baru. Hasilnya 4,49 → 5,71 di terang dan 5,39 → 6,48 di gelap. Baris pertama
+adalah cadangan bagi peramban yang belum mengenal `color-mix`; di sana
+tampilannya persis seperti sebelumnya.
+
+> **Dua kali dalam pekerjaan ini, yang merah ternyata UJINYA, bukan kodenya.**
+> Bagian 11 mengukur posisi pil 0 milidetik sesudah diklik, padahal transisinya
+> 260ms — pil yang benar dilaporkan tidak bergerak. Bagian 12 mengurai
+> `color(srgb 0.379 …)` seolah nilainya 0–255, dan melaporkan abu-abu sebagai
+> hitam pekat. Keduanya diperbaiki di ujinya, dan alasannya ditulis di sana
+> supaya tidak diperbaiki ke arah yang salah lain kali.
+
+### Responsif diuji di 20 ukuran (v6.5)
+
+Matriks bagian 7 diperlebar dari 14 menjadi 20 ukuran. Yang ditambahkan bukan
+sekadar lebar yang lebih kecil:
+
+| Tambahan | Kenapa ia yang dipilih |
+|---|---|
+| 320×480, 320×568 | ponsel terkecil yang masih beredar di tangan siswa |
+| 390×420, 412×400 | **papan ketik naik** — tinggi tampak menyusut hampir separuh tepat saat siswa mengetik NIS |
+| 1024×768 | tablet mendatar |
+| 1920×1080 | desktop lebar |
+
+Yang paling sering merusak halaman login bukan lebar yang menyempit, melainkan
+TINGGI yang menyusut — dan itulah dua baris tengah di tabel itu.
+`uji/potret-login-responsif.js` menggambar sembilan mode di kedua tema untuk
+diperiksa mata, sebab lolos aturan dan enak dipandang adalah dua hal berbeda.
+
+### Aturan tinggi yang sama dengan layar sambutan
+
+`.auth-card` tingginya SELALU berasal dari isinya, tidak pernah dari tinggi
+layar; `.auth-wrap` memakai `min-height`, bukan `height`, dan sengaja **bukan**
+wadah gulir — yang menggulir halamannya sendiri. Satu wadah gulir lebih sedikit
+berarti satu tempat lebih sedikit bagi isi untuk tersembunyi.
+
+`uji-login.js` bagian 7 adalah kembaran bagian 13 di `uji-sambutan.js`, dan ada
+di sini karena alasan yang sama: halaman ini memakai pola tata letak yang sama
+persis dengan layar sambutan, jadi ia bisa rusak dengan cara yang sama persis.
+14 ukuran layar, termasuk ponsel pendek 360×560, ponsel mendatar 844×390, dan
+jendela desktop pendek 1280×500.
+
+---
+
 ## Layar sambutan (v6.2, diperbaiki v6.3)
 
 Pembukaan PERTAMA di sebuah perangkat dulu langsung mendarat di form login:

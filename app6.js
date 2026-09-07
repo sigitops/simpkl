@@ -331,6 +331,7 @@ isi('stAppName', c.appName); isi('stTagline', c.appTagline); isi('stAppDesc', c.
 isi('stLogo', c.logoUrl); isi('stNamaSekolah', c.namaSekolah); isi('stAlamatSekolah', c.alamatSekolah);
 isi('stKepsek', c.kepalaSekolah); isi('stNipKepsek', c.nipKepalaSekolah);
 isi('stRadius', c.radiusDefault); isi('stToleransi', c.toleransiTelat); isi('stAdminEmail', c.adminEmail);
+isi('stKontakAdmin', c.kontakAdmin); isi('stWaAdmin', c.waAdmin);
 if ($('stNotif')) $('stNotif').value = c.notifikasiEmail || 'aktif';
 pratinjauLogo();
 const box = $('boxPenyimpanan');
@@ -393,7 +394,9 @@ nipKepalaSekolah: $('stNipKepsek').value.trim(),
 radiusDefault: String(radius || 100),
 toleransiTelat: String(Number($('stToleransi').value) || 15),
 notifikasiEmail: $('stNotif').value,
-adminEmail: $('stAdminEmail').value.trim()
+adminEmail: $('stAdminEmail').value.trim(),
+kontakAdmin: $('stKontakAdmin') ? $('stKontakAdmin').value.trim() : '',
+waAdmin: $('stWaAdmin') ? $('stWaAdmin').value.trim() : ''
 });
 sembunyikanSibuk();
 toast(res.message, res.success ? 'success' : 'error');
@@ -650,9 +653,26 @@ const ambilTeks = (sel) => {
 const el = document.querySelector('#app-container ' + sel);
 return el ? (el.textContent || '').trim() : '';
 };
-out.appName = ambilTeks('.auth-app');
+// Atribut data lebih dulu — itu KONTRAK yang sengaja dipasang rakitLogin()
+// untuk dibaca dari sini. Teks yang tampil hanya cadangan, dan v6.4
+// menunjukkan kenapa: begitu judul login berubah menjadi "Masuk ke <nama>",
+// .auth-app tidak lagi berisi nama aplikasi, dan .auth-tagline berganti
+// menjadi kalimat petunjuk. Nilai yang dibutuhkan layar ini tidak berubah;
+// yang berubah cuma cara halaman itu menampilkannya. Atribut data tidak ikut
+// berubah ketika tampilannya berubah — justru itu gunanya.
+const kepala = document.querySelector('#app-container .auth-identity');
+if (kepala && kepala.getAttribute('data-app')) {
+out.appName = kepala.getAttribute('data-app') || '';
+out.tagline = kepala.getAttribute('data-tagline') || '';
+out.sekolah = kepala.getAttribute('data-sekolah') || '';
+} else {
+// Kerangka login lama yang masih tersinggah di perangkat pengguna belum
+// membawa atribut itu. Jalur ini yang melayaninya sampai kerangkanya
+// tersegarkan sendiri.
+out.appName = ambilTeks('.auth-app-nama') || ambilTeks('.auth-app');
 out.tagline = ambilTeks('.auth-tagline');
 out.sekolah = ambilTeks('.auth-sekolah-pill span:last-child');
+}
 
 if (!out.appName || !out.sekolah) {
 let id = {};
@@ -1607,4 +1627,4 @@ await muatJadwalShift();
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '6.3';
+window.__SIMPKL_EOF = '6.5';
