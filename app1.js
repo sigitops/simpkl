@@ -652,9 +652,37 @@ function kembaliKeProxy() {
 // tombol Simpan memang dua kehendak yang berbeda.
 const SEDANG_TERBANG = {};
 let NOMOR_PERMINTAAN = 0;
+/**
+ * Kunci penggabung permintaan yang sedang terbang.
+ *
+ * Versi lama memakai `args.slice(1)` — argumen PERTAMA dibuang, dengan asumsi
+ * argumen itu selalu token sesi yang tidak boleh ikut masuk kunci. Untuk hampir
+ * semua panggilan asumsi itu benar.
+ *
+ * getPageContent(namaHalaman, params) berbentuk LAIN: argumen pertamanya adalah
+ * NAMA HALAMAN. Membuangnya membuat SELURUH permintaan halaman punya kunci yang
+ * sama persis, jadi dua permintaan yang berangkat berdekatan digabungkan dan
+ * pemanggil kedua menerima HTML halaman milik pemanggil pertama. Di layar: menu
+ * yang disorot benar, isinya milik halaman lain, pemutarnya berputar selamanya —
+ * dan hasil yang salah itu ikut tersimpan di AppState.htmlHalaman di bawah nama
+ * yang benar, sehingga halaman itu tetap salah sampai aplikasi dimuat ulang.
+ *
+ * Ironisnya `slice(1)` juga GAGAL pada tujuannya sendiri di sini: token sesi
+ * milik getPageContent ada di DALAM argumen kedua, jadi ia tetap ikut masuk
+ * kunci sementara nama halamannya justru yang terbuang.
+ *
+ * Sekarang seluruh argumen dipertahankan — itulah yang membedakan satu panggilan
+ * dari yang lain — dan tokennya disamarkan di mana pun ia muncul, termasuk saat
+ * bersarang di dalam objek. Dua tujuan yang dulu saling bertabrakan kini
+ * dikerjakan masing-masing oleh mekanisme yang tepat.
+ */
 function kunciTerbang(namaFungsi, args) {
-  try { return namaFungsi + '|' + JSON.stringify((args || []).slice(1)); }
-  catch (e) { return ''; }
+  try {
+    let teks = JSON.stringify(args || []);
+    const tok = (typeof AppState !== 'undefined') && AppState.sessionToken;
+    if (tok) teks = teks.split(JSON.stringify(tok)).join('"@sesi"');
+    return namaFungsi + '|' + teks;
+  } catch (e) { return ''; }
 }
 
 // ── PENGGABUNG PERMINTAAN ──────────────────────────────────────────────────
@@ -3140,9 +3168,20 @@ const SinggahData = {
   isi: {},
   tunda: {},
   kunci(nama, args) {
-    // Argumen pertama selalu token sesi — tidak ikut menentukan identitas data.
+    // Token sesi tidak ikut menentukan identitas data, jadi ia dibuang —
+    // tetapi hanya bila argumen pertamanya MEMANG token sesi.
+    //
+    // Versi lama menganggap argumen pertama SELALU token. Anggapan itu benar
+    // untuk setiap pemanggil panggilCepat() hari ini, tetapi anggapan yang sama
+    // di kunciTerbang() sudah pernah menukar halaman antar-menu: getPageContent
+    // berargumen pertama nama halaman, dan membuangnya membuat semua halaman
+    // berbagi satu kunci. Perangkap yang sama tidak dibiarkan menunggu di sini.
+    let daftar = args || [];
+    if (daftar.length && AppState.sessionToken && daftar[0] === AppState.sessionToken) {
+      daftar = daftar.slice(1);
+    }
     let ekor = '';
-    try { ekor = JSON.stringify(args.slice(1)); } catch (e) { ekor = ''; }
+    try { ekor = JSON.stringify(daftar); } catch (e) { ekor = ''; }
     return nama + '|' + ekor;
   },
   ambil(k) { return Object.prototype.hasOwnProperty.call(this.isi, k) ? this.isi[k] : null; },
