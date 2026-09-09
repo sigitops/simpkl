@@ -8,6 +8,7 @@ const INIT_HALAMAN = {
 'nilai':            () => muatNilai(),
 'profil':           () => muatProfil(),
 'monitoring':       () => { muatTabelMonitoring(); muatAntreanIzin(); muatAntreanPindah(); },
+'detail-siswa':     () => initDetailSiswa(),
 'rekap-jurnal':     () => initRekapJurnal(),
 'rekap-laporan':    () => muatRekapLaporan(),
 'penilaian':        () => muatDaftarPenilaian(),

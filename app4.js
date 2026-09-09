@@ -87,7 +87,7 @@ box.innerHTML = `<div class="table-wrap"><table class="data-table">
 `<div class="td-sub">${jamTampil(s.waktuPresensi)} WIB</div>` : ''}</td>
 <td>${chipStatus(s.statusJurnal)}</td>
 <td><div class="td-actions"><button class="btn-icon" aria-label="Detail ${esc(s.nama)}"
-onclick="bukaDetailSiswa('${esc(s.siswaId)}')"><span class="mi">visibility</span></button></div></td>
+onclick="bukaHalamanSiswa('${esc(s.siswaId)}')"><span class="mi">visibility</span></button></div></td>
 </tr>`).join('')}</tbody></table></div>`;
 }
 async function gambarGrafikMonitoring(d) {
@@ -142,6 +142,83 @@ plugins: { legend: { position: 'bottom', labels: { color: w.teks, usePointStyle:
 });
 }
 }
+// ── Presensi Siswa: ringkasan status hari ini ──────────────────────────────
+//
+// Enam ubin, dan setiap ubinnya juga tombol saringan. Menghitung "12 siswa
+// belum presensi" lalu menyuruh pengguna mencarinya sendiri satu per satu di
+// tabel adalah setengah pekerjaan; angkanya harus bisa dibuka.
+const PS_UBIN = [
+{ k: 'Hadir',          ikon: 'check_circle', nada: 'ok',    label: 'Hadir' },
+{ k: 'Telat',          ikon: 'schedule',     nada: 'warn',  label: 'Terlambat' },
+{ k: 'Izin',           ikon: 'event_busy',   nada: 'info',  label: 'Izin' },
+{ k: 'Sakit',          ikon: 'sick',         nada: 'info',  label: 'Sakit' },
+{ k: 'Alpha',          ikon: 'person_off',   nada: 'error', label: 'Alpha' },
+{ k: 'Belum Presensi', ikon: 'pending',      nada: '',      label: 'Belum Presensi' }
+];
+function gambarRingkasPresensi(siswa) {
+const kotak = $('psRingkas');
+const tgl = $('psTanggal');
+if (tgl) tgl.textContent = tglSingkat(new Date().toISOString().slice(0, 10));
+const chip = $('chipJumlahMon');
+if (chip) chip.textContent = (siswa || []).length + ' siswa aktif';
+if (!kotak) return;
+const hitung = {};
+let libur = 0;
+(siswa || []).forEach(function (s) {
+// "Izin (Menunggu)" tetap dihitung sebagai Izin — pengajuannya nyata,
+// hanya verifikasinya yang belum. Memisahkannya membuat jumlah seluruh
+// ubin tidak lagi sama dengan jumlah siswa, dan itu yang membingungkan.
+const k = String(s.statusPresensi || '').replace(' (Menunggu)', '');
+if (k === 'Libur') { libur++; return; }
+hitung[k] = (hitung[k] || 0) + 1;
+});
+// Siswa yang tempat PKL-nya libur tidak masuk penyebut: persentase kehadiran
+// tidak boleh turun karena instansinya yang tutup.
+const dasar = Math.max(1, (siswa || []).length - libur);
+const ubin = PS_UBIN.slice();
+if (libur) ubin.push({ k: 'Libur', ikon: 'weekend', nada: '', label: 'Libur', tanpaPersen: true });
+const aktif = (AppState.tabel && AppState.tabel.monitoring &&
+AppState.tabel.monitoring.filterNilai || {}).statusPresensi || '';
+kotak.innerHTML = ubin.map(function (u) {
+const n = u.k === 'Libur' ? libur : (hitung[u.k] || 0);
+const persen = u.tanpaPersen ? '' : Math.round(n / dasar * 100) + '%';
+return `<button type="button" class="ps-ubin${u.nada ? ' nada-' + u.nada : ''}${
+aktif === u.k ? ' aktif' : ''}" aria-pressed="${aktif === u.k}"
+onclick="saringStatusPresensi('${u.k}')"
+title="Tampilkan hanya siswa berstatus ${u.label}">
+<span class="ps-ubin-ikon"><span class="mi">${u.ikon}</span></span>
+<span class="ps-ubin-teks">
+<span class="ps-ubin-nilai">${n}${persen ? `<small>${persen}</small>` : ''}</span>
+<span class="ps-ubin-label">${u.label}</span>
+</span></button>`;
+}).join('');
+}
+/** Menyalakan / mematikan saringan status dari ubin ringkasan. */
+function saringStatusPresensi(nilai) {
+const st = AppState.tabel && AppState.tabel.monitoring;
+if (!st) return;
+const sama = (st.filterNilai || {}).statusPresensi === nilai;
+// Kendali di dalam panel Filter ikut disetel. Kalau hanya keadaannya yang
+// diubah, panelnya tetap memperlihatkan "Semua" dan berbohong tentang apa
+// yang sedang disaring.
+const sel = $('mon_f_statusPresensi');
+if (sel) sel.value = sama ? '' : nilai;
+ubahFilter('mon', 'statusPresensi', sama ? '' : nilai);
+gambarRingkasPresensi(AppState.dataTabel || []);
+}
+function bukaHalamanSiswa(siswaId) {
+AppState.siswaDetail = siswaId;
+navigateTo('detail-siswa');
+}
+// Menyegarkan apa pun yang sedang tampil sesudah data penempatan berubah.
+// Sejak v7.5 perpindahan tempat bisa dilakukan dari DUA layar — daftar dan
+// halaman detail — jadi memanggil muatTabelMonitoring() saja membuat halaman
+// detail tetap memperlihatkan tempat PKL yang lama sampai dimuat ulang.
+function segarkanTampilanSiswa() {
+if ($('dsIsi') && AppState.siswaDetail) { muatDetailSiswa(AppState.siswaDetail, true); return; }
+muatTabelMonitoring();
+muatAntreanPindah();
+}
 async function muatTabelMonitoring() {
 const box = $('tabelMonitoring');
 if (!box) return;
@@ -150,6 +227,7 @@ try {
 const res = await panggilCepat('getDaftarPenempatan', AppState.sessionToken);
 if (!res.success) { box.innerHTML = emptyState('block', 'Akses ditolak', res.message); return; }
 AppState.dataTabel = res.data;
+gambarRingkasPresensi(res.data);
 buatTabel({
 id: 'monitoring', mount: 'tabelMonitoring', idPrefix: 'mon',
 judulEkspor: 'Monitoring Siswa PKL',
@@ -159,10 +237,13 @@ kosong: { ikon: 'group_off', judul: 'Belum ada siswa PKL aktif',
 desc: 'Data muncul setelah pendaftaran siswa diterima Pokja PKL.' },
 filterTetap: [{
 k: 'statusPresensi', label: 'Status Presensi',
-opsi: ['Hadir', 'Telat', 'Izin', 'Sakit', 'Alpha', 'Belum Presensi'],
+opsi: ['Hadir', 'Telat', 'Izin', 'Sakit', 'Alpha', 'Libur', 'Belum Presensi'],
 // Izin/Sakit yang masih menunggu ditulis "Izin (Menunggu)" — tetap ikut tersaring.
 cocok: (r, nilai) => String(r.statusPresensi || '').indexOf(nilai) === 0
 }],
+// Ubin ringkasan ikut menyala/padam mengikuti saringan, dari mana pun
+// saringannya diubah — termasuk lewat panel Filter, bukan hanya lewat ubin.
+saatFilter: () => { renderTabel('monitoring'); gambarRingkasPresensi(AppState.dataTabel || []); },
 kolom: [
 { k: 'nama', label: 'Nama Siswa', sortable: true,
 render: r => `<div class="td-strong">${esc(r.nama)}</div><div class="td-sub">${esc(r.nis)}</div>` },
@@ -175,7 +256,7 @@ render: r => chipStatus(r.statusPresensi) +
 { k: 'statusJurnal', label: 'Jurnal', sortable: true, render: r => chipStatus(r.statusJurnal) }
 ],
 aksi: r => `<button class="btn-icon" aria-label="Lihat detail ${esc(r.nama)}"
-onclick="bukaDetailSiswa('${esc(r.siswaId)}')"><span class="mi">visibility</span></button>
+onclick="bukaHalamanSiswa('${esc(r.siswaId)}')"><span class="mi">visibility</span></button>
 ${AppState.user.role === 'admin' ? `<button class="btn-icon" aria-label="Pindahkan tempat PKL ${esc(r.nama)}"
 onclick="bukaPindahTempat('${esc(r.siswaId)}')"><span class="mi">swap_horiz</span></button>` : ''}
 ${AppState.user.role === 'admin' && r.bisaBatalPindah ? `<button class="btn-icon danger"
@@ -248,38 +329,203 @@ muatAntreanIzin(); muatTabelMonitoring();
 } catch (e) { sembunyikanSibuk(); toast(e.message, 'error'); }
 } }]);
 }
-async function bukaDetailSiswa(siswaId) {
-tampilkanSibuk('Memuat detail…');
-let info;
-try { info = await panggil('htmlDetailSiswa', AppState.sessionToken, siswaId); }
-catch (e) { sembunyikanSibuk(); toast(e.message, 'error'); return; }
-sembunyikanSibuk();
-if (!info.success) { toast(info.message, 'error'); return; }
-bukaModal(info.data.nama, info.data.html,
-[{ label: 'Tutup', kelas: 'btn-primary', aksi: tutupModal }]);
+// ── Halaman Detail Siswa (v7.5) ───────────────────────────────────────────
+//
+// Menggantikan modal detail yang lama. Modal memaksa seluruh riwayat seorang
+// siswa masuk ke satu kotak sempit yang harus digulir sendiri di dalam layar
+// yang juga digulir — dua gulungan bersarang, dan tidak satu pun bagiannya bisa
+// dibagikan atau dicetak. Halaman penuh menghilangkan keduanya sekaligus.
+function initDetailSiswa() {
+if (!AppState.siswaDetail) { navigateTo('monitoring'); return; }
+muatDetailSiswa(AppState.siswaDetail);
+}
+async function muatDetailSiswa(siswaId, paksa) {
+const box = $('dsIsi');
+if (!box || !siswaId) return;
+box.innerHTML = memuatInline('Mengambil detail siswa…');
+let res;
+try { res = await (paksa ? panggil : panggilCepat)('getDetailSiswa', AppState.sessionToken, siswaId); }
+catch (e) { box.innerHTML = emptyState('wifi_off', 'Gagal memuat detail', e.message); return; }
+if (!res.success) { box.innerHTML = emptyState('block', 'Tidak dapat dibuka', res.message); return; }
+gambarDetailSiswa(res.data);
 muatRiwayatPenempatan(siswaId);
-try {
-const res = await panggil('getRiwayatPresensi', AppState.sessionToken, { mode: 'mingguan', siswaId: siswaId });
-const box = $('detailRiwayat');
-if (!box) return;
-if (!res.success || !res.data.items.length) {
-box.innerHTML = emptyState('history', 'Belum ada presensi minggu ini', '');
+muatRekapDetailSiswa(siswaId, nilaiSaring('ds', 'rentang') || 'bulanan');
+}
+function gambarDetailSiswa(d) {
+const box = $('dsIsi');
+const s = d.siswa;
+if (!box || !s) return;
+const inisial = String(s.nama || '?').trim().charAt(0).toUpperCase();
+const baris = [
+{ ikon: 'badge',      label: 'NIS',              nilai: s.nis },
+{ ikon: 'school',     label: 'Kelas / Jurusan',  nilai: s.kelas + ' · ' + s.jurusan },
+{ ikon: 'wc',         label: 'Jenis Kelamin',    nilai: d.jenisKelamin || '-' },
+{ ikon: 'call',       label: 'Kontak',           nilai: s.noHp || '-',
+  tautan: s.noHp ? 'tel:' + String(s.noHp).replace(/[^0-9+]/g, '') : '' },
+{ ikon: 'home',       label: 'Alamat',           nilai: d.alamat || '-' },
+{ ikon: 'domain',     label: 'Tempat PKL',       nilai: s.tempat, sub: s.alamatTempat },
+{ ikon: 'supervisor_account', label: 'Guru Pembimbing', nilai: s.guru },
+{ ikon: 'event',      label: 'Periode PKL',
+  nilai: tglSingkat(s.tanggalMulai) + ' – ' + tglSingkat(s.tanggalSelesai) }
+];
+if (s.shift) baris.splice(6, 0, { ikon: 'schedule', label: 'Shift Hari Ini', nilai: s.shift });
+box.innerHTML = `
+<section class="ds-kepala">
+<div class="ds-avatar">${d.foto
+  ? `<img src="${esc(d.foto)}" alt="Foto ${esc(s.nama)}" loading="lazy">`
+  : esc(inisial)}</div>
+<div class="ds-kepala-teks">
+<h1 class="ds-nama">${esc(s.nama)}</h1>
+<p class="ds-sub">${esc(s.nis)} &middot; ${esc(s.kelas)} &middot; ${esc(s.tempat)}</p>
+<div class="ds-chip">
+${chipStatus(s.statusPresensi)}${chipStatus(s.statusJurnal)}
+${s.waktuPresensi ? `<span class="chip chip-neutral">
+<span class="mi">login</span>${jamTampil(s.waktuPresensi)} WIB</span>` : ''}
+</div>
+</div>
+${d.bolehKelola ? `<div class="ds-aksi">
+<button class="btn btn-outline btn-sm" onclick="bukaPindahTempat('${esc(s.siswaId)}')">
+<span class="mi">swap_horiz</span> Pindah Tempat PKL</button>
+${s.bisaBatalPindah ? `<button class="btn btn-outline btn-sm" onclick="bukaBatalPindah('${esc(s.siswaId)}')">
+<span class="mi">undo</span> Batalkan Pindah</button>` : ''}
+</div>` : ''}
+</section>
+
+<div class="ds-ringkas" id="dsRingkas">${[0, 1, 2, 3, 4].map(() =>
+`<div class="skeleton" style="height:82px;border-radius:14px"></div>`).join('')}</div>
+
+<div class="grid-2">
+<section class="card">
+<div class="card-head"><h2 class="card-title"><span class="mi">contact_page</span> Data Siswa &amp; Penempatan</h2></div>
+<div class="card-body">
+<div class="ds-info">${baris.map(b => `
+<div class="ds-info-baris">
+<span class="ds-info-ikon"><span class="mi">${b.ikon}</span></span>
+<div class="ds-info-teks">
+<span class="ds-info-label">${b.label}</span>
+<span class="ds-info-nilai">${b.tautan
+  ? `<a href="${esc(b.tautan)}">${esc(b.nilai)}</a>` : esc(b.nilai)}</span>
+${b.sub ? `<span class="ds-info-sub">${esc(b.sub)}</span>` : ''}
+</div></div>`).join('')}</div>
+<div id="detailRiwayatTempat" style="margin-top:16px"><div class="skeleton" style="height:90px"></div></div>
+</div>
+</section>
+
+<section class="card">
+<div class="card-head">
+<h2 class="card-title"><span class="mi">history</span> Riwayat Presensi</h2>
+<div class="rw-alat">
+${panelSaringKlien('ds', 'Saring Riwayat', [
+  { k: 'rentang', label: 'Rentang Waktu',
+    opsi: [['mingguan', '7 hari terakhir'], ['bulanan', 'Bulan ini'], ['semua', 'Semua data']],
+    bawaan: 'bulanan' }
+])}
+</div>
+</div>
+<div class="card-body" id="dsRiwayat">${memuatInline('Mengambil riwayat…')}</div>
+</section>
+</div>`;
+daftarkanSaring('ds', function () {
+muatRekapDetailSiswa(AppState.siswaDetail, nilaiSaring('ds', 'rentang') || 'bulanan');
+});
+}
+/**
+ * Panel saringan versi klien.
+ *
+ * panelSaring() milik server merakit HTML-nya saat halaman dibangun; di sini
+ * panelnya baru ada sesudah data siswanya tiba, jadi bentuk yang sama dirakit
+ * di klien. Kelas dan id-nya persis sama, sehingga bukaPanelFilter/ubahSaring
+ * yang sudah ada bekerja tanpa perlu tahu siapa yang merakitnya.
+ */
+function panelSaringKlien(pfx, judul, field) {
+return `<div class="filter-wrap">
+<button class="btn btn-outline btn-sm filter-btn" id="${pfx}FilterBtn"
+onclick="bukaPanelFilter('${pfx}')" aria-haspopup="true" aria-expanded="false">
+<span class="mi">filter_list</span> Filter
+<span class="filter-badge" id="${pfx}FilterBadge" hidden>0</span>
+</button>
+<div class="filter-panel" id="${pfx}FilterPanel" hidden role="dialog" aria-label="${esc(judul)}">
+<div class="filter-panel-kepala"><span>${esc(judul)}</span>
+<button class="btn-icon btn-icon-sm" aria-label="Tutup"
+onclick="tutupPanelFilter('${pfx}')"><span class="mi">close</span></button></div>
+<div class="filter-panel-isi">${field.map(f => `
+<div class="filter-field">
+<label class="filter-label" for="${pfx}_s_${esc(f.k)}">${esc(f.label)}</label>
+<select class="field-input" id="${pfx}_s_${esc(f.k)}"
+onchange="ubahSaring('${pfx}','${esc(f.k)}',this.value)">
+${f.opsi.map(o => `<option value="${esc(o[0])}"${
+(nilaiSaring(pfx, f.k) || f.bawaan) === o[0] ? ' selected' : ''}>${esc(o[1])}</option>`).join('')}
+</select></div>`).join('')}</div>
+<div class="filter-panel-kaki">
+<button class="btn btn-outline btn-sm" onclick="resetSaring('${pfx}')">
+<span class="mi">restart_alt</span> Atur Ulang</button>
+<button class="btn btn-primary btn-sm" onclick="tutupPanelFilter('${pfx}')">Selesai</button>
+</div></div></div>`;
+}
+const DS_UBIN = [
+{ k: 'Hadir', ikon: 'check_circle', nada: 'ok',    label: 'Hadir' },
+{ k: 'Telat', ikon: 'schedule',     nada: 'warn',  label: 'Terlambat' },
+{ k: 'Izin',  ikon: 'event_busy',   nada: 'info',  label: 'Izin' },
+{ k: 'Sakit', ikon: 'sick',         nada: 'info',  label: 'Sakit' },
+{ k: 'Alpha', ikon: 'person_off',   nada: 'error', label: 'Alpha' }
+];
+async function muatRekapDetailSiswa(siswaId, mode) {
+const box = $('dsRiwayat'), ringkas = $('dsRingkas');
+if (!box || !siswaId) return;
+box.innerHTML = memuatInline('Mengambil riwayat…');
+let res;
+try { res = await panggilCepat('getRiwayatPresensi', AppState.sessionToken, { mode: mode, siswaId: siswaId }); }
+catch (e) { box.innerHTML = emptyState('wifi_off', 'Gagal memuat riwayat', e.message); return; }
+if (!res.success) { box.innerHTML = emptyState('block', 'Tidak dapat dibuka', res.message); return; }
+const r = res.data.rekap || {};
+// Libur sengaja TIDAK masuk penyebut. Tingkat kehadiran dihitung dari
+// Hadir+Telat+Izin+Sakit+Alpha; kalau hari libur ikut, instansi yang tutup
+// sehari justru menurunkan persentase siswanya.
+const total = (r.Hadir || 0) + (r.Telat || 0) + (r.Izin || 0) + (r.Sakit || 0) + (r.Alpha || 0);
+if (ringkas) {
+ringkas.innerHTML = DS_UBIN.map(function (u) {
+const n = r[u.k] || 0;
+return `<div class="ps-ubin ds-ubin${u.nada ? ' nada-' + u.nada : ''}">
+<span class="ps-ubin-ikon"><span class="mi">${u.ikon}</span></span>
+<span class="ps-ubin-teks">
+<span class="ps-ubin-nilai">${n}<small>${total ? Math.round(n / total * 100) : 0}%</small></span>
+<span class="ps-ubin-label">${u.label}</span>
+</span></div>`;
+}).join('') +
+`<div class="ps-ubin ds-ubin ds-ubin-lebar">
+<span class="ps-ubin-ikon"><span class="mi">insights</span></span>
+<span class="ps-ubin-teks">
+<span class="ps-ubin-nilai">${total ? Math.round((r.Hadir || 0) / total * 100) : 0}<small>%</small></span>
+<span class="ps-ubin-label">Tepat Waktu · ${res.data.rentang.label}${
+r.Libur ? ' · ' + r.Libur + ' hari libur' : ''}</span>
+</span></div>`;
+}
+const items = res.data.items || [];
+if (!items.length) {
+box.innerHTML = emptyState('history', 'Belum ada rekaman presensi',
+'Tidak ada data pada rentang ' + String(res.data.rentang.label).toLowerCase() + '.');
 return;
 }
-box.innerHTML = `<div class="info-eyebrow" style="margin-bottom:8px">Presensi 7 Hari Terakhir</div>
-<div class="list">${res.data.items.map(r => `
-<div class="list-item">
-<div class="list-lead ${r.status === 'Hadir' ? 'ok' : r.status === 'Telat' ? 'warn' : 'danger'}">
-<span class="mi">${r.jenis === 'Masuk' ? 'login' : 'logout'}</span></div>
+const nada = { Hadir: 'ok', Telat: 'warn', Alpha: 'danger', Libur: 'netral' };
+box.innerHTML = `<div class="list ds-riwayat">${items.map(function (x) {
+const ikon = x.jenis === 'Alpha' ? 'person_off' : x.jenis === 'Libur' ? 'weekend'
+  : x.jenis === 'Izin' ? 'event_busy' : x.jenis === 'Sakit' ? 'sick'
+  : x.jenis === 'Masuk' ? 'login' : 'logout';
+const rinci = [];
+if (x.waktu) rinci.push(jamTampil(x.waktu) + ' WIB');
+if (x.jarak !== '' && x.jarak != null) rinci.push(x.jarak + ' m');
+if (x.catatan) rinci.push(x.catatan);
+return `<div class="list-item">
+<div class="list-lead ${nada[x.status] || 'info'}"><span class="mi">${ikon}</span></div>
 <div class="list-main">
-<div class="list-title">${tglSingkat(r.tanggal)}</div>
-<div class="list-sub">${jamTampil(r.waktu)} WIB &middot; ${esc(r.jenis)} &middot; ${r.jarak} m</div></div>
-<div class="list-tail">${chipStatus(r.status)}
-${r.foto ? `<button class="btn-icon" aria-label="Foto"
-onclick="bukaPratinjau('Foto Presensi','${esc(r.foto)}','','gambar')">
+<div class="list-title">${esc(tglSingkat(x.tanggal))}</div>
+${rinci.length ? `<div class="list-sub">${esc(rinci.join(' · '))}</div>` : ''}</div>
+<div class="list-tail">${chipStatus(x.status)}
+${x.foto ? `<button class="btn-icon" aria-label="Foto presensi ${esc(tglSingkat(x.tanggal))}"
+onclick="bukaPratinjau('Foto Presensi','${esc(x.foto)}','','gambar')">
 <span class="mi">image</span></button>` : ''}</div>
-</div>`).join('')}</div>`;
-} catch (e) {}
+</div>`;
+}).join('')}</div>`;
 }
 function initRekapJurnal() {
 muatRekapJurnal();
@@ -1004,8 +1250,7 @@ if (!res.success) { toast(res.message, 'error', 7000); return; }
 tutupModal();
 toast(res.message, 'success', 6500);
 batalkanPaketData();
-muatTabelMonitoring();
-muatAntreanPindah();
+segarkanTampilanSiswa();
 } catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
 }
 
@@ -1076,8 +1321,7 @@ sembunyikanSibuk();
 if (!r.success) { toast(r.message, 'error', 8000); return; }
 toast(r.message, 'success', 6500);
 batalkanPaketData();
-muatTabelMonitoring();
-muatAntreanPindah();
+segarkanTampilanSiswa();
 } catch (e) { sembunyikanSibuk(); toast(e.message, 'error'); }
 } }]);
 }

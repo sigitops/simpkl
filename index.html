@@ -23,20 +23,72 @@
        memakai CSS lama, sehingga markup baru tampil tanpa aturan gayanya —
        tombol Ekspor hilang dan filter bulan melebar penuh. Uji uji-versi.js
        menolak berkas ini bila capnya tidak sama dengan APP_VERSI di Kode.gs. -->
-  <link rel="stylesheet" href="/app.css?v=7.4">
+  <link rel="stylesheet" href="/app.css?v=7.5">
 </head>
 <body>
 <div id="progresGlobal" aria-hidden="true"></div>
 <div id="bootLoader" class="boot-loader" role="status" aria-label="Memuat aplikasi">
+  <!-- Corak garis di latar. Satu <pattern> yang diubin: kerapatannya tetap sama
+       di layar selebar apa pun, dan tidak ada satu berkas gambar pun diunduh.
+       Sengaja tanpa viewBox supaya satuan penggunanya = piksel CSS. -->
+  <svg class="splash-corak" aria-hidden="true" focusable="false">
+    <defs>
+      <pattern id="splashCorak" width="210" height="210" patternUnits="userSpaceOnUse"
+               patternTransform="rotate(-8)">
+        <g fill="none" stroke="currentColor" stroke-width="1.5"
+           stroke-linecap="round" stroke-linejoin="round">
+          <!-- toga -->
+          <g transform="translate(14,18) scale(1.25)">
+            <path d="M2 8 12 3l10 5-10 5z"/><path d="M6 10.4V16c0 1.8 12 1.8 12 0v-5.6"/>
+            <path d="M22 8v5"/>
+          </g>
+          <!-- amplop -->
+          <g transform="translate(126,10) scale(1.25)">
+            <rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2.6 6.2 12 13l9.4-6.8"/>
+          </g>
+          <!-- dokumen -->
+          <g transform="translate(20,110) scale(1.25)">
+            <path d="M5 2h9l5 5v15H5z"/><path d="M14 2v5h5"/>
+            <path d="M8 12h8M8 16h8"/>
+          </g>
+          <!-- laptop -->
+          <g transform="translate(132,104) scale(1.25)">
+            <rect x="4" y="4" width="16" height="11" rx="1.5"/><path d="M2 19h20"/>
+          </g>
+          <!-- lencana -->
+          <g transform="translate(76,62) scale(1.25)">
+            <circle cx="12" cy="9" r="6"/><path d="M8.6 14.2 7 22l5-2.6L17 22l-1.6-7.8"/>
+          </g>
+          <!-- kalender -->
+          <g transform="translate(160,168) scale(1.15)">
+            <rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>
+          </g>
+        </g>
+      </pattern>
+    </defs>
+    <rect width="100%" height="100%" fill="url(#splashCorak)"/>
+  </svg>
+
   <div class="splash">
-    <div class="splash-halo">
-      <div class="splash-logo" id="splashLogo"><span class="mi">school</span></div>
+    <div class="splash-isi">
+      <div class="splash-lencana">
+        <!-- Heksagon bersudut bulat. clip-path juga bisa membuat segi enam,
+             tetapi sudutnya selalu tajam — dan itulah yang membuatnya kaku. -->
+        <svg class="splash-heks" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+          <path fill="#FFFFFF" d="M40.47 7.50 Q50.00 2.00 59.53 7.50 L82.04 20.50 Q91.57 26.00 91.57 37.00 L91.57 63.00 Q91.57 74.00 82.04 79.50 L59.53 92.50 Q50.00 98.00 40.47 92.50 L17.96 79.50 Q8.43 74.00 8.43 63.00 L8.43 37.00 Q8.43 26.00 17.96 20.50 Z"/>
+        </svg>
+        <div class="splash-logo" id="splashLogo"><span class="mi">school</span></div>
+      </div>
+      <div class="splash-teks">
+        <span class="splash-nama" id="splashNama">SIM PKL</span>
+        <span class="splash-sub" id="splashSub">Sistem Informasi &amp; Manajemen PKL</span>
+      </div>
     </div>
-    <div class="splash-teks">
-      <span class="splash-nama" id="splashNama">SIM PKL</span>
+    <div class="splash-kaki">
       <span class="splash-sekolah" id="splashSekolah"></span>
+      <span class="splash-tagline" id="splashTagline"></span>
+      <div class="splash-bar" aria-hidden="true"><span></span></div>
     </div>
-    <div class="splash-bar" aria-hidden="true"><span></span></div>
   </div>
 </div>
 <script>
@@ -50,8 +102,15 @@
   try {
     var id = JSON.parse(localStorage.getItem('identitas') || 'null');
     if (!id) return;
-    if (id.appName) document.getElementById('splashNama').textContent = id.appName;
-    if (id.namaSekolah) document.getElementById('splashSekolah').textContent = id.namaSekolah;
+    var pasang = function (idEl, teks) {
+      if (!teks) return;
+      var el = document.getElementById(idEl);
+      if (el) el.textContent = teks;
+    };
+    pasang('splashNama', id.appName);
+    pasang('splashSub', id.appDesc);
+    pasang('splashSekolah', id.namaSekolah);
+    pasang('splashTagline', id.appTagline);
     if (id.logoUrl) {
       var img = document.createElement('img');
       img.src = id.logoUrl;
@@ -226,13 +285,13 @@ wadah.innerHTML =
 // Alamat Web app Apps Script. Frontend memanggilnya lewat fetch() tanpa cookie,
 // sehingga Google tidak pernah menulis ulang alamatnya mengikuti akun yang masuk.
 window.SIMPKL_API = 'https://script.google.com/macros/s/AKfycbxnO0GrKENLXrEOQNiTeZ4W2KaK91UUGvOZbjI2_UFlIz75BiCidWWo8NSlODvwroXppA/exec';
-window.SIMPKL_VERSI = '7.4';
+window.SIMPKL_VERSI = '7.5';
 </script>
-<script src="/app1.js?v=7.4"></script>
-<script src="/app2.js?v=7.4"></script>
-<script src="/app3.js?v=7.4"></script>
-<script src="/app4.js?v=7.4"></script>
-<script src="/app5.js?v=7.4"></script>
-<script src="/app6.js?v=7.4"></script>
+<script src="/app1.js?v=7.5"></script>
+<script src="/app2.js?v=7.5"></script>
+<script src="/app3.js?v=7.5"></script>
+<script src="/app4.js?v=7.5"></script>
+<script src="/app5.js?v=7.5"></script>
+<script src="/app6.js?v=7.5"></script>
 </body>
 </html>

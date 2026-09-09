@@ -18,15 +18,24 @@ let PEWAKTU_SPLASH = null;
 function isiSplash(identitas) {
 const kotak = document.getElementById('splashLogo');
 const nama = document.getElementById('splashNama');
-const sekolah = document.getElementById('splashSekolah');
 if (!kotak || !nama) return;
 let id = identitas;
 if (!id) {
 try { id = JSON.parse(Simpanan.ambil('identitas') || 'null'); } catch (e) { id = null; }
 }
 if (!id) return;
-if (id.appName) nama.textContent = id.appName;
-if (sekolah && id.namaSekolah) sekolah.textContent = id.namaSekolah;
+// Setiap baris hanya ditimpa bila identitasnya memang punya isinya; teks
+// bawaan di index.html tetap dipakai bila tidak. Menuliskan string kosong
+// akan mengosongkan barisnya dan splash kehilangan satu barisnya diam-diam.
+const tulis = function (idEl, teks) {
+if (!teks) return;
+const el = document.getElementById(idEl);
+if (el) el.textContent = teks;
+};
+tulis('splashNama', id.appName);
+tulis('splashSub', id.appDesc);
+tulis('splashSekolah', id.namaSekolah);
+tulis('splashTagline', id.appTagline);
 if (id.logoUrl && !kotak.querySelector('img')) {
 const img = document.createElement('img');
 img.src = id.logoUrl;
@@ -1113,7 +1122,10 @@ sortDir: st.cfg && st.cfg.id === cfg.id ? (st.sortDir || 'asc') : 'asc',
 // Perubahan pencarian, penyaringan, dan jumlah entri tetap kembali ke awal,
 // sebab ketiganya menyetel st.halaman sendiri.
 halaman: st.cfg && st.cfg.id === cfg.id ? (st.halaman || 1) : 1,
-perHal: st.cfg && st.cfg.id === cfg.id ? (st.perHal || 25) : 25,
+// Bawaannya 10 sejak v7.5. Angka 25 membuat tabel siswa satu kelas hampir
+// selalu muat dalam satu halaman — dan halaman yang tidak pernah berganti
+// membuat pengguna tidak pernah tahu ada yang bisa disaring.
+perHal: st.cfg && st.cfg.id === cfg.id ? (st.perHal || PER_HAL_BAWAAN) : PER_HAL_BAWAAN,
 filterNilai: st.cfg && st.cfg.id === cfg.id ? (st.filterNilai || {}) : {},
 terpilih: {}
 };
@@ -1140,12 +1152,51 @@ st.halaman = 1;
 renderTabel(cfg.id);
 };
 }
-if (perHal) {
-perHal.value = String(st.perHal);
-perHal.onchange = () => {
-st.perHal = Number(perHal.value) || 0;
+if (perHal) pasangPerHal(cfg, perHal);
+}
+// Nilai bawaan jumlah entri, satu tempat untuk seluruh tabel di semua modul.
+const PER_HAL_BAWAAN = 10;
+const PER_HAL_SIAP = [10, 25, 50, 100, 0];
+/**
+ * Menyambungkan pemilih "Tampilkan" beserta kotak angka bebasnya.
+ *
+ * Angka yang tidak ada di daftar siap pakai TIDAK dipaksa kembali ke 10:
+ * pemilihnya berpindah ke "Kustom…" dan kotak angkanya terbuka membawa angka
+ * itu. Kalau tidak, tabel yang digambar ulang — sesudah menyimpan data, atau
+ * saat penyegaran senyap — diam-diam mengembalikan pilihan penggunanya.
+ */
+function pasangPerHal(cfg, sel) {
+const st = AppState.tabel[cfg.id];
+const kotak = $(cfg.idPrefix + 'KustomWrap');
+const isian = $(cfg.idPrefix + 'PerHalKustom');
+const kustom = PER_HAL_SIAP.indexOf(Number(st.perHal)) === -1;
+sel.value = kustom ? 'kustom' : String(st.perHal);
+if (kotak) kotak.hidden = !kustom;
+if (isian) isian.value = kustom ? String(st.perHal) : '';
+const terapkan = (n) => {
+st.perHal = n;
 st.halaman = 1;
 renderTabel(cfg.id);
+};
+sel.onchange = () => {
+if (sel.value === 'kustom') {
+if (kotak) kotak.hidden = false;
+const n = Number(isian && isian.value) || 0;
+if (isian) { isian.focus(); isian.select(); }
+if (n > 0) terapkan(n);
+return;
+}
+if (kotak) kotak.hidden = true;
+terapkan(Number(sel.value) || 0);
+};
+if (isian) {
+// Diterapkan saat mengetik, bukan hanya saat kehilangan fokus — mengetik
+// lalu langsung menggulir tabel adalah urutan yang wajar, dan angka yang
+// baru berlaku sesudah klik di tempat lain terasa seperti tidak berfungsi.
+isian.oninput = () => {
+const n = Math.floor(Number(isian.value));
+if (!(n > 0)) return;
+terapkan(Math.min(n, 9999));
 };
 }
 }
@@ -2326,11 +2377,16 @@ AppState.paketData[halaman] = res.dataAwal;
 .catch(function () {})
 .then(function () { delete AppState.sedangPramuat[halaman]; });
 }
+// Halaman yang tidak punya butir menunya sendiri, tetapi tetap "milik" sebuah
+// menu. Tanpa peta ini, membuka detail seorang siswa memadamkan seluruh sorotan
+// di sidebar — dan pengguna kehilangan jejak di mana ia sebenarnya berada.
+const MENU_INDUK = { 'detail-siswa': 'monitoring' };
 function tandaiMenuAktif(halaman) {
+const sorot = MENU_INDUK[halaman] || halaman;
 $$('.nav-link[data-page]').forEach(b =>
-b.classList.toggle('active', b.dataset.page === halaman));
+b.classList.toggle('active', b.dataset.page === sorot));
 $$('.bn-item[data-page]').forEach(b =>
-b.classList.toggle('active', b.dataset.page === halaman));
+b.classList.toggle('active', b.dataset.page === sorot));
 }
 function renderNavigation() {
 const menu = MENU[AppState.user.role] || [];
@@ -2465,6 +2521,13 @@ function pilihHasilPencarian(i) {
 const h = AppState.cmdkHasil[i];
 if (!h) return;
 tutupPencarianGlobal();
+// Hasil pencarian yang membawa id siswa membuka detail siswanya langsung.
+// Sebelum v7.5 ia hanya melempar ke daftar, dan penggunanya harus mencari
+// sekali lagi nama yang barusan ia ketik.
+if (h.id && h.aksi === 'monitoring' && typeof bukaHalamanSiswa === 'function') {
+bukaHalamanSiswa(h.id);
+return;
+}
 navigateTo(h.aksi);
 }
 function sorotHasilPencarian(i) {
@@ -2782,6 +2845,9 @@ renderNavigation();
 tampilkanKerangkaAplikasi(true);
 const identitas = {
 appName: c.appName || 'SIM PKL', appTagline: c.appTagline || '',
+// appDesc ikut disimpan sejak v7.5: subjudul inilah yang dibaca splash pada
+// pembukaan berikutnya, sebelum satu pun permintaan server berangkat.
+appDesc: c.appDesc || '',
 namaSekolah: c.namaSekolah || '', logoUrl: c.logoUrl || '',
 kontakAdmin: c.kontakAdmin || '', waAdmin: c.waAdmin || '',
 googleClientId: c.googleClientId || ''
