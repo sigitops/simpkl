@@ -2322,8 +2322,8 @@ $$('.bn-item[data-page]').forEach(el => el.classList.toggle('active', el.dataset
 }
 function perbaruiTopbar(halaman) {
 const diBeranda = (halaman === 'beranda');
-$('btnKembali').hidden = diBeranda;
-$('topbarTitle').textContent = diBeranda ? 'Beranda' : (JUDUL_HALAMAN[halaman] || 'Halaman');
+const judul = $('topbarTitle');
+if (judul) judul.textContent = diBeranda ? 'Beranda' : (JUDUL_HALAMAN[halaman] || 'Halaman');
 tutupDrawer();
 }
 function toggleDrawer() {
@@ -2335,6 +2335,43 @@ if (scrim) scrim.hidden = !buka;
 if (btn) btn.setAttribute('aria-expanded', String(buka));
 document.body.style.overflow = buka ? 'hidden' : '';
 }
+// ── Menyembunyikan sidebar di layar lebar (v7.6) ───────────────────────────
+//
+// Berbeda dari toggleDrawer() yang melayani ponsel: di sana sidebar memang
+// selalu tersembunyi dan tombolnya membuka laci sesaat. Di layar lebar sidebar
+// selalu tampak, dan yang diminta adalah MELIPATNYA supaya isi halaman —
+// tabel lebar, grafik, kalender shift — mendapat 280 piksel tambahan.
+//
+// Pilihannya disimpan supaya tidak perlu diulang setiap kali aplikasi dibuka.
+const KUNCI_SIDEBAR = 'sidebarTutup';
+function toggleSidebar() {
+// Gerakannya baru dihidupkan di sini — bukan di CSS secara permanen. Bila
+// transisinya selalu melekat, isi halaman ikut meluncur dari tepi kiri setiap
+// kali pengguna masuk, sebab saat itulah kelas .with-sidebar dipasang.
+document.body.classList.add('sidebar-animasi');
+pasangSidebar(!document.body.classList.contains('sidebar-tutup'), true);
+}
+/**
+ * @param {boolean} tutup
+ * @param {boolean} [simpan] Bila benar, pilihannya diingat untuk pembukaan berikutnya.
+ */
+function pasangSidebar(tutup, simpan) {
+document.body.classList.toggle('sidebar-tutup', !!tutup);
+const btn = $('btnSidebar');
+if (btn) {
+// aria-expanded menerangkan SIDEBAR-nya, bukan tombolnya — jadi nilainya
+// kebalikan dari "tutup". Tertukar sedikit saja, pembaca layar mengumumkan
+// keadaan yang persis berlawanan dengan yang terlihat.
+btn.setAttribute('aria-expanded', String(!tutup));
+btn.setAttribute('aria-label', tutup ? 'Tampilkan menu samping' : 'Sembunyikan menu samping');
+}
+if (simpan) { try { Simpanan.simpan(KUNCI_SIDEBAR, tutup ? '1' : '0'); } catch (e) {} }
+}
+function pulihkanSidebar() {
+let tutup = false;
+try { tutup = Simpanan.ambil(KUNCI_SIDEBAR) === '1'; } catch (e) {}
+pasangSidebar(tutup, false);
+}
 function tutupDrawer() {
 const sb = $('sidebar'), scrim = $('drawerScrim'), btn = $('btnDrawer');
 if (sb) sb.classList.remove('laci-buka');
@@ -2342,7 +2379,6 @@ if (scrim) scrim.hidden = true;
 if (btn) btn.setAttribute('aria-expanded', 'false');
 document.body.style.overflow = '';
 }
-function kembaliKeBeranda() { navigateTo('beranda'); }
 let PRAMUAT_TIMER = null;
 function pramuatHalaman(halaman) {
 // Ditunda sebentar supaya kursor yang hanya menyapu daftar menu tidak
@@ -2985,6 +3021,10 @@ $('appFooter').hidden = !masuk;
 $('mainContent').classList.toggle('with-sidebar', masuk);
 $('mainContent').classList.toggle('logged-in', masuk);
 $('app-container').classList.toggle('plain', !masuk);
+// Halaman login tidak punya sidebar sama sekali, jadi lipatannya selalu
+// dilepas saat keluar — kalau tidak, kelasnya tertinggal di <body> dan
+// mengubah tata letak halaman yang tidak ada sangkut pautnya.
+if (masuk) pulihkanSidebar(); else pasangSidebar(false, false);
 terapkanTema(Simpanan.ambil('tema') || 'light');
 }
 async function handleLogout() {
