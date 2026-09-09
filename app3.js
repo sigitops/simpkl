@@ -118,7 +118,8 @@ const baris = grup[tgl];
 const tanda = tgl === kunciHariIni ? 'Hari ini' : tgl === kunciKemarin ? 'Kemarin' : '';
 const d = new Date(tgl + 'T00:00:00');
 const utama = baris.find(x => x.jenis === 'Masuk') || baris[0];
-const nada = (utama.status === 'Hadir' || utama.status === 'Disetujui') ? 'ok'
+const nada = utama.jenis === 'Libur' ? 'netral'
+: (utama.status === 'Hadir' || utama.status === 'Disetujui') ? 'ok'
 : (utama.status === 'Telat' || utama.status === 'Menunggu') ? 'warn' : 'danger';
 return `<section class="rw-hari nada-${nada}">
 <header class="rw-hari-kepala">
@@ -139,13 +140,19 @@ ${baris.map((r, i) => jejakBaris(r, i === baris.length - 1)).join('')}
 }).join('')}</div>`;
 }
 function jejakBaris(r, terakhir) {
-const nada = (r.status === 'Hadir' || r.status === 'Disetujui') ? 'ok'
+// Libur bernada netral, bukan merah: siswa tidak melakukan kesalahan apa pun
+// pada hari itu, dan warna merah akan membuatnya terbaca seperti pelanggaran.
+const nada = r.jenis === 'Libur' ? 'netral'
+: (r.status === 'Hadir' || r.status === 'Disetujui') ? 'ok'
 : (r.status === 'Telat' || r.status === 'Menunggu') ? 'warn' : 'danger';
 const ikon = r.jenis === 'Masuk' ? 'login' : r.jenis === 'Pulang' ? 'logout'
-: r.jenis === 'Sakit' ? 'sick' : r.jenis === 'Alpha' ? 'person_off' : 'event_busy';
+: r.jenis === 'Sakit' ? 'sick' : r.jenis === 'Alpha' ? 'person_off'
+: r.jenis === 'Libur' ? 'weekend' : 'event_busy';
 const detail = (r.jenis === 'Masuk' || r.jenis === 'Pulang')
 ? `${jamTampil(r.waktu)} WIB &middot; ${esc(r.jenis)} &middot; ${r.jarak} m dari lokasi (±${r.akurasi} m)`
 : r.jenis === 'Alpha' ? 'Tidak hadir tanpa keterangan'
+: r.jenis === 'Libur' ? (r.catatan ? esc(r.catatan) : 'Hari libur') +
+    (r.jenisLibur ? ' &middot; libur ' + esc(String(r.jenisLibur).toLowerCase()) : '')
 : `${esc(r.jenis)} &middot; ${esc(r.catatan || '')}`;
 const tombol = [];
 if (r.foto) tombol.push(`<button class="btn-icon" aria-label="Lihat foto presensi"

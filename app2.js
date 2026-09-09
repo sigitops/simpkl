@@ -19,6 +19,7 @@ const INIT_HALAMAN = {
 'kelola-periode':   () => muatTabelMaster(),
 'sertifikat':       () => initSertifikat(),
 'jadwal-shift':     () => initJadwalShift(),
+'hari-libur':       () => muatHariLibur(),
 'pengaturan':       () => muatPengaturan(),
 'login':            () => {}
 };
@@ -49,6 +50,24 @@ box.innerHTML = emptyState('domain_disabled', 'Belum ditempatkan',
 return;
 }
 const masuk = d.presensi.masuk, pulang = d.presensi.pulang;
+// Hari libur ditampilkan apa adanya, LENGKAP DENGAN ALASANNYA. Siswa yang tetap
+// ingin masuk masih bisa lewat halaman Presensi; yang dihilangkan hanyalah
+// ajakan yang menyesatkan di beranda.
+if (d.liburHariIni && !masuk) {
+chip.className = 'chip chip-neutral';
+chip.innerHTML = '<span class="mi">weekend</span>Libur';
+box.innerHTML = `
+<div class="presensi-sorot">
+<div class="ps-tgl">${tglSingkat(new Date().toISOString().slice(0, 10))}</div>
+<div class="ps-jam" style="font-size:20px">Hari Libur</div>
+<div class="ps-ket">${esc(d.liburHariIni.keterangan || 'Tidak ada kegiatan PKL hari ini.')}</div>
+</div>
+<div class="stack" style="gap:10px;margin-top:14px">
+<button class="btn btn-outline btn-block" onclick="navigateTo('riwayat-presensi')">
+<span class="mi">history</span> Riwayat Presensi</button>
+</div>`;
+return;
+}
 chip.className = 'chip ' + (masuk ? (masuk.Status === 'Hadir' ? 'chip-success' : 'chip-warning') : 'chip-error');
 chip.innerHTML = `<span class="mi">${masuk ? 'check_circle' : 'error'}</span>${
 masuk ? esc(masuk.Status) : 'Belum Absen'}`;
@@ -224,6 +243,14 @@ if (!box) return;
 // tiga baris yang bisa dihitung di sini hanya menambah satu perjalanan bolak-
 // balik tanpa menambah satu pun informasi.
 const tugas = [];
+// Hari instansi tutup bukan hari kerja bagi siswa: menagih presensi dan jurnal
+// di hari itu sama saja menyuruhnya mengerjakan sesuatu yang memang tidak ada.
+if (d.penempatan && d.liburHariIni) {
+box.innerHTML = emptyState('event_busy', 'Hari ini libur',
+esc(d.liburHariIni.keterangan || 'Tidak ada kegiatan PKL hari ini.') +
+' Presensi dan jurnal tidak ditagih.');
+return;
+}
 if (d.penempatan) {
 if (!d.jurnalHariIni) {
 tugas.push({ ikon: 'menu_book', nada: 'info', judul: 'Jurnal Harian',

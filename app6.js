@@ -1738,5 +1738,189 @@ await muatJadwalShift();
 } catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
 }
 
+// ── HARI LIBUR ─────────────────────────────────────────────────────────────
+//
+// Sebelum halaman ini ada, satu-satunya "libur" yang dikenal aplikasi adalah
+// pola mingguan HariKerja milik tempat PKL. Setiap tanggal merah nasional dan
+// setiap kali instansi tutup karena rapat internal karena itu tercatat Alpha
+// untuk seluruh siswa — diam-diam, dan tanpa cara membetulkannya.
+async function muatHariLibur() {
+const box = $('listHariLibur');
+if (!box) return;
+try {
+const res = await panggilCepat('getHariLibur', AppState.sessionToken);
+if (!res.success) { box.innerHTML = emptyState('block', 'Akses ditolak', res.message); return; }
+AppState.dataLibur = res.data.items;
+AppState.tempatLibur = res.data.tempat;
+AppState.bolehSemuaTempat = res.data.bolehSemuaTempat;
+daftarkanSaring('hl', gambarHariLibur);
+perbaruiLencanaSaring('hl');
+gambarHariLibur();
+} catch (err) {
+box.innerHTML = emptyState('error', 'Gagal memuat data', err.message);
+}
+}
+function gambarHariLibur() {
+const box = $('listHariLibur'), chip = $('chipJumlahLibur');
+if (!box) return;
+const semua = AppState.dataLibur || [];
+const jenis = nilaiSaring('hl', 'jenis');
+const items = jenis ? semua.filter(x => x.jenis === jenis) : semua;
+if (chip) chip.textContent = items.length + ' tanggal';
+if (!semua.length) {
+box.innerHTML = emptyState('event_available', 'Belum ada hari libur terdaftar',
+'Tambahkan tanggal merah nasional, libur sekolah, atau hari instansi tutup.',
+`<button class="btn btn-primary" onclick="bukaFormLibur()"><span class="mi">add</span> Tambah Libur</button>`);
+return;
+}
+if (!items.length) {
+box.innerHTML = emptyState('search_off', 'Tidak ada yang cocok', 'Pilih jenis libur lain.');
+return;
+}
+const bulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+const nada = { Nasional: 'danger', Sekolah: 'warn', Instansi: 'ok' };
+box.innerHTML = `<div class="rw-jejak">${items.map(function (x, i) {
+const d = new Date(x.tanggalMulai + 'T00:00:00');
+const berentang = x.tanggalSelesai && x.tanggalSelesai !== x.tanggalMulai;
+return `<section class="rw-hari nada-${nada[x.jenis] || 'ok'}">
+<header class="rw-hari-kepala">
+<div class="rw-hari-tgl">
+<span class="rw-hari-angka">${String(d.getDate()).padStart(2, '0')}</span>
+<span class="rw-hari-bulan">${bulan[d.getMonth()]}</span>
+</div>
+<div class="rw-hari-info">
+<div class="rw-hari-nama">${esc(x.keterangan)}</div>
+<div class="rw-hari-sub">${berentang
+  ? tglRingkas(x.tanggalMulai) + ' – ' + tglRingkas(x.tanggalSelesai)
+  : tglSingkat(x.tanggalMulai)} &middot; ${esc(x.namaTempat)}</div>
+</div>
+<span class="chip chip-${x.jenis === 'Nasional' ? 'error' : x.jenis === 'Sekolah' ? 'warning' : 'success'}">${esc(x.jenis)}</span>
+</header>
+${x.bisaUbah ? `<div class="rw-hari-isi"><div class="jr-aksi">
+<button class="btn btn-outline btn-xs" onclick="bukaFormLibur(${i})">
+<span class="mi">edit</span> Ubah</button>
+<button class="btn btn-danger btn-xs" onclick="konfirmasiHapusLibur(${i})">
+<span class="mi">delete</span> Hapus</button>
+</div></div>` : ''}
+</section>`;
+}).join('')}</div>`;
+}
+function bukaFormLibur(indeks) {
+// Indeksnya menunjuk daftar HASIL SARINGAN, jadi barisnya dicari ulang dari
+// daftar yang sama supaya tombol Ubah tidak membuka baris yang salah begitu
+// ada saringan jenis yang aktif.
+const semua = AppState.dataLibur || [];
+const jenisAktif = nilaiSaring('hl', 'jenis');
+const tampak = jenisAktif ? semua.filter(x => x.jenis === jenisAktif) : semua;
+const d = (indeks === undefined) ? {} : (tampak[indeks] || {});
+const hariIni = new Date().toISOString().slice(0, 10);
+const tempat = AppState.tempatLibur || [];
+const bolehSemua = AppState.bolehSemuaTempat;
+bukaModal(d.id ? 'Ubah Hari Libur' : 'Tambah Hari Libur', `
+<div class="field">
+<label class="field-label" for="hlTempat">Berlaku Untuk</label>
+<select class="field-input" id="hlTempat" onchange="ubahLingkupLibur()">
+${bolehSemua ? `<option value=""${!d.tempatId ? ' selected' : ''}>Semua tempat PKL</option>` : ''}
+${tempat.map(t => `<option value="${esc(t.id)}"${d.tempatId === t.id ? ' selected' : ''}>${esc(t.nama)}</option>`).join('')}
+</select>
+<p class="field-help" id="hlBantuLingkup"></p>
+</div>
+<div class="field" id="hlBungkusJenis">
+<label class="field-label" for="hlJenis">Jenis Libur</label>
+<select class="field-input" id="hlJenis">
+<option value="Nasional"${d.jenis === 'Nasional' ? ' selected' : ''}>Nasional (tanggal merah)</option>
+<option value="Sekolah"${d.jenis === 'Sekolah' ? ' selected' : ''}>Sekolah (kegiatan sekolah)</option>
+<option value="Instansi"${d.jenis === 'Instansi' || !d.jenis ? ' selected' : ''}>Instansi (tempat PKL tutup)</option>
+</select>
+</div>
+<div class="grid-2">
+<div class="field">
+<label class="field-label" for="hlMulai">Tanggal Mulai</label>
+<input class="field-input" id="hlMulai" type="date" value="${esc(d.tanggalMulai || hariIni)}">
+<div class="field-error" id="errHlMulai"></div>
+</div>
+<div class="field">
+<label class="field-label" for="hlSelesai">Tanggal Selesai</label>
+<input class="field-input" id="hlSelesai" type="date" value="${esc(d.tanggalSelesai || d.tanggalMulai || hariIni)}">
+<p class="field-help">Samakan dengan tanggal mulai bila hanya sehari.</p>
+</div>
+</div>
+<div class="field">
+<label class="field-label" for="hlKet">Keterangan</label>
+<input class="field-input" id="hlKet" maxlength="120" value="${esc(d.keterangan || '')}"
+placeholder="Misalnya: Rapat kerja internal, atau Idul Fitri 1447 H">
+<p class="field-help">Keterangan ini yang dibaca siswa pada riwayat presensinya.</p>
+<div class="field-error" id="errHlKet"></div>
+</div>`,
+[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
+{ label: '<span class="mi">save</span> Simpan', kelas: 'btn-primary',
+aksi: () => kirimHariLibur(d.id) }]);
+ubahLingkupLibur();
+}
+// Libur yang berlaku untuk SEMUA tempat tidak mungkin berjenis "Instansi" —
+// pilihannya disembunyikan daripada membiarkan gabungan yang tidak masuk akal
+// tersimpan lalu membingungkan saat dibaca kembali.
+function ubahLingkupLibur() {
+const sel = $('hlTempat'), bungkus = $('hlBungkusJenis'), bantu = $('hlBantuLingkup');
+if (!sel) return;
+const semuaTempat = !sel.value;
+if (bungkus) bungkus.hidden = semuaTempat;
+if (bantu) {
+bantu.textContent = semuaTempat
+  ? 'Berlaku untuk seluruh siswa PKL, di tempat mana pun.'
+  : 'Hanya siswa yang ditempatkan di tempat ini.';
+}
+}
+async function kirimHariLibur(id) {
+const ket = $('hlKet').value.trim();
+const mulai = $('hlMulai').value, selesai = $('hlSelesai').value || mulai;
+$('errHlKet').textContent = ''; $('errHlMulai').textContent = '';
+if (!mulai) { $('errHlMulai').textContent = 'Tanggal mulai wajib diisi.'; return; }
+if (selesai < mulai) { $('errHlMulai').textContent = 'Tanggal selesai mendahului tanggal mulai.'; return; }
+if (!ket) { $('errHlKet').textContent = 'Keterangan wajib diisi.'; return; }
+const tempatId = $('hlTempat').value;
+tampilkanSibuk('Menyimpan hari libur…');
+try {
+const res = await panggil('simpanHariLibur', AppState.sessionToken, {
+id: id || null, tempatId: tempatId, tanggalMulai: mulai, tanggalSelesai: selesai,
+jenis: tempatId ? $('hlJenis').value : 'Nasional', keterangan: ket });
+sembunyikanSibuk();
+if (!res.success) { toast(res.message, 'error', 6000); return; }
+batalkanPaketData();
+tutupModal();
+toast(res.message, 'success', 6000);
+muatHariLibur();
+} catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
+}
+function konfirmasiHapusLibur(indeks) {
+const semua = AppState.dataLibur || [];
+const jenisAktif = nilaiSaring('hl', 'jenis');
+const tampak = jenisAktif ? semua.filter(x => x.jenis === jenisAktif) : semua;
+const d = tampak[indeks];
+if (!d) { toast('Data tidak ditemukan. Muat ulang halaman.', 'warning'); return; }
+bukaModal('Hapus Hari Libur', `
+<div class="alert alert-error"><span class="mi">warning</span>
+<div><strong>Tanggal ini akan kembali dihitung sebagai hari kerja.</strong>
+<p>Siswa yang tidak presensi pada tanggal tersebut akan tercatat Alpha lagi.</p></div></div>
+<div class="jr-cuplik">
+<div class="data-label">${esc(tglSingkat(d.tanggalMulai))}${
+d.tanggalSelesai !== d.tanggalMulai ? ' – ' + esc(tglSingkat(d.tanggalSelesai)) : ''}</div>
+<div>${esc(d.keterangan)} &middot; ${esc(d.namaTempat)}</div>
+</div>`,
+[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
+{ label: '<span class="mi">delete</span> Hapus', kelas: 'btn-danger',
+aksi: () => kirimHapusLibur(d.id) }]);
+}
+async function kirimHapusLibur(id) {
+tutupModal();
+tampilkanSibuk('Menghapus…');
+try {
+const res = await panggil('hapusHariLibur', AppState.sessionToken, id);
+sembunyikanSibuk();
+toast(res.message, res.success ? 'success' : 'error');
+if (res.success) { batalkanPaketData(); muatHariLibur(); }
+} catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
+}
+
 window.__blok = 6;
-window.__SIMPKL_EOF = '7.2';
+window.__SIMPKL_EOF = '7.3';
