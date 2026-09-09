@@ -1310,6 +1310,25 @@ $$('#' + pfx + 'FilterPanel select').forEach(function (s) { s.value = ''; });
 perbaruiLencanaSaring(pfx);
 if (typeof SARING_TERAPKAN[pfx] === 'function') SARING_TERAPKAN[pfx]();
 }
+// Mengisi pilihan sebuah parameter saringan dari data yang sedang dimuat —
+// untuk parameter yang isinya tidak bisa diketahui saat halaman dibangun,
+// misalnya daftar tempat PKL atau kelas.
+function isiOpsiSaring(pfx, kunci, opsi) {
+const sel = $(pfx + '_s_' + kunci);
+if (!sel) return;
+const terpilih = nilaiSaring(pfx, kunci);
+sel.innerHTML = '<option value="">Semua</option>' +
+(opsi || []).map(function (v) { return '<option value="' + esc(v) + '">' + esc(v) + '</option>'; }).join('');
+// Pilihan lama dipertahankan bila masih ada. Bila tidak — datanya berubah,
+// tempatnya dihapus — saringannya ikut dilepas: lencana yang menghitung
+// pilihan yang tidak terlihat di panel adalah lencana yang berbohong.
+if (terpilih && (opsi || []).indexOf(terpilih) !== -1) { sel.value = terpilih; return; }
+if (terpilih) {
+AppState.saring = AppState.saring || {};
+if (AppState.saring[pfx]) delete AppState.saring[pfx][kunci];
+}
+perbaruiLencanaSaring(pfx);
+}
 function perbaruiLencanaSaring(pfx) {
 const nilai = (AppState.saring || {})[pfx] || {};
 let n = 0;

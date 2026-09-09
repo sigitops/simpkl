@@ -1753,20 +1753,106 @@ if (!res.success) { box.innerHTML = emptyState('block', 'Akses ditolak', res.mes
 AppState.dataLibur = res.data.items;
 AppState.tempatLibur = res.data.tempat;
 AppState.bolehSemuaTempat = res.data.bolehSemuaTempat;
+// Tanggal acuan datang dari server, bukan dari jam peramban — lihat catatan
+// pada getHariLibur(). Bila server lama belum mengirimnya, tanda waktunya
+// dilewati saja daripada menampilkan label yang bisa salah sehari.
+AppState.hariIniLibur = res.data.hariIni || '';
 daftarkanSaring('hl', gambarHariLibur);
+// Tempat yang ditawarkan hanya yang benar-benar punya baris libur; libur
+// nasional ("Semua tempat") bukan pilihan tempat, ia cocok dengan semuanya.
+const namaTempat = [];
+(res.data.items || []).forEach(function (x) {
+if (x.tempatId && namaTempat.indexOf(x.namaTempat) === -1) namaTempat.push(x.namaTempat);
+});
+isiOpsiSaring('hl', 'tempat', namaTempat.sort());
+isiOpsiSaring('hl', 'kelas', res.data.kelas || []);
 perbaruiLencanaSaring('hl');
 gambarHariLibur();
 } catch (err) {
 box.innerHTML = emptyState('error', 'Gagal memuat data', err.message);
 }
 }
+const HL_BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+const HL_BULAN_PANJANG = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+// 'Berlangsung' sengaja mencakup seluruh rentang, bukan hanya tanggal mulainya:
+// cuti bersama lima hari harus tetap terbaca sedang berjalan pada hari ketiga.
+function statusLibur(x) {
+const hariIni = AppState.hariIniLibur || '';
+if (!hariIni) return '';
+const akhir = x.tanggalSelesai || x.tanggalMulai;
+if (x.tanggalMulai <= hariIni && hariIni <= akhir) return 'Berlangsung';
+return x.tanggalMulai > hariIni ? 'Akan datang' : 'Sudah lewat';
+}
+// Satu-satunya sumber daftar yang tampak. Tombol Ubah/Hapus memakai id, bukan
+// indeks, jadi saringan sebanyak apa pun tidak bisa lagi membuat tombolnya
+// menunjuk baris yang salah.
+function liburTampil() {
+const jenis = nilaiSaring('hl', 'jenis'), tempat = nilaiSaring('hl', 'tempat');
+const kelas = nilaiSaring('hl', 'kelas'), waktu = nilaiSaring('hl', 'waktu');
+return (AppState.dataLibur || []).filter(function (x) {
+if (jenis && x.jenis !== jenis) return false;
+// Libur nasional/sekolah tidak terikat satu tempat — ia memang meliburkan
+// tempat yang sedang disaring, jadi ia tetap ditampilkan.
+if (tempat && x.tempatId && x.namaTempat !== tempat) return false;
+if (kelas && (x.kelas || []).indexOf(kelas) === -1) return false;
+if (waktu && statusLibur(x) !== waktu) return false;
+return true;
+}).sort(function (a, b) {
+// Yang sedang berlangsung dan yang akan datang naik ke atas dan diurutkan
+// dari yang paling dekat; yang sudah lewat menyusul dari yang paling baru.
+// Halaman kalender dibaca untuk menyiapkan hari-hari berikutnya — mengurut
+// seluruhnya menurun membuat tanggal terjauh justru yang pertama terlihat.
+const la = statusLibur(a) === 'Sudah lewat', lb = statusLibur(b) === 'Sudah lewat';
+if (la !== lb) return la ? 1 : -1;
+return la ? String(b.tanggalMulai).localeCompare(String(a.tanggalMulai))
+          : String(a.tanggalMulai).localeCompare(String(b.tanggalMulai));
+});
+}
+function gambarRingkasLibur(items) {
+const kotak = $('hlRingkas');
+if (!kotak) return;
+const semua = AppState.dataLibur || [];
+let berlangsung = 0, akan = 0;
+const tempatKini = {};
+let siswaKini = 0, adaGlobalKini = false;
+semua.forEach(function (x) {
+const st = statusLibur(x);
+if (st === 'Berlangsung') {
+berlangsung++;
+if (!x.tempatId) adaGlobalKini = true;
+else if (!tempatKini[x.tempatId]) { tempatKini[x.tempatId] = 1; siswaKini += (x.jumlahSiswa || 0); }
+} else if (st === 'Akan datang') akan++;
+});
+// Bila ada libur nasional hari ini, seluruh siswa PKL libur — menjumlah
+// per tempat di atasnya justru akan menghitung sebagian orang dua kali.
+const global = semua.filter(function (x) { return !x.tempatId; })[0];
+if (adaGlobalKini) siswaKini = (global && global.jumlahSiswa) || siswaKini;
+const kartu = [
+{ ikon: 'event_note', nada: '', nilai: semua.length, label: 'Tanggal Terdaftar' },
+{ ikon: 'beach_access', nada: 'ok', nilai: berlangsung, label: 'Berlangsung Hari Ini' },
+{ ikon: 'upcoming', nada: 'warn', nilai: akan, label: 'Akan Datang' },
+{ ikon: 'groups', nada: 'info', nilai: siswaKini, label: 'Siswa Libur Hari Ini' }
+];
+kotak.innerHTML = kartu.map(function (k) {
+return `<div class="hl-tile${k.nada ? ' nada-' + k.nada : ''}">
+<span class="hl-tile-ikon"><span class="mi">${k.ikon}</span></span>
+<div class="hl-tile-teks">
+<div class="hl-tile-nilai">${k.nilai}</div>
+<div class="hl-tile-label">${k.label}</div>
+</div></div>`;
+}).join('');
+}
 function gambarHariLibur() {
 const box = $('listHariLibur'), chip = $('chipJumlahLibur');
 if (!box) return;
 const semua = AppState.dataLibur || [];
-const jenis = nilaiSaring('hl', 'jenis');
-const items = jenis ? semua.filter(x => x.jenis === jenis) : semua;
-if (chip) chip.textContent = items.length + ' tanggal';
+const items = liburTampil();
+gambarRingkasLibur(items);
+if (chip) {
+chip.textContent = items.length + ' dari ' + semua.length + ' tanggal';
+chip.className = 'chip ' + (items.length === semua.length ? 'chip-neutral' : 'chip-info');
+}
 if (!semua.length) {
 box.innerHTML = emptyState('event_available', 'Belum ada hari libur terdaftar',
 'Tambahkan tanggal merah nasional, libur sekolah, atau hari instansi tutup.',
@@ -1774,46 +1860,75 @@ box.innerHTML = emptyState('event_available', 'Belum ada hari libur terdaftar',
 return;
 }
 if (!items.length) {
-box.innerHTML = emptyState('search_off', 'Tidak ada yang cocok', 'Pilih jenis libur lain.');
+box.innerHTML = emptyState('search_off', 'Tidak ada yang cocok',
+'Tidak ada hari libur yang sesuai dengan saringan ini.',
+`<button class="btn btn-outline" onclick="resetSaring('hl')">
+<span class="mi">restart_alt</span> Atur Ulang Saringan</button>`);
 return;
 }
-const bulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-const nada = { Nasional: 'danger', Sekolah: 'warn', Instansi: 'ok' };
-box.innerHTML = `<div class="rw-jejak">${items.map(function (x, i) {
+const nada = { Nasional: 'error', Sekolah: 'warn', Instansi: 'ok' };
+const chipJenis = { Nasional: 'chip-error', Sekolah: 'chip-warning', Instansi: 'chip-success' };
+const chipWaktu = { 'Berlangsung': 'chip-success', 'Akan datang': 'chip-info', 'Sudah lewat': 'chip-neutral' };
+let bulanTerakhir = '';
+const potongan = [];
+items.forEach(function (x) {
 const d = new Date(x.tanggalMulai + 'T00:00:00');
-const berentang = x.tanggalSelesai && x.tanggalSelesai !== x.tanggalMulai;
-return `<section class="rw-hari nada-${nada[x.jenis] || 'ok'}">
-<header class="rw-hari-kepala">
-<div class="rw-hari-tgl">
-<span class="rw-hari-angka">${String(d.getDate()).padStart(2, '0')}</span>
-<span class="rw-hari-bulan">${bulan[d.getMonth()]}</span>
-</div>
-<div class="rw-hari-info">
-<div class="rw-hari-nama">${esc(x.keterangan)}</div>
-<div class="rw-hari-sub">${berentang
-  ? tglRingkas(x.tanggalMulai) + ' – ' + tglRingkas(x.tanggalSelesai)
-  : tglSingkat(x.tanggalMulai)} &middot; ${esc(x.namaTempat)}</div>
-</div>
-<span class="chip chip-${x.jenis === 'Nasional' ? 'error' : x.jenis === 'Sekolah' ? 'warning' : 'success'}">${esc(x.jenis)}</span>
-</header>
-${x.bisaUbah ? `<div class="rw-hari-isi"><div class="jr-aksi">
-<button class="btn btn-outline btn-xs" onclick="bukaFormLibur(${i})">
-<span class="mi">edit</span> Ubah</button>
-<button class="btn btn-danger btn-xs" onclick="konfirmasiHapusLibur(${i})">
-<span class="mi">delete</span> Hapus</button>
-</div></div>` : ''}
-</section>`;
-}).join('')}</div>`;
+const kunciBulan = x.tanggalMulai.slice(0, 7);
+if (kunciBulan !== bulanTerakhir) {
+bulanTerakhir = kunciBulan;
+potongan.push(`<div class="hl-bulan"><span>${HL_BULAN_PANJANG[d.getMonth()]} ${d.getFullYear()}</span></div>`);
 }
-function bukaFormLibur(indeks) {
-// Indeksnya menunjuk daftar HASIL SARINGAN, jadi barisnya dicari ulang dari
-// daftar yang sama supaya tombol Ubah tidak membuka baris yang salah begitu
-// ada saringan jenis yang aktif.
-const semua = AppState.dataLibur || [];
-const jenisAktif = nilaiSaring('hl', 'jenis');
-const tampak = jenisAktif ? semua.filter(x => x.jenis === jenisAktif) : semua;
-const d = (indeks === undefined) ? {} : (tampak[indeks] || {});
-const hariIni = new Date().toISOString().slice(0, 10);
+const akhir = x.tanggalSelesai || x.tanggalMulai;
+const berentang = akhir !== x.tanggalMulai;
+const dAkhir = new Date(akhir + 'T00:00:00');
+const jmlHari = berentang
+? Math.round((dAkhir - d) / 86400000) + 1 : 1;
+const st = statusLibur(x);
+const kelas = x.kelas || [];
+potongan.push(`<article class="hl-kartu nada-${nada[x.jenis] || 'ok'}${st === 'Sudah lewat' ? ' hl-lewat' : ''}">
+<div class="hl-tgl">
+<span class="hl-tgl-angka">${String(d.getDate()).padStart(2, '0')}</span>
+<span class="hl-tgl-bulan">${HL_BULAN[d.getMonth()]}</span>
+${berentang ? `<span class="hl-tgl-rentang">${jmlHari} hari</span>` : ''}
+</div>
+<div class="hl-isi">
+<div class="hl-kepala">
+<h3 class="hl-judul">${esc(x.keterangan)}</h3>
+<span class="chip ${chipJenis[x.jenis] || 'chip-neutral'}">${esc(x.jenis)}</span>
+</div>
+<div class="hl-sub"><span class="mi">calendar_month</span> ${berentang
+  ? esc(tglRingkas(x.tanggalMulai)) + ' – ' + esc(tglRingkas(akhir))
+  : esc(tglSingkat(x.tanggalMulai))}</div>
+<div class="hl-meta">
+${st ? `<span class="chip ${chipWaktu[st] || 'chip-neutral'}">${st}</span>` : ''}
+<span class="hl-tag"><span class="mi">${x.tempatId ? 'domain' : 'public'}</span>${esc(x.namaTempat)}</span>
+<span class="hl-tag"><span class="mi">group</span>${x.jumlahSiswa || 0} siswa</span>
+${kelas.slice(0, 3).map(function (k) {
+return `<span class="hl-tag"><span class="mi">school</span>${esc(k)}</span>`;
+}).join('')}
+${kelas.length > 3 ? `<span class="hl-tag hl-tag-sisa" title="${esc(kelas.join(', '))}">+${kelas.length - 3} kelas</span>` : ''}
+</div>
+${x.bisaUbah ? `<div class="hl-aksi">
+<button class="btn btn-outline btn-xs" onclick="bukaFormLibur('${esc(x.id)}')">
+<span class="mi">edit</span> Ubah</button>
+<button class="btn btn-danger btn-xs" onclick="konfirmasiHapusLibur('${esc(x.id)}')">
+<span class="mi">delete</span> Hapus</button>
+</div>` : ''}
+</div>
+</article>`);
+});
+box.innerHTML = `<div class="hl-daftar">${potongan.join('')}</div>`;
+}
+function cariLibur(id) {
+return (AppState.dataLibur || []).filter(function (x) { return x.id === id; })[0] || null;
+}
+function bukaFormLibur(id) {
+// Barisnya dicari lewat id, bukan posisi pada daftar: dengan empat parameter
+// saringan, posisi baris berubah-ubah dan tombol Ubah yang menunjuk posisi
+// cepat atau lambat akan membuka baris yang salah.
+const d = id ? (cariLibur(id) || {}) : {};
+if (id && !d.id) { toast('Data tidak ditemukan. Muat ulang halaman.', 'warning'); return; }
+const hariIni = AppState.hariIniLibur || new Date().toISOString().slice(0, 10);
 const tempat = AppState.tempatLibur || [];
 const bolehSemua = AppState.bolehSemuaTempat;
 bukaModal(d.id ? 'Ubah Hari Libur' : 'Tambah Hari Libur', `
@@ -1892,11 +2007,8 @@ toast(res.message, 'success', 6000);
 muatHariLibur();
 } catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
 }
-function konfirmasiHapusLibur(indeks) {
-const semua = AppState.dataLibur || [];
-const jenisAktif = nilaiSaring('hl', 'jenis');
-const tampak = jenisAktif ? semua.filter(x => x.jenis === jenisAktif) : semua;
-const d = tampak[indeks];
+function konfirmasiHapusLibur(id) {
+const d = cariLibur(id);
 if (!d) { toast('Data tidak ditemukan. Muat ulang halaman.', 'warning'); return; }
 bukaModal('Hapus Hari Libur', `
 <div class="alert alert-error"><span class="mi">warning</span>
@@ -1923,4 +2035,4 @@ if (res.success) { batalkanPaketData(); muatHariLibur(); }
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '7.3';
+window.__SIMPKL_EOF = '7.4';

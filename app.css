@@ -1046,4 +1046,91 @@
   box-shadow:0 0 0 2px var(--primary-soft)}
 
 
-:root{--versi-aset:"7.3"}
+/* ── Hari Libur (v7.4) ───────────────────────────────────────────────
+   Semua kelasnya berawalan .hl- dan hanya dipakai halaman Hari Libur,
+   jadi penyetelan di sini tidak bisa merembet ke halaman lain.        */
+
+/* minmax(150px,1fr) — bukan 1fr telanjang. Item grid punya min-width:auto,
+   dan angka besar di dalamnya akan menolak menyusut di bawah lebar min-content
+   sehingga barisnya menjorok keluar layar pada ponsel sempit. */
+.hl-ringkas{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:12px;margin-bottom:16px}
+.hl-tile{position:relative;overflow:hidden;display:flex;align-items:center;gap:12px;
+  min-width:0;padding:13px 15px;border:1px solid var(--outline-variant);
+  border-radius:var(--r-xl);background:var(--surface-card);box-shadow:var(--elev-1)}
+.hl-tile::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--outline)}
+.hl-tile.nada-ok::before{background:var(--success)}
+.hl-tile.nada-warn::before{background:var(--warning)}
+.hl-tile.nada-info::before{background:var(--info)}
+.hl-tile-ikon{width:38px;height:38px;flex:none;display:grid;place-items:center;
+  border-radius:11px;background:var(--primary-soft);color:var(--primary)}
+.hl-tile-ikon .mi{font-size:20px}
+.hl-tile.nada-ok .hl-tile-ikon{background:var(--success-bg);color:var(--success)}
+.hl-tile.nada-warn .hl-tile-ikon{background:var(--warning-bg);color:var(--warning)}
+.hl-tile.nada-info .hl-tile-ikon{background:var(--info-bg);color:var(--info)}
+.hl-tile-teks{min-width:0}
+.hl-tile-nilai{font-size:22px;font-weight:750;line-height:1.05;letter-spacing:-.015em;
+  color:var(--on-surface);font-variant-numeric:tabular-nums}
+.hl-tile-label{margin-top:3px;font-size:11px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.05em;color:var(--on-surface-muted)}
+
+.hl-daftar{display:grid;gap:10px}
+.hl-bulan{display:flex;align-items:center;gap:12px;margin:18px 0 2px;
+  font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--on-surface-muted)}
+.hl-bulan:first-child{margin-top:0}
+.hl-bulan::after{content:"";flex:1;height:1px;background:var(--outline-variant)}
+
+.hl-kartu{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr);
+  gap:14px;padding:14px 16px 14px 19px;border:1px solid var(--outline-variant);
+  border-radius:var(--r-xl);background:var(--surface-card);
+  transition:border-color .16s ease,box-shadow .16s ease}
+.hl-kartu::before{content:"";position:absolute;inset:0 auto 0 0;width:4px;
+  border-radius:var(--r-xl) 0 0 var(--r-xl);background:var(--outline)}
+.hl-kartu.nada-error::before{background:var(--error)}
+.hl-kartu.nada-warn::before{background:var(--warning)}
+.hl-kartu.nada-ok::before{background:var(--success)}
+.hl-kartu:hover{border-color:var(--outline);box-shadow:var(--elev-2)}
+/* Yang sudah lewat tetap terbaca — diredupkan, bukan disamarkan. */
+.hl-lewat{background:var(--surface-container-low)}
+.hl-lewat .hl-tgl-angka,.hl-lewat .hl-judul{color:var(--on-surface-variant)}
+
+.hl-tgl{width:58px;flex:none;align-self:start;text-align:center;padding:8px 4px;
+  border-radius:var(--r-lg);background:var(--surface-container-low);
+  border:1px solid var(--outline-variant)}
+.hl-tgl-angka{display:block;font-size:20px;font-weight:750;line-height:1;
+  color:var(--on-surface);font-variant-numeric:tabular-nums}
+.hl-tgl-bulan{display:block;margin-top:3px;font-size:10px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.06em;color:var(--on-surface-muted)}
+.hl-tgl-rentang{display:block;margin-top:5px;padding-top:4px;font-size:9.5px;
+  font-weight:700;letter-spacing:.02em;color:var(--primary);
+  border-top:1px dashed var(--outline-variant)}
+
+.hl-isi{min-width:0}
+.hl-kepala{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.hl-judul{margin:0;font-size:15px;font-weight:650;line-height:1.35;color:var(--on-surface);
+  overflow-wrap:anywhere}
+.hl-kepala .chip{flex:none}
+.hl-sub{display:flex;align-items:center;gap:5px;margin-top:4px;font-size:12.5px;
+  color:var(--on-surface-muted)}
+.hl-sub .mi{font-size:15px}
+.hl-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px}
+.hl-tag{display:inline-flex;align-items:center;gap:4px;max-width:100%;padding:3px 9px;
+  border-radius:var(--r-full);font-size:11.5px;font-weight:600;line-height:1.5;
+  color:var(--on-surface-variant);background:var(--surface-container-low);
+  border:1px solid var(--outline-variant);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.hl-tag .mi{font-size:14px;flex:none;color:var(--on-surface-muted)}
+.hl-tag-sisa{cursor:help;border-style:dashed}
+.hl-aksi{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+
+@media (max-width:560px){
+  .hl-kartu{padding:12px 13px 12px 16px;gap:11px}
+  .hl-tgl{width:50px;padding:7px 3px}
+  .hl-tgl-angka{font-size:18px}
+  .hl-kepala{flex-direction:column;align-items:flex-start;gap:6px}
+  .hl-tile{padding:12px 13px}
+  .hl-tile-nilai{font-size:20px}
+}
+
+:root{--versi-aset:"7.4"}
