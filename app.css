@@ -1155,12 +1155,20 @@
    Yang digeser sidebar-nya (transform — murah, digerakkan compositor), dan
    yang berubah hanya margin kiri header dan isi halaman. Menganimasikan
    `width` sidebar akan memaksa perhitungan tata letak ulang pada setiap
-   bingkai, tepat saat tabel di sebelahnya juga sedang menata ulang dirinya. */
+   bingkai, tepat saat tabel di sebelahnya juga sedang menata ulang dirinya.
+
    Seluruhnya DIKURUNG di ≥900px, dan itu keharusan, bukan kerapian: di bawah
    900px sidebar berubah menjadi laci yang dibuka `.sidebar.laci-buka`, dan
    `body.sidebar-tutup .sidebar` lebih kuat kekhususannya daripada itu — kelas
    yang tertinggal dari layar lebar akan membuat laci di ponsel tidak pernah
    mau terbuka lagi. */
+/* Tombol menu berbentuk KOTAK bersudut bulat, bukan lingkaran (v7.9).
+   Bentuk global aplikasi ini persegi bersudut bulat — kartu, tombol, kolom
+   isian, panel — dan satu lingkaran di pojok kiri atas terbaca sebagai
+   sesuatu dari sistem yang berbeda. Hanya kedua tombol menu yang diubah;
+   lonceng dan tombol topbar lain memang bulat sejak awal. */
+#btnSidebar,#btnDrawer{flex:none;border-radius:var(--r-md);
+  border:1px solid var(--outline-variant)}
 #btnSidebar{flex:none}
 :root{--sidebar-rel:76px}
 
@@ -1173,16 +1181,60 @@
       warnanya transparan sampai disorot atau digulir. Menyembunyikannya
       sepenuhnya lalu memunculkannya saat disorot akan menggeser seluruh daftar
       menu beberapa piksel tepat ketika kursor sedang menuju sebuah butir. */
-.sidebar-nav{overflow-x:hidden;overscroll-behavior:contain;
+/* Berlaku untuk SELURUH wadah yang bisa digulir, bukan hanya sidebar (v7.9).
+   Bilah gulir yang selalu tampak di kaki tabel duduk tepat di bawah baris
+   terakhir dan terbaca seperti bagian dari datanya sendiri. */
+.gulir-halus,.sidebar-nav,.table-wrap,.js-gulir,.ds-riwayat,.rp-jejak,
+.modal-body,.filter-panel-isi,.pilih-box,.cmdk-results{
   scrollbar-width:thin;scrollbar-color:transparent transparent;
   transition:scrollbar-color .2s ease}
-.sidebar-nav:hover,.sidebar-nav.menggulir{scrollbar-color:var(--outline) transparent}
-.sidebar-nav::-webkit-scrollbar{width:6px;height:0}
-.sidebar-nav::-webkit-scrollbar-track{background:transparent}
-.sidebar-nav::-webkit-scrollbar-thumb{background:transparent;border-radius:var(--r-full);
+.gulir-halus:hover,.gulir-halus.menggulir,
+.sidebar-nav:hover,.sidebar-nav.menggulir,
+.table-wrap:hover,.table-wrap.menggulir,
+.js-gulir:hover,.js-gulir.menggulir,
+.ds-riwayat:hover,.ds-riwayat.menggulir,
+.rp-jejak:hover,.rp-jejak.menggulir,
+.modal-body:hover,.modal-body.menggulir,
+.filter-panel-isi:hover,.filter-panel-isi.menggulir,
+.pilih-box:hover,.pilih-box.menggulir,
+.cmdk-results:hover,.cmdk-results.menggulir{scrollbar-color:var(--outline) transparent}
+/* WebKit lama tidak mengenal scrollbar-width. Lebarnya DITETAPKAN dan tetap,
+   hanya ibu jarinya yang berubah warna — memunculkan bilah yang tadinya nol
+   akan menggeser isi tabel tepat saat kursor menyentuhnya. */
+.gulir-halus::-webkit-scrollbar,.sidebar-nav::-webkit-scrollbar,
+.table-wrap::-webkit-scrollbar,.js-gulir::-webkit-scrollbar,
+.ds-riwayat::-webkit-scrollbar,.rp-jejak::-webkit-scrollbar,
+.modal-body::-webkit-scrollbar,.filter-panel-isi::-webkit-scrollbar,
+.pilih-box::-webkit-scrollbar,.cmdk-results::-webkit-scrollbar{width:8px;height:8px}
+.gulir-halus::-webkit-scrollbar-track,.sidebar-nav::-webkit-scrollbar-track,
+.table-wrap::-webkit-scrollbar-track,.js-gulir::-webkit-scrollbar-track,
+.ds-riwayat::-webkit-scrollbar-track,.rp-jejak::-webkit-scrollbar-track,
+.modal-body::-webkit-scrollbar-track,.filter-panel-isi::-webkit-scrollbar-track,
+.pilih-box::-webkit-scrollbar-track,.cmdk-results::-webkit-scrollbar-track{background:transparent}
+.gulir-halus::-webkit-scrollbar-thumb,.sidebar-nav::-webkit-scrollbar-thumb,
+.table-wrap::-webkit-scrollbar-thumb,.js-gulir::-webkit-scrollbar-thumb,
+.ds-riwayat::-webkit-scrollbar-thumb,.rp-jejak::-webkit-scrollbar-thumb,
+.modal-body::-webkit-scrollbar-thumb,.filter-panel-isi::-webkit-scrollbar-thumb,
+.pilih-box::-webkit-scrollbar-thumb,.cmdk-results::-webkit-scrollbar-thumb{
+  background:transparent;border-radius:var(--r-full);
+  border:2px solid transparent;background-clip:content-box;
   transition:background-color .2s ease}
-.sidebar-nav:hover::-webkit-scrollbar-thumb,
-.sidebar-nav.menggulir::-webkit-scrollbar-thumb{background:var(--outline)}
+.gulir-halus:hover::-webkit-scrollbar-thumb,.gulir-halus.menggulir::-webkit-scrollbar-thumb,
+.sidebar-nav:hover::-webkit-scrollbar-thumb,.sidebar-nav.menggulir::-webkit-scrollbar-thumb,
+.table-wrap:hover::-webkit-scrollbar-thumb,.table-wrap.menggulir::-webkit-scrollbar-thumb,
+.js-gulir:hover::-webkit-scrollbar-thumb,.js-gulir.menggulir::-webkit-scrollbar-thumb,
+.ds-riwayat:hover::-webkit-scrollbar-thumb,.ds-riwayat.menggulir::-webkit-scrollbar-thumb,
+.rp-jejak:hover::-webkit-scrollbar-thumb,.rp-jejak.menggulir::-webkit-scrollbar-thumb,
+.modal-body:hover::-webkit-scrollbar-thumb,.modal-body.menggulir::-webkit-scrollbar-thumb,
+.filter-panel-isi:hover::-webkit-scrollbar-thumb,.filter-panel-isi.menggulir::-webkit-scrollbar-thumb,
+.pilih-box:hover::-webkit-scrollbar-thumb,.pilih-box.menggulir::-webkit-scrollbar-thumb,
+.cmdk-results:hover::-webkit-scrollbar-thumb,.cmdk-results.menggulir::-webkit-scrollbar-thumb{
+  background-color:var(--outline)}
+.sidebar-nav{overflow-x:hidden;overscroll-behavior:contain}
+
+/* Wadah gulir tabel diberi ruang sedikit di bawahnya supaya ibu jari bilah
+   gulir tidak menempel pada baris terakhir saat ia muncul. */
+.table-wrap{padding-bottom:2px}
 
 @media (min-width:900px){
   /* Transisinya menempel pada .sidebar-animasi, dan kelas itu baru dipasang
@@ -1395,4 +1447,4 @@
   .ds-riwayat{max-height:none}
 }
 
-:root{--versi-aset:"7.8"}
+:root{--versi-aset:"7.9"}

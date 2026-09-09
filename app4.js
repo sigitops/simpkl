@@ -577,12 +577,23 @@ items.forEach(function (x) {
 if (!perHari[x.tanggal]) { perHari[x.tanggal] = []; urutHari.push(x.tanggal); }
 perHari[x.tanggal].push(x);
 });
-// Hari-harinya tetap terbaru di atas, tetapi ISI satu hari dibalik menjadi
-// menaik: satu hari dibaca sebagai satu cerita — datang lalu pulang. Urutan
-// menurun di dalam hari menampilkan "Presensi Pulang" di atas "Presensi
-// Masuk", dan itu memaksa pembacanya membalik sendiri urutannya di kepala.
+// Hari-harinya tetap terbaru di atas, tetapi ISI satu hari selalu dibaca
+// sebagai satu cerita: datang lalu pulang.
+//
+// Urutannya ditentukan JENISNYA, bukan jamnya. Mengurutkan menurut jam
+// memang benar pada hari yang normal, tetapi diam-diam salah begitu datanya
+// tidak normal — shift malam yang melewati tengah malam, atau rekaman pulang
+// yang jamnya kosong akan melompat ke atas. Yang diminta adalah "masuk dulu,
+// baru pulang", dan itulah yang dikodekan di sini secara harfiah.
+const urutJenis = function (x) {
+return x.jenis === 'Masuk' ? 0 : x.jenis === 'Pulang' ? 2 : 1;
+};
 urutHari.forEach(function (tgl) {
-perHari[tgl].sort(function (a, b) { return String(a.waktu || '').localeCompare(String(b.waktu || '')); });
+perHari[tgl].sort(function (a, b) {
+const d = urutJenis(a) - urutJenis(b);
+if (d) return d;
+return String(a.waktu || '').localeCompare(String(b.waktu || ''));
+});
 });
 const nada = { Hadir: 'ok', Telat: 'warn', Alpha: 'danger', Libur: 'netral',
                Izin: 'info', Sakit: 'info', 'Di Luar Radius': 'danger' };

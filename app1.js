@@ -2391,7 +2391,7 @@ function pulihkanSidebar() {
 let tutup = false;
 try { tutup = Simpanan.ambil(KUNCI_SIDEBAR) === '1'; } catch (e) {}
 pasangSidebar(tutup, false);
-pasangGulirSidebar();
+pasangGulirHalus();
 }
 /**
  * Menampilkan bilah gulir sidebar hanya SELAMA digulir.
@@ -2400,16 +2400,28 @@ pasangGulirSidebar();
  * dipasang lalu dilepas sesudah sesaat diam. Tempatnya sudah dipesan permanen
  * oleh scrollbar-width:thin, jadi memunculkannya tidak menggeser apa pun.
  */
-let PEWAKTU_GULIR = null;
-function pasangGulirSidebar() {
-const nav = $('sidebarNav');
-if (!nav || nav.dataset.gulirTerpasang) return;
-nav.dataset.gulirTerpasang = '1';
-nav.addEventListener('scroll', function () {
-nav.classList.add('menggulir');
-clearTimeout(PEWAKTU_GULIR);
-PEWAKTU_GULIR = setTimeout(function () { nav.classList.remove('menggulir'); }, 900);
-}, { passive: true });
+const GULIR_PEMILIH = '.gulir-halus,.sidebar-nav,.table-wrap,.js-gulir,.ds-riwayat,' +
+'.rp-jejak,.modal-body,.filter-panel-isi,.pilih-box,.cmdk-results';
+const GULIR_PEWAKTU = new WeakMap();
+/**
+ * Satu pendengar untuk SELURUH wadah gulir, dipasang sekali di dokumen.
+ *
+ * Peristiwa scroll tidak menggelembung, jadi ia ditangkap pada fase CAPTURE —
+ * hanya di sanalah dokumen bisa melihat gulungan yang terjadi di dalam sebuah
+ * anaknya. Cara ini juga melayani tabel yang baru digambar belakangan tanpa
+ * perlu memasang pendengar baru setiap kali daftar dimuat ulang.
+ */
+function pasangGulirHalus() {
+if (document.body.dataset.gulirTerpasang) return;
+document.body.dataset.gulirTerpasang = '1';
+document.addEventListener('scroll', function (e) {
+const el = e.target;
+if (!el || !el.classList || typeof el.matches !== 'function') return;
+if (!el.matches(GULIR_PEMILIH)) return;
+el.classList.add('menggulir');
+clearTimeout(GULIR_PEWAKTU.get(el));
+GULIR_PEWAKTU.set(el, setTimeout(function () { el.classList.remove('menggulir'); }, 900));
+}, { capture: true, passive: true });
 }
 function tutupDrawer() {
 const sb = $('sidebar'), scrim = $('drawerScrim'), btn = $('btnDrawer');
@@ -3068,6 +3080,9 @@ $('app-container').classList.toggle('plain', !masuk);
 // dilepas saat keluar — kalau tidak, kelasnya tertinggal di <body> dan
 // mengubah tata letak halaman yang tidak ada sangkut pautnya.
 if (masuk) pulihkanSidebar(); else pasangSidebar(false, false);
+// Dipasang di kedua jalur: modal dan panel di halaman login pun punya
+// wadah yang bisa digulir.
+pasangGulirHalus();
 terapkanTema(Simpanan.ambil('tema') || 'light');
 }
 async function handleLogout() {
