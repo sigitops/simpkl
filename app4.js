@@ -99,26 +99,53 @@ grafikTidakTersedia(c1); grafikTidakTersedia(c2awal); return;
 }
 const w = warnaGrafik();
 if (c1) {
+// Tren kehadiran digambar sebagai GARIS sejak v7.8, bukan batang bertumpuk.
+// Batang bertumpuk pandai menjawab "hari ini komposisinya apa"; yang
+// sebenarnya dicari dari grafik tren adalah "arahnya ke mana" — dan arah
+// hanya terbaca dari garis. Setiap status kini punya garisnya sendiri yang
+// bertolak dari nol yang sama, jadi keenamnya bisa dibandingkan langsung.
+const garis = function (label, data, warna) {
+return {
+label: label, data: data || [],
+borderColor: warna, backgroundColor: warna,
+borderWidth: 2,
+// 'monotone', BUKAN tension biasa. Kurva bezier bawaan Chart.js melampaui
+// nilai simpulnya sendiri: dua hari yang sama-sama 10 Alpha akan digambar
+// menggembung sampai 10,7 di antaranya — angka yang tidak pernah terjadi.
+// Pada data cacah siswa, garis yang menunjukkan nilai yang tidak ada bukan
+// sekadar kurang rapi, ia salah. Mode monoton melengkung tanpa pernah
+// melewati nilai yang benar-benar diukur.
+cubicInterpolationMode: 'monotone', tension: .35,
+// Titik kecil yang membesar saat disorot: dot pada setiap simpul membuat
+// hari yang datanya memang ada bisa dibedakan dari garis yang sekadar
+// melintas — tanpa itu, hari kosong dan hari bernilai nol terlihat sama.
+pointRadius: 3, pointHoverRadius: 6, pointBorderWidth: 0,
+pointBackgroundColor: warna, pointHitRadius: 12
+};
+};
 AppState.grafik.trenMon = new Chart(c1, {
-type: 'bar',
+type: 'line',
 data: { labels: d.tren.label, datasets: [
-{ label: 'Hadir', data: d.tren.hadir, backgroundColor: w.sukses, borderRadius: 5 },
-{ label: 'Telat', data: d.tren.telat, backgroundColor: w.warning, borderRadius: 5 },
-{ label: 'Izin', data: d.tren.izin || [], backgroundColor: w.primary, borderRadius: 5 },
-{ label: 'Sakit', data: d.tren.sakit || [], backgroundColor: w.ungu, borderRadius: 5 },
-{ label: 'Alpha', data: d.tren.alpha || [], backgroundColor: w.error, borderRadius: 5 },
-// Libur diletakkan PALING ATAS pada tumpukan, bukan di dasarnya. Yang ingin
-// dibaca dari batang ini adalah kehadiran, dan kehadiran lebih mudah
-// dibandingkan antarhari bila semuanya bertolak dari garis nol yang sama.
-// Libur di puncak juga membuat tinggi total tiap batang menjadi jumlah siswa
-// yang sebenarnya — akhir pekan tidak lagi tampak seperti hari kosong.
-{ label: 'Libur', data: d.tren.libur || [], backgroundColor: w.libur, borderRadius: 5 }] },
+garis('Hadir', d.tren.hadir, w.sukses),
+garis('Telat', d.tren.telat, w.warning),
+garis('Izin', d.tren.izin, w.primary),
+garis('Sakit', d.tren.sakit, w.ungu),
+garis('Alpha', d.tren.alpha, w.error),
+garis('Libur', d.tren.libur, w.libur)] },
 options: {
 responsive: true, maintainAspectRatio: false,
+interaction: { mode: 'index', intersect: false },
 plugins: { legend: { position: 'bottom', labels: { color: w.teks, usePointStyle: true, padding: 14 } } },
 scales: {
-x: { stacked: true, ticks: { color: w.teks }, grid: { display: false } },
-y: { stacked: true, beginAtZero: true, ticks: { color: w.teks, precision: 0 }, grid: { color: w.grid } }
+// Kedua sumbu bergaris putus-putus. Garis kisi yang utuh bersaing dengan
+// garis datanya sendiri — pada grafik garis, kisi yang tegas justru
+// membuat mata sulit memisahkan mana bacaan dan mana penggarisnya.
+x: { ticks: { color: w.teks },
+     border: { display: true, dash: [4, 4], color: w.grid },
+     grid: { color: w.grid, borderDash: [4, 4], drawTicks: false } },
+y: { beginAtZero: true, ticks: { color: w.teks, precision: 0 },
+     border: { display: true, dash: [4, 4], color: w.grid },
+     grid: { color: w.grid, borderDash: [4, 4], drawTicks: false } }
 }
 }
 });
@@ -264,6 +291,18 @@ render: r => r.waktuPresensi
 { k: 'menitTelat', label: 'Terlambat', sortable: true,
 render: r => (r.menitTelat > 0)
   ? `<span class="tb-telat">+${r.menitTelat} mnt</span>`
+  : `<span class="tb-kosong">—</span>` },
+{ k: 'waktuPulang', label: 'Jam Pulang', sortable: true,
+render: r => r.waktuPulang
+  ? `<span class="tb-jam">${jamTampil(r.waktuPulang)}<small>WIB</small></span>`
+  : `<span class="tb-kosong">—</span>` },
+// Pulang cepat memakai tanda MINUS dan warna biru, bukan kuning seperti
+// terlambat: keduanya sama-sama menyimpang dari jadwal, tetapi ke arah yang
+// berlawanan — dan dua penyimpangan berbeda arah dengan tanda yang sama
+// hanya akan tertukar saat dibaca cepat.
+{ k: 'menitPulangCepat', label: 'Pulang Cepat', sortable: true,
+render: r => (r.menitPulangCepat > 0)
+  ? `<span class="tb-cepat">&minus;${r.menitPulangCepat} mnt</span>`
   : `<span class="tb-kosong">—</span>` }
 ],
 aksi: r => `<button class="btn-icon" aria-label="Lihat detail ${esc(r.nama)}"

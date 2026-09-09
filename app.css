@@ -260,8 +260,12 @@
   color:rgba(255,255,255,.82)}
 .splash-sub:empty{display:none}
 
+/* Blok kaki diangkat sedikit dari tepi bawah (v7.8). Jaraknya PROPORSIONAL —
+   clamp(24px, 7vh, 84px) — bukan angka tetap: pada layar pendek 84px akan
+   memakan hampir seperempat tingginya, dan pada layar tinggi 24px membuatnya
+   terlihat menempel di tepi seperti tidak disengaja. */
 .splash-kaki{display:flex;flex-direction:column;align-items:center;gap:7px;
-  width:100%;
+  width:100%;margin-bottom:clamp(24px,7vh,84px);
   animation:splashNaik .45s cubic-bezier(.22,.61,.36,1) .18s both}
 .splash-sekolah{font-size:12.5px;font-weight:600;color:rgba(255,255,255,.9)}
 .splash-sekolah:empty{display:none}
@@ -1315,6 +1319,9 @@
 .tb-telat{display:inline-block;padding:2px 9px;border-radius:var(--r-full);
   font-size:12.5px;font-weight:700;color:var(--warning);background:var(--warning-bg);
   font-variant-numeric:tabular-nums}
+.tb-cepat{display:inline-block;padding:2px 9px;border-radius:var(--r-full);
+  font-size:12.5px;font-weight:700;color:var(--info);background:var(--info-bg);
+  font-variant-numeric:tabular-nums}
 .tb-kosong{color:var(--on-surface-muted)}
 
 /* ── Riwayat presensi per hari (v7.7) ─────────────────────────────────────
@@ -1346,8 +1353,15 @@
    di sela antar baris dan justru terbaca sebagai dua kejadian terpisah. */
 .rp-isi{position:relative;padding:10px 12px 12px 15px}
 .rp-baris{position:relative;display:flex;align-items:flex-start;gap:11px;padding:7px 0}
-.rp-baris + .rp-baris::before{content:"";position:absolute;left:13px;top:-9px;height:16px;
-  width:2px;background:var(--outline-variant)}
+/* Garis penghubung ditarik dari BAWAH bulatan baris ini sampai ATAS bulatan
+   baris berikutnya, bukan diletakkan dengan tinggi tetap di celah antar baris.
+   Perhitungannya: bulatan mulai pada padding-atas 7px dan tingginya 28px, jadi
+   dasarnya di 35px; ujung bawahnya -7px melewati padding-bawah baris ini dan
+   berhenti tepat di padding-atas baris berikutnya — yaitu puncak bulatannya.
+   Versi lama memakai top:-9px dengan height:16px, dan tinggi tetap itu selalu
+   meleset begitu isi barisnya lebih tinggi atau lebih pendek dari dugaan. */
+.rp-baris:not(:last-child)::before{content:"";position:absolute;left:13px;
+  top:35px;bottom:-7px;width:2px;background:var(--outline-variant)}
 .rp-titik{width:28px;height:28px;flex:none;display:grid;place-items:center;border-radius:50%;
   background:var(--surface-container-low);color:var(--on-surface-muted);
   border:1px solid var(--outline-variant)}
@@ -1381,4 +1395,4 @@
   .ds-riwayat{max-height:none}
 }
 
-:root{--versi-aset:"7.7"}
+:root{--versi-aset:"7.8"}
