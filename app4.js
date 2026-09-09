@@ -230,7 +230,7 @@ AppState.dataTabel = res.data;
 gambarRingkasPresensi(res.data);
 buatTabel({
 id: 'monitoring', mount: 'tabelMonitoring', idPrefix: 'mon',
-judulEkspor: 'Monitoring Siswa PKL',
+judulEkspor: 'Presensi Siswa PKL',
 data: res.data, kunciPilih: 'siswaId', sortAwal: 'nama',
 cariField: ['nama', 'nis', 'kelas', 'tempat', 'guru'],
 kosong: { ikon: 'group_off', judul: 'Belum ada siswa PKL aktif',
@@ -244,16 +244,27 @@ cocok: (r, nilai) => String(r.statusPresensi || '').indexOf(nilai) === 0
 // Ubin ringkasan ikut menyala/padam mengikuti saringan, dari mana pun
 // saringannya diubah — termasuk lewat panel Filter, bukan hanya lewat ubin.
 saatFilter: () => { renderTabel('monitoring'); gambarRingkasPresensi(AppState.dataTabel || []); },
+// Sejak v7.7 menu ini bernama Presensi Siswa, dan kolomnya mengikuti nama
+// itu: status jurnal DIBUANG, digantikan jam masuk dan menit keterlambatan.
+// Rekap jurnal punya menunya sendiri; menaruhnya di sini membuat pembaca
+// harus memilah dua urusan berbeda di satu baris yang sama.
 kolom: [
 { k: 'nama', label: 'Nama Siswa', sortable: true,
 render: r => `<div class="td-strong">${esc(r.nama)}</div><div class="td-sub">${esc(r.nis)}</div>` },
 { k: 'kelas', label: 'Kelas', sortable: true },
 { k: 'tempat', label: 'Tempat PKL', sortable: true,
 render: r => `<div>${esc(r.tempat)}</div><div class="td-sub">${esc(r.guru)}</div>` },
-{ k: 'statusPresensi', label: 'Presensi', sortable: true,
+{ k: 'statusPresensi', label: 'Status Hari Ini', sortable: true,
 render: r => chipStatus(r.statusPresensi) +
-(r.waktuPresensi ? `<div class="td-sub">${jamTampil(r.waktuPresensi)} WIB</div>` : '') },
-{ k: 'statusJurnal', label: 'Jurnal', sortable: true, render: r => chipStatus(r.statusJurnal) }
+(r.shift ? `<div class="td-sub">${esc(r.shift)}</div>` : '') },
+{ k: 'waktuPresensi', label: 'Jam Masuk', sortable: true,
+render: r => r.waktuPresensi
+  ? `<span class="tb-jam">${jamTampil(r.waktuPresensi)}<small>WIB</small></span>`
+  : `<span class="tb-kosong">—</span>` },
+{ k: 'menitTelat', label: 'Terlambat', sortable: true,
+render: r => (r.menitTelat > 0)
+  ? `<span class="tb-telat">+${r.menitTelat} mnt</span>`
+  : `<span class="tb-kosong">—</span>` }
 ],
 aksi: r => `<button class="btn-icon" aria-label="Lihat detail ${esc(r.nama)}"
 onclick="bukaHalamanSiswa('${esc(r.siswaId)}')"><span class="mi">visibility</span></button>
@@ -506,26 +517,105 @@ box.innerHTML = emptyState('history', 'Belum ada rekaman presensi',
 'Tidak ada data pada rentang ' + String(res.data.rentang.label).toLowerCase() + '.');
 return;
 }
-const nada = { Hadir: 'ok', Telat: 'warn', Alpha: 'danger', Libur: 'netral' };
-box.innerHTML = `<div class="list ds-riwayat">${items.map(function (x) {
-const ikon = x.jenis === 'Alpha' ? 'person_off' : x.jenis === 'Libur' ? 'weekend'
-  : x.jenis === 'Izin' ? 'event_busy' : x.jenis === 'Sakit' ? 'sick'
-  : x.jenis === 'Masuk' ? 'login' : 'logout';
-const rinci = [];
-if (x.waktu) rinci.push(jamTampil(x.waktu) + ' WIB');
-if (x.jarak !== '' && x.jarak != null) rinci.push(x.jarak + ' m');
-if (x.catatan) rinci.push(x.catatan);
-return `<div class="list-item">
-<div class="list-lead ${nada[x.status] || 'info'}"><span class="mi">${ikon}</span></div>
-<div class="list-main">
-<div class="list-title">${esc(tglSingkat(x.tanggal))}</div>
-${rinci.length ? `<div class="list-sub">${esc(rinci.join(' · '))}</div>` : ''}</div>
-<div class="list-tail">${chipStatus(x.status)}
-${x.foto ? `<button class="btn-icon" aria-label="Foto presensi ${esc(tglSingkat(x.tanggal))}"
+box.innerHTML = gambarJejakRiwayat(items);
+}
+/**
+ * Riwayat presensi dikelompokkan PER HARI (v7.7).
+ *
+ * Daftar rata yang lama menampilkan setiap rekaman sebagai baris sejajar, dan
+ * tanggalnya diulang pada setiap baris. Akibatnya dua rekaman satu hari —
+ * masuk dan pulang — terbaca seperti dua hari berbeda, dan mata harus
+ * membandingkan tanggal huruf demi huruf untuk tahu mana yang sepasang.
+ *
+ * Sekarang satu kartu = satu hari: kepalanya membawa tanggal dan status hari
+ * itu, isinya jejak masuk → pulang beserta jam, jarak, dan lama di lokasi.
+ */
+function gambarJejakRiwayat(items) {
+// Server sudah mengurutkan menurun; pengelompokan menjaga urutan itu.
+const urutHari = [];
+const perHari = {};
+items.forEach(function (x) {
+if (!perHari[x.tanggal]) { perHari[x.tanggal] = []; urutHari.push(x.tanggal); }
+perHari[x.tanggal].push(x);
+});
+// Hari-harinya tetap terbaru di atas, tetapi ISI satu hari dibalik menjadi
+// menaik: satu hari dibaca sebagai satu cerita — datang lalu pulang. Urutan
+// menurun di dalam hari menampilkan "Presensi Pulang" di atas "Presensi
+// Masuk", dan itu memaksa pembacanya membalik sendiri urutannya di kepala.
+urutHari.forEach(function (tgl) {
+perHari[tgl].sort(function (a, b) { return String(a.waktu || '').localeCompare(String(b.waktu || '')); });
+});
+const nada = { Hadir: 'ok', Telat: 'warn', Alpha: 'danger', Libur: 'netral',
+               Izin: 'info', Sakit: 'info', 'Di Luar Radius': 'danger' };
+const bulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+const hari = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+return '<div class="rp-jejak ds-riwayat">' + urutHari.map(function (tgl) {
+const baris = perHari[tgl];
+const d = new Date(tgl + 'T00:00:00');
+// Status hari itu diambil dari rekaman MASUK bila ada; kalau tidak, dari
+// rekaman pertamanya. Status "Pulang" bukan penilaian atas harinya.
+const utama = baris.filter(function (x) { return x.jenis !== 'Pulang'; })[0] || baris[0];
+const masuk = baris.filter(function (x) { return x.jenis === 'Masuk'; })[0];
+const pulang = baris.filter(function (x) { return x.jenis === 'Pulang'; })[0];
+const lama = (masuk && pulang) ? selisihJam(masuk.waktu, pulang.waktu) : '';
+return `<section class="rp-hari nada-${nada[utama.status] || 'info'}">
+<header class="rp-kepala">
+<div class="rp-tgl">
+<span class="rp-tgl-angka">${String(d.getDate()).padStart(2, '0')}</span>
+<span class="rp-tgl-bulan">${bulan[d.getMonth()]}</span>
+</div>
+<div class="rp-kepala-teks">
+<div class="rp-hari-nama">${hari[d.getDay()]}</div>
+<div class="rp-hari-sub">${d.getFullYear()}${lama ? ' &middot; ' + lama + ' di lokasi' : ''}</div>
+</div>
+${chipStatus(utama.status)}
+</header>
+<div class="rp-isi">${baris.map(function (x) { return barisRiwayat(x, tgl); }).join('')}</div>
+</section>`;
+}).join('') + '</div>';
+}
+/** Selisih dua jam "HH:mm" sebagai "7j 42m". Kosong bila tidak masuk akal. */
+function selisihJam(a, b) {
+const ke = function (j) {
+const p = String(j || '').split(':');
+if (p.length < 2) return NaN;
+return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0);
+};
+const m = ke(b) - ke(a);
+if (!(m > 0)) return '';
+const j = Math.floor(m / 60), sisa = m % 60;
+return (j ? j + 'j ' : '') + sisa + 'm';
+}
+function barisRiwayat(x, tgl) {
+const masuk = x.jenis === 'Masuk';
+const pulang = x.jenis === 'Pulang';
+const ikon = masuk ? 'login' : pulang ? 'logout'
+  : x.jenis === 'Alpha' ? 'person_off' : x.jenis === 'Libur' ? 'weekend'
+  : x.jenis === 'Izin' ? 'event_busy' : x.jenis === 'Sakit' ? 'sick' : 'info';
+const judul = masuk ? 'Presensi Masuk' : pulang ? 'Presensi Pulang'
+  : x.jenis === 'Alpha' ? 'Tidak hadir tanpa keterangan'
+  : x.jenis === 'Libur' ? 'Hari libur' : x.jenis;
+// Jam dan jarak sengaja dipisah menjadi dua bidang bernama, bukan satu baris
+// "07:42 WIB · 18 m". Keduanya menjawab pertanyaan yang berbeda — kapan, dan
+// dari seberapa dekat — dan menggabungkannya membuat keduanya terbaca sekilas
+// sebagai satu keterangan waktu.
+const bidang = [];
+if (x.waktu) bidang.push(['schedule', 'Jam', jamTampil(x.waktu) + ' WIB']);
+if (x.jarak !== '' && x.jarak != null && x.jarak !== 0) bidang.push(['near_me', 'Jarak', x.jarak + ' m']);
+return `<div class="rp-baris${masuk ? ' rp-masuk' : pulang ? ' rp-pulang' : ''}">
+<span class="rp-titik"><span class="mi">${ikon}</span></span>
+<div class="rp-baris-isi">
+<div class="rp-judul">${esc(judul)}</div>
+${bidang.length ? `<div class="rp-bidang">${bidang.map(function (f) {
+return `<span class="rp-bidang-satu"><span class="mi">${f[0]}</span>
+<span class="rp-bidang-label">${f[1]}</span><b>${esc(f[2])}</b></span>`;
+}).join('')}</div>` : ''}
+${x.catatan ? `<div class="rp-catatan">${esc(x.catatan)}</div>` : ''}
+</div>
+${x.foto ? `<button class="btn-icon" aria-label="Foto ${esc(judul.toLowerCase())} ${esc(tglSingkat(tgl))}"
 onclick="bukaPratinjau('Foto Presensi','${esc(x.foto)}','','gambar')">
-<span class="mi">image</span></button>` : ''}</div>
+<span class="mi">image</span></button>` : ''}
 </div>`;
-}).join('')}</div>`;
 }
 function initRekapJurnal() {
 muatRekapJurnal();

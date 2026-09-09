@@ -1158,23 +1158,61 @@
    yang tertinggal dari layar lebar akan membuat laci di ponsel tidak pernah
    mau terbuka lagi. */
 #btnSidebar{flex:none}
+:root{--sidebar-rel:76px}
+
+/* Gulungan sidebar (v7.7).
+   Dua hal yang diperbaiki sekaligus:
+   1. Bilah gulir MENDATAR dihapus dengan overflow-x:hidden. Ia muncul karena
+      bilah tegaknya memakan lebar, lalu butir menu yang tidak boleh menyusut
+      mendorong isinya melewati tepi — bilah gulir yang lahir dari bilah gulir.
+   2. Bilah tegaknya tetap MEMESAN tempat (scrollbar-width:thin), tetapi
+      warnanya transparan sampai disorot atau digulir. Menyembunyikannya
+      sepenuhnya lalu memunculkannya saat disorot akan menggeser seluruh daftar
+      menu beberapa piksel tepat ketika kursor sedang menuju sebuah butir. */
+.sidebar-nav{overflow-x:hidden;overscroll-behavior:contain;
+  scrollbar-width:thin;scrollbar-color:transparent transparent;
+  transition:scrollbar-color .2s ease}
+.sidebar-nav:hover,.sidebar-nav.menggulir{scrollbar-color:var(--outline) transparent}
+.sidebar-nav::-webkit-scrollbar{width:6px;height:0}
+.sidebar-nav::-webkit-scrollbar-track{background:transparent}
+.sidebar-nav::-webkit-scrollbar-thumb{background:transparent;border-radius:var(--r-full);
+  transition:background-color .2s ease}
+.sidebar-nav:hover::-webkit-scrollbar-thumb,
+.sidebar-nav.menggulir::-webkit-scrollbar-thumb{background:var(--outline)}
+
 @media (min-width:900px){
   /* Transisinya menempel pada .sidebar-animasi, dan kelas itu baru dipasang
      saat tombolnya BENAR-BENAR ditekan. Kalau transisinya melekat permanen,
      setiap kali kerangka aplikasi ditampilkan — yaitu setiap kali masuk —
      isi halaman ikut meluncur dari tepi kiri ke posisinya, gerakan yang tidak
      pernah diminta siapa pun dan hanya menunda gambaran pertama. */
-  body.sidebar-animasi .sidebar{transition:transform .24s cubic-bezier(.32,.72,0,1)}
+  body.sidebar-animasi .sidebar{transition:width .24s cubic-bezier(.32,.72,0,1)}
   body.sidebar-animasi .app-header,
   body.sidebar-animasi .main-content.with-sidebar{transition:margin-left .24s cubic-bezier(.32,.72,0,1)}
-  body.sidebar-tutup .sidebar{transform:translateX(-100%)}
-  body.sidebar-tutup .app-header{margin-left:0}
-  body.sidebar-tutup .main-content.with-sidebar{margin-left:0}
+
+  /* Mode REL (v7.7): sidebar menyempit, bukan hilang.
+     Menyembunyikannya sepenuhnya memang melapangkan layar, tetapi menukar
+     satu klik untuk melipat dengan dua klik untuk setiap perpindahan menu
+     sesudahnya. Rel ikon menyimpan navigasinya dan tetap memberi 204 piksel. */
+  body.sidebar-tutup .sidebar{width:var(--sidebar-rel);
+    padding-left:10px;padding-right:10px;overflow:hidden}
+  body.sidebar-tutup .app-header{margin-left:var(--sidebar-rel)}
+  body.sidebar-tutup .main-content.with-sidebar{margin-left:var(--sidebar-rel)}
+  body.sidebar-tutup .sidebar-brand{justify-content:center;padding-left:0;padding-right:0}
+  body.sidebar-tutup .brand-text{display:none}
+  body.sidebar-tutup .nav-link{justify-content:center;padding-left:0;padding-right:0;gap:0}
+  body.sidebar-tutup .nav-label{display:none}
+  /* Lencana jumlah berubah menjadi titik di pojok ikon: angkanya tidak muat,
+     tetapi KEBERADAAN sesuatu yang perlu diurus tetap harus terbaca. */
+  body.sidebar-tutup .nav-link{position:relative}
+  body.sidebar-tutup .nav-count{position:absolute;top:6px;right:14px;
+    min-width:9px;width:9px;height:9px;padding:0;font-size:0;border-radius:50%}
 }
 @media (prefers-reduced-motion:reduce){
   body.sidebar-animasi .sidebar,
   body.sidebar-animasi .app-header,
   body.sidebar-animasi .main-content.with-sidebar{transition:none}
+  .sidebar-nav{transition:none}
 }
 
 /* ── Presensi Siswa & Detail Siswa (v7.5) ────────────────────────────────
@@ -1238,14 +1276,19 @@
 .ds-chip{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .ds-aksi{display:flex;flex-wrap:wrap;gap:8px;flex:none}
 
-.ds-ringkas{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+/* Enam kartu, dan jumlah kolomnya SENGAJA ditetapkan per lebar layar alih-alih
+   diserahkan ke auto-fit. Enam habis dibagi 6, 3, dan 2 — jadi setiap baris
+   selalu penuh dan semua kartu sama lebar. auto-fit boleh saja menyisakan satu
+   kartu sendirian di baris terakhir dengan lebar yang berbeda, dan itulah yang
+   dulu membuat kartu "Tepat Waktu" terlihat lebih lebar dari yang lain. */
+.ds-ringkas{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
   gap:10px;margin-bottom:16px}
+@media (min-width:640px){ .ds-ringkas{grid-template-columns:repeat(3,minmax(0,1fr))} }
+@media (min-width:1400px){ .ds-ringkas{grid-template-columns:repeat(6,minmax(0,1fr))} }
 /* Ubin di halaman detail hanya menampilkan angka — tidak ada yang bisa diklik,
    jadi ia tidak boleh berlagak seperti tombol. */
 .ds-ubin{cursor:default;box-shadow:none}
 .ds-ubin:hover{border-color:var(--outline-variant);box-shadow:none}
-.ds-ubin-lebar{grid-column:span 2}
-.ds-ubin-lebar .ps-ubin-label{white-space:normal}
 
 .ds-info{display:grid;gap:2px}
 .ds-info-baris{display:flex;align-items:flex-start;gap:12px;padding:10px 2px;
@@ -1265,14 +1308,77 @@
    kiri dan kanan tidak saling menarik tingginya sampai berpuluh layar. */
 .ds-riwayat{max-height:520px;overflow-y:auto}
 
+/* ── Kolom presensi pada tabel Presensi Siswa (v7.7) ── */
+.tb-jam{display:inline-flex;align-items:baseline;gap:4px;font-size:14.5px;font-weight:650;
+  color:var(--on-surface);font-variant-numeric:tabular-nums}
+.tb-jam small{font-size:10.5px;font-weight:600;color:var(--on-surface-muted)}
+.tb-telat{display:inline-block;padding:2px 9px;border-radius:var(--r-full);
+  font-size:12.5px;font-weight:700;color:var(--warning);background:var(--warning-bg);
+  font-variant-numeric:tabular-nums}
+.tb-kosong{color:var(--on-surface-muted)}
+
+/* ── Riwayat presensi per hari (v7.7) ─────────────────────────────────────
+   Satu kartu = satu hari. Pemisah antar hari dibuat oleh kartunya sendiri,
+   bukan oleh tanggal yang diulang pada setiap baris.                        */
+.rp-jejak{display:grid;gap:10px}
+.rp-hari{position:relative;overflow:hidden;border:1px solid var(--outline-variant);
+  border-radius:var(--r-lg);background:var(--surface-card)}
+.rp-hari::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--outline)}
+.rp-hari.nada-ok::before{background:var(--success)}
+.rp-hari.nada-warn::before{background:var(--warning)}
+.rp-hari.nada-danger::before{background:var(--error)}
+.rp-hari.nada-info::before{background:var(--info)}
+.rp-kepala{display:flex;align-items:center;gap:11px;padding:10px 12px 10px 15px;
+  background:var(--surface-container-low);border-bottom:1px solid var(--outline-variant)}
+.rp-tgl{width:42px;flex:none;text-align:center;padding:4px 0;border-radius:9px;
+  background:var(--surface-card);border:1px solid var(--outline-variant)}
+.rp-tgl-angka{display:block;font-size:16px;font-weight:750;line-height:1.05;
+  color:var(--on-surface);font-variant-numeric:tabular-nums}
+.rp-tgl-bulan{display:block;font-size:9.5px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.05em;color:var(--on-surface-muted)}
+.rp-kepala-teks{flex:1;min-width:0}
+.rp-hari-nama{font-size:14px;font-weight:650;color:var(--on-surface)}
+.rp-hari-sub{font-size:12px;color:var(--on-surface-muted);margin-top:1px}
+.rp-kepala .chip{flex:none}
+
+/* Garis vertikal yang menghubungkan masuk → pulang. Digambar sebagai
+   pseudo-element pada wadahnya, bukan per baris: garis per baris akan putus
+   di sela antar baris dan justru terbaca sebagai dua kejadian terpisah. */
+.rp-isi{position:relative;padding:10px 12px 12px 15px}
+.rp-baris{position:relative;display:flex;align-items:flex-start;gap:11px;padding:7px 0}
+.rp-baris + .rp-baris::before{content:"";position:absolute;left:13px;top:-9px;height:16px;
+  width:2px;background:var(--outline-variant)}
+.rp-titik{width:28px;height:28px;flex:none;display:grid;place-items:center;border-radius:50%;
+  background:var(--surface-container-low);color:var(--on-surface-muted);
+  border:1px solid var(--outline-variant)}
+.rp-titik .mi{font-size:16px}
+.rp-masuk .rp-titik{background:var(--success-bg);color:var(--success);border-color:transparent}
+.rp-pulang .rp-titik{background:var(--info-bg);color:var(--info);border-color:transparent}
+.rp-baris-isi{flex:1;min-width:0}
+.rp-judul{font-size:13.5px;font-weight:600;color:var(--on-surface)}
+.rp-bidang{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.rp-bidang-satu{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;
+  border-radius:var(--r-full);font-size:12px;color:var(--on-surface-variant);
+  background:var(--surface-container-low);border:1px solid var(--outline-variant)}
+.rp-bidang-satu .mi{font-size:14px;color:var(--on-surface-muted)}
+.rp-bidang-label{color:var(--on-surface-muted)}
+.rp-bidang-satu b{font-weight:700;color:var(--on-surface);font-variant-numeric:tabular-nums}
+.rp-catatan{margin-top:6px;font-size:12.5px;color:var(--on-surface-variant);
+  background:var(--surface-container-low);border-radius:var(--r-md);padding:7px 10px}
+
+@media (max-width:520px){
+  .rp-kepala{padding:9px 10px 9px 13px;gap:9px}
+  .rp-isi{padding:9px 10px 11px 13px}
+  .rp-bidang-satu{font-size:11.5px;padding:3px 8px}
+}
+
 @media (max-width:640px){
   .ds-kepala{padding:14px;gap:13px}
   .ds-avatar{width:56px;height:56px;font-size:22px}
   .ds-nama{font-size:19px}
   .ds-aksi{width:100%}
   .ds-aksi .btn{flex:1 1 auto}
-  .ds-ubin-lebar{grid-column:span 2}
   .ds-riwayat{max-height:none}
 }
 
-:root{--versi-aset:"7.6"}
+:root{--versi-aset:"7.7"}

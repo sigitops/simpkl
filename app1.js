@@ -2357,6 +2357,26 @@ pasangSidebar(!document.body.classList.contains('sidebar-tutup'), true);
  */
 function pasangSidebar(tutup, simpan) {
 document.body.classList.toggle('sidebar-tutup', !!tutup);
+// Label menu dipindah ke tooltip HANYA saat relnya menyempit. Memasangnya
+// permanen berarti balon penjelasan muncul di atas teks yang sudah terbaca
+// jelas di sebelahnya — penjelasan yang menjelaskan dirinya sendiri.
+$$('#sidebarNav .nav-link, .sidebar-foot .nav-link').forEach(function (el) {
+const label = el.querySelector('.nav-label');
+if (!label) return;
+if (tutup) {
+el.setAttribute('data-tip', label.textContent.trim());
+el.setAttribute('data-tip-arah', 'kanan');
+} else {
+el.removeAttribute('data-tip');
+el.removeAttribute('data-tip-arah');
+}
+});
+const merek = $$('.sidebar-brand')[0];
+if (merek) {
+const nama = $('brandName');
+if (tutup && nama) { merek.setAttribute('data-tip', nama.textContent.trim()); merek.setAttribute('data-tip-arah', 'kanan'); }
+else { merek.removeAttribute('data-tip'); merek.removeAttribute('data-tip-arah'); }
+}
 const btn = $('btnSidebar');
 if (btn) {
 // aria-expanded menerangkan SIDEBAR-nya, bukan tombolnya — jadi nilainya
@@ -2371,6 +2391,25 @@ function pulihkanSidebar() {
 let tutup = false;
 try { tutup = Simpanan.ambil(KUNCI_SIDEBAR) === '1'; } catch (e) {}
 pasangSidebar(tutup, false);
+pasangGulirSidebar();
+}
+/**
+ * Menampilkan bilah gulir sidebar hanya SELAMA digulir.
+ *
+ * Warna bilahnya diatur CSS lewat kelas .menggulir; di sini hanya kelasnya yang
+ * dipasang lalu dilepas sesudah sesaat diam. Tempatnya sudah dipesan permanen
+ * oleh scrollbar-width:thin, jadi memunculkannya tidak menggeser apa pun.
+ */
+let PEWAKTU_GULIR = null;
+function pasangGulirSidebar() {
+const nav = $('sidebarNav');
+if (!nav || nav.dataset.gulirTerpasang) return;
+nav.dataset.gulirTerpasang = '1';
+nav.addEventListener('scroll', function () {
+nav.classList.add('menggulir');
+clearTimeout(PEWAKTU_GULIR);
+PEWAKTU_GULIR = setTimeout(function () { nav.classList.remove('menggulir'); }, 900);
+}, { passive: true });
 }
 function tutupDrawer() {
 const sb = $('sidebar'), scrim = $('drawerScrim'), btn = $('btnDrawer');
@@ -2425,6 +2464,9 @@ $$('.bn-item[data-page]').forEach(b =>
 b.classList.toggle('active', b.dataset.page === sorot));
 }
 function renderNavigation() {
+// Menggambar ulang daftar menu membuang seluruh atribut data-tip yang
+// dipasang mode rel, jadi keadaannya disetel ulang di ujung fungsi ini —
+// bukan diserahkan pada urutan pemanggilan di tempat lain.
 const menu = MENU[AppState.user.role] || [];
 $('sidebarNav').innerHTML = menu.map(m => `
 <li>
@@ -2450,6 +2492,7 @@ ${m.bottom === 'Lainnya' ? '' : `ontouchstart="pramuatHalaman('${m.id}')"`}
 onclick="${m.bottom === 'Lainnya' ? 'bukaMenuLainnya()' : `navigateTo('${m.id}')`}">
 <span class="mi">${m.ikon}</span><span>${esc(m.bottom)}</span>
 </button>`).join('');
+pasangSidebar(document.body.classList.contains('sidebar-tutup'), false);
 }
 function bukaMenuLainnya() { toggleDrawer(); }
 function toggleMenuProfil(event) {
@@ -3239,6 +3282,16 @@ function tipTampilkan(el) {
   const r = el.getBoundingClientRect();
   const b = balon.getBoundingClientRect();
   const sela = 8;
+  // Balon menu rel muncul di SAMPING KANAN, bukan di atas: butir menu tersusun
+  // menumpuk rapat, jadi balon yang muncul di atas justru menutupi butir
+  // tetangganya — persis butir yang sedang dibandingkan penggunanya.
+  if (el.getAttribute('data-tip-arah') === 'kanan') {
+    balon.style.left = Math.round(Math.min(r.right + sela, window.innerWidth - b.width - 8)) + 'px';
+    balon.style.top = Math.round(Math.max(8,
+      Math.min(r.top + r.height / 2 - b.height / 2, window.innerHeight - b.height - 8))) + 'px';
+    requestAnimationFrame(() => balon.classList.add('tampil'));
+    return;
+  }
   let kiri = r.left + r.width / 2 - b.width / 2;
   kiri = Math.max(8, Math.min(kiri, window.innerWidth - b.width - 8));
   // Muncul di atas tombol; pindah ke bawah bila ruang atasnya tidak cukup.
