@@ -617,7 +617,7 @@ const c = k.getContext('2d');
 // jadi hasil jepretannya ikut dicerminkan supaya sama persis dengan yang dilihat.
 if ((AppState.arahKamera || 'user') === 'user') { c.translate(k.width, 0); c.scale(-1, 1); }
 c.drawImage(v, 0, 0, k.width, k.height);
-AppState.fotoTerambil = k.toDataURL('image/jpeg', 0.6);
+AppState.fotoTerambil = k.toDataURL(jenisGambarTerbaik(), 0.62);
 hentikanKamera();
 tampilkanPratinjauFoto(AppState.fotoTerambil);
 }
@@ -774,6 +774,24 @@ onclick="bukaPratinjau('Bukti ${esc(izin.jenis)}','${esc(izin.bukti)}','','gamba
 <span class="mi">visibility</span> Bukti</button>` : ''}
 </div>`;
 }
+// WebP bila peramban bisa mengodekannya, JPEG bila tidak. Pada mutu setara,
+// WebP sekitar 30 % lebih kecil — dan setiap kilobyte yang tidak diunggah hari
+// ini adalah kilobyte yang tidak diunduh guru setiap kali membuka bukti.
+//
+// Diperiksa dari HASILNYA, bukan dari nama peramban: canvas.toDataURL() yang
+// tidak mengenal jenis yang diminta diam-diam mengembalikan PNG — yang justru
+// JAUH lebih besar daripada JPEG. Menebak dari userAgent akan melewatkan itu.
+let _jenisGambar = '';
+function jenisGambarTerbaik() {
+if (_jenisGambar) return _jenisGambar;
+try {
+const k = document.createElement('canvas');
+k.width = 1; k.height = 1;
+_jenisGambar = k.toDataURL('image/webp', 0.5).indexOf('data:image/webp') === 0
+  ? 'image/webp' : 'image/jpeg';
+} catch (e) { _jenisGambar = 'image/jpeg'; }
+return _jenisGambar;
+}
 function kompresGambar(file, maxLebar, kualitas) {
 return new Promise((resolve, reject) => {
 const reader = new FileReader();
@@ -785,7 +803,7 @@ const skala = Math.min(1, maxLebar / img.width);
 canvas.width = Math.round(img.width * skala);
 canvas.height = Math.round(img.height * skala);
 canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-resolve(canvas.toDataURL('image/jpeg', kualitas));
+resolve(canvas.toDataURL(jenisGambarTerbaik(), kualitas));
 };
 img.onerror = reject;
 img.src = e.target.result;

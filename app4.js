@@ -5,6 +5,7 @@ const res = await panggilCepat('getDashboardMonitoring', AppState.sessionToken);
 if (!res.success) { toast(res.message, 'error'); return; }
 const d = res.data;
 AppState.dataMonitoring = d.siswa;
+pramuatBukti(d.siswa);
 renderKPI(d.kpi);
 renderInsight('insightMonitoring', d.insights);
 renderTabelSiswaRingkas(d.siswa);
@@ -253,6 +254,91 @@ navigateTo('detail-siswa');
 //
 // Jarak ikut ditampilkan karena foto saja tidak membuktikan apa pun: yang
 // diperiksa adalah "hadir DI TEMPAT PKL-nya", bukan sekadar "ada fotonya".
+// ── Pramuat bukti: inilah yang membuat kliknya terasa nol detik ────────────
+//
+// Modal-nya memang terbuka tanpa perjalanan ke server, tetapi GAMBAR-nya masih
+// harus diunduh dari Drive saat itu juga — dan itulah jeda yang terlihat.
+// Jadi unduhannya dimulai lebih awal: begitu tabel selesai digambar, seluruh
+// foto barisnya dihangatkan ke dalam singgahan peramban. Saat guru akhirnya
+// menekan tombolnya, gambarnya sudah ada di sana dan tergambar pada bingkai
+// yang sama.
+//
+// Dijalankan pada waktu SENGGANG (requestIdleCallback): pramuat yang berebut
+// jalur dengan penggambaran tabel akan memperlambat hal yang justru sedang
+// dilihat pengguna. Ia pekerjaan latar, dan harus berkelakuan seperti itu.
+const BUKTI_HANGAT = {};
+// Elemen <img> yang sesungguhnya, bukan sekadar penanda "pernah diminta".
+// Elemen inilah yang nanti DIPASANG ke dalam modal — bukan disalin, bukan
+// dibuat ulang dari src yang sama. Membuat <img> baru dengan src yang sama
+// menyerahkan nasibnya kepada singgahan peramban, dan singgahan boleh saja
+// meleset (tajuk yang tidak mengizinkan, mode penyamaran, penyaji perantara).
+// Memasang elemen yang gambarnya sudah tersahkode tidak menyerahkan apa pun
+// kepada siapa pun: ia tergambar pada bingkai yang sama.
+function gambarHangat(u) {
+const im = new Image();
+im.decoding = 'async';
+im.loading = 'eager';
+im.src = u;
+return im;
+}
+// Dipasang SESUDAH modalnya ada di DOM. Elemen yang hangat langsung tergambar;
+// yang belum hangat diambil sekarang, dan rangka sementaranya menemani sampai
+// tiba. Keduanya melewati jalan yang sama, jadi tidak ada dua perilaku berbeda
+// yang harus dirawat terpisah.
+function pasangFotoBukti() {
+const slot = document.querySelectorAll('#modalBody .bk-slot');
+Array.prototype.forEach.call(slot, function (s) {
+const src = s.getAttribute('data-src') || '';
+const kotak = s.parentNode;
+if (!src || !kotak) return;
+let im = BUKTI_HANGAT[src];
+if (!im || !im.tagName) { im = gambarHangat(src); BUKTI_HANGAT[src] = im; }
+// Satu elemen hanya bisa berdiri di SATU tempat. Bila elemen hangat itu sudah
+// terpasang di modal ini (dua slot dengan alamat foto yang sama), memindahkan-
+// nya lagi justru mengosongkan slot yang pertama. Slot kedua memakai salinan;
+// salinannya tetap cepat karena aslinya masih hidup dan sudah tersahkode.
+if (im.parentNode) im = im.cloneNode(false);
+im.alt = s.getAttribute('data-alt') || '';
+if (im.complete && im.naturalWidth) {
+kotak.classList.remove('bk-memuat');
+} else {
+im.addEventListener('load', function () {
+kotak.classList.remove('bk-memuat');
+}, { once: true });
+im.addEventListener('error', function () {
+kotak.classList.remove('bk-memuat');
+kotak.classList.add('bk-gagal');
+}, { once: true });
+}
+kotak.replaceChild(im, s);
+});
+}
+function pramuatBukti(baris) {
+if (!Array.isArray(baris) || !baris.length) return;
+const url = [];
+baris.forEach(function (r) {
+[r.fotoMasuk, r.fotoPulang].forEach(function (u) {
+if (u && !BUKTI_HANGAT[u]) { BUKTI_HANGAT[u] = null; url.push(u); }
+});
+});
+if (!url.length) return;
+const jalan = function () {
+url.forEach(function (u) { BUKTI_HANGAT[u] = gambarHangat(u); });
+};
+// 1200 ms, bukan 2500: tabel yang baru selesai digambar biasanya diklik dalam
+// hitungan detik pertama. Tenggat yang terlalu longgar membuat pramuatnya baru
+// mulai sesudah gurunya lebih dulu menekan tombolnya.
+if (typeof requestIdleCallback === 'function') requestIdleCallback(jalan, { timeout: 1200 });
+else setTimeout(jalan, 200);
+}
+// Foto dikirim server pada ukuran modal (w400). Saat diperbesar, ukuran itu
+// akan tampak lunak pada layar penuh — jadi lebarnya dinaikkan di sini. URL-nya
+// dibentuk urlPratinjau() milik aplikasi ini sendiri, jadi polanya diketahui;
+// bila suatu saat ia berubah, url aslinya dikembalikan apa adanya.
+function fotoUkuran(url, lebar) {
+if (!url) return '';
+return /([?&])sz=w\d+/.test(url) ? url.replace(/([?&])sz=w\d+/, '$1sz=w' + lebar) : url;
+}
 function cariBarisSiswa(siswaId) {
 const dari = function (arr) {
 return (arr || []).filter(function (x) { return String(x.siswaId) === String(siswaId); })[0];
@@ -270,11 +356,17 @@ return `<div class="bk-sisi bk-kosong">
 <span>Belum ada presensi ${esc(judul.toLowerCase())}</span></div></div>`;
 }
 const alt = 'Bukti presensi ' + judul.toLowerCase() + ' ' + nama;
+// Gambarnya BUKAN ditulis sebagai <img> di dalam teks HTML ini, melainkan
+// disediakan tempatnya (.bk-slot) lalu diisi pasangFotoBukti() dengan elemen
+// yang sudah dipramuat. Menulis <img src="..."> berarti meminta peramban
+// mengambilnya lagi, dan pramuat yang hasilnya tidak dipakai tidak ada
+// gunanya. Slot-nya juga membuat rangka sementara punya bentuk sejak awal,
+// jadi modalnya tidak melonjak tingginya saat gambarnya masuk.
 return `<div class="bk-sisi">
 <div class="bk-sisi-kepala"><span class="mi">${ikon}</span> ${esc(judul)}</div>
-<button class="bk-gambar" type="button" aria-label="Perbesar ${esc(alt)}"
-onclick="bukaPratinjau('${esc(alt)}','${esc(foto)}','','gambar')">
-<img src="${esc(foto)}" alt="${esc(alt)}" loading="lazy">
+<button class="bk-gambar bk-memuat" type="button" aria-label="Perbesar ${esc(alt)}"
+onclick="bukaPratinjau('${esc(alt)}','${esc(fotoUkuran(foto, 1200))}','','gambar')">
+<span class="bk-slot" data-src="${esc(foto)}" data-alt="${esc(alt)}"></span>
 <span class="bk-perbesar"><span class="mi">zoom_in</span></span></button>
 <div class="bk-fakta">
 <span class="bk-fakta-butir"><span class="mi">schedule</span>
@@ -305,6 +397,7 @@ bukaModal('Bukti Kehadiran Hari Ini', isi, [
 { label: 'Tutup', kelas: 'btn-outline', aksi: tutupModal },
 { label: '<span class="mi">visibility</span> Lihat Detail', kelas: 'btn-primary',
   aksi: function () { tutupModal(); bukaHalamanSiswa(r.siswaId); } }]);
+pasangFotoBukti();
 }
 // Tombolnya dipadamkan — bukan disembunyikan — saat belum ada fotonya. Tombol
 // yang hilang-timbul membuat kolom aksi bergoyang dari baris ke baris, dan
@@ -333,6 +426,7 @@ try {
 const res = await panggilCepat('getDaftarPenempatan', AppState.sessionToken);
 if (!res.success) { box.innerHTML = emptyState('block', 'Akses ditolak', res.message); return; }
 AppState.dataTabel = res.data;
+pramuatBukti(res.data);
 gambarRingkasPresensi(res.data);
 buatTabel({
 id: 'monitoring', mount: 'tabelMonitoring', idPrefix: 'mon',

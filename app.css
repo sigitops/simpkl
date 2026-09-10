@@ -1456,12 +1456,23 @@
 /* Tanda wajib pada labelnya — mencegah lebih murah daripada menjelaskan
    sesudah tombol Simpan telanjur ditekan. */
 .field-wajib{color:var(--error);font-weight:700;margin-left:2px}
+/* Lawannya: penanda opsional. Ditulis kecil dan redup, sebab ia keterangan
+   tentang bidangnya, bukan bagian dari namanya. */
+.field-opsional{font-size:11.5px;font-weight:600;letter-spacing:.02em;
+  color:var(--on-surface-muted);background:var(--surface-container);
+  border-radius:var(--r-full);padding:2px 8px;margin-left:6px;vertical-align:1px}
+/* Judul pengganti saat keterangan liburnya kosong: sedikit lebih redup supaya
+   terbaca sebagai label sistem, bukan sebagai kalimat yang diketik orang. */
+.hl-judul-bawaan{color:var(--on-surface-variant)}
 
 /* ── Kolom Aksi & modal Bukti Kehadiran (v8.0) ────────────────────────────
-   Kolom aksi kini boleh punya judul. Judulnya dirata-kanan mengikuti isinya
-   (.td-actions memang justify-content:flex-end) — judul rata-kiri di atas
-   ikon yang rata-kanan terbaca seperti dua kolom yang berbeda. */
-.data-table th.col-aksi{text-align:right;white-space:nowrap}
+   Kolom aksi kini boleh punya judul, dan judul beserta isinya sama-sama
+   berada di tengah kolom. */
+/* v8.1: judulnya di TENGAH kolom, dan isinya ikut ke tengah. Judul di tengah
+   sementara ikonnya rata-kanan justru terbaca seperti dua kolom yang meleset —
+   keduanya harus disejajarkan pada sumbu yang sama. */
+.data-table th.col-aksi{text-align:center;white-space:nowrap}
+.data-table td.col-aksi .td-actions{justify-content:center}
 /* Tombol yang dipadamkan tetap MEMAKAN tempat, hanya redup. Menyembunyikannya
    membuat lebar kolom aksi berubah dari baris ke baris, dan mata kehilangan
    garis lurus untuk membidik cepat. */
@@ -1486,7 +1497,10 @@
    pintasan "lihat sekilas"; begitu isinya harus digulir, ia kehilangan satu-
    satunya alasan keberadaannya — dan pada layar laptop pendek foto 3:4 penuh
    membuatnya persis begitu. Potretnya tetap tegak, hanya dipangkas tingginya. */
-.bk-gambar img{width:100%;aspect-ratio:3/4;max-height:min(33vh,220px);
+/* Slot dan gambar berbagi ukuran yang SAMA. Slot yang lebih pendek daripada
+   gambarnya akan membuat modal melonjak tingginya tepat saat fotonya masuk —
+   persis pada saat mata sedang tertuju ke sana. */
+.bk-gambar img,.bk-slot{width:100%;aspect-ratio:3/4;max-height:min(33vh,220px);
   object-fit:cover;display:block;background:var(--surface-container)}
 /* Lencana perbesar memakai warna permukaan aplikasi, bukan hitam transparan
    dengan teks putih: putih mentah hanya benar pada foto yang gelap, dan foto
@@ -1497,6 +1511,21 @@
   color:var(--on-surface);box-shadow:var(--elev-2);
   opacity:0;transition:opacity .15s ease}
 .bk-gambar:hover .bk-perbesar,.bk-gambar:focus-visible .bk-perbesar{opacity:1}
+/* Rangka sementara selama fotonya masih di jalan (v8.1). Sesudah dipramuat,
+   keadaan ini biasanya tidak sempat terlihat sama sekali — ia jaring pengaman
+   untuk pembukaan pertama dan untuk sinyal yang buruk. Kilaunya memakai
+   animasi yang sama dengan rangka pemuat lain di aplikasi ini. */
+.bk-gambar.bk-memuat{background:var(--surface-container)}
+.bk-gambar.bk-memuat img{opacity:0}
+.bk-gambar.bk-memuat::after{content:'';position:absolute;inset:0;
+  transform:translateX(-100%);
+  background:linear-gradient(90deg,transparent,var(--surface-hover),transparent);
+  animation:kilau 1.3s infinite}
+/* Peralihan masuknya halus, bukan berkedip: gambar yang datang dari singgahan
+   muncul dalam satu bingkai, dan tanpa peralihan itu terbaca sebagai kedipan. */
+.bk-gambar img{transition:opacity .18s ease}
+.bk-gambar.bk-gagal{background:var(--surface-container)}
+.bk-gambar.bk-gagal img{opacity:.35}
 .bk-fakta{display:flex;flex-wrap:wrap;gap:8px}
 .bk-fakta-butir{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;
   color:var(--on-surface-variant);background:var(--surface-card);border:1px solid var(--outline-variant);
@@ -1511,9 +1540,9 @@
    rasionya dibalik mendatar supaya keduanya tetap muat dalam satu layar. */
 @media (max-width:560px){
   .bk-grid{grid-template-columns:1fr}
-  .bk-gambar img{aspect-ratio:16/10;max-height:min(19vh,150px)}
+  .bk-gambar img,.bk-slot{aspect-ratio:16/10;max-height:min(19vh,150px)}
   .bk-grid{gap:10px}
   .bk-sisi{padding:10px;gap:8px}
 }
 
-:root{--versi-aset:"8.0"}
+:root{--versi-aset:"8.1"}

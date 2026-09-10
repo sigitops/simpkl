@@ -387,6 +387,37 @@ document.body.style.overflow = 'hidden';
 //      dan pengguna papan ketik langsung berada di tempat yang harus dibetulkan,
 //   4. satu toast di puncak layar sebagai jaring pengaman — ia melayang di
 //      atas modal, jadi ia terlihat bahkan bila penggulirannya gagal.
+// Menggulirkan sebuah elemen ke tengah wadah gulirnya, dengan menghitung
+// sendiri, bukan menyerahkannya kepada scrollIntoView().
+//
+// scrollIntoView({block:'center'}) TIDAK dapat diandalkan di dalam wadah gulir
+// bersarang seperti isi modal: pada sebagian keadaan ia tidak menggulir sama
+// sekali — terbukti pada panel setinggi 309 px yang isinya 472 px, scrollTop
+// tetap 0 dan pesan galatnya tertinggal terpotong di tepi bawah. Perhitungan
+// di sini deterministik: cari wadah gulir terdekat, hitung selisihnya, selesai.
+function wadahGulir(el) {
+let n = el.parentElement;
+while (n && n !== document.body) {
+const g = getComputedStyle(n).overflowY;
+if ((g === 'auto' || g === 'scroll') && n.scrollHeight > n.clientHeight + 1) return n;
+n = n.parentElement;
+}
+return null;
+}
+function gulirKeTengah(el) {
+if (!el) return;
+const wadah = wadahGulir(el);
+if (!wadah) {
+try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+catch (e) { try { el.scrollIntoView(); } catch (e2) {} }
+return;
+}
+const re = el.getBoundingClientRect(), rw = wadah.getBoundingClientRect();
+const tujuan = wadah.scrollTop + (re.top - rw.top) - (wadah.clientHeight - re.height) / 2;
+const batas = Math.max(0, Math.min(tujuan, wadah.scrollHeight - wadah.clientHeight));
+try { wadah.scrollTo({ top: batas, behavior: 'smooth' }); }
+catch (e) { wadah.scrollTop = batas; }
+}
 function tandaiBidangGalat(idBidang, idPesan, pesan) {
 const kotak = $(idPesan);
 if (kotak) kotak.textContent = pesan;
@@ -395,11 +426,20 @@ const bidang = $(idBidang);
 if (!bidang) return;
 bidang.classList.add('field-invalid');
 bidang.setAttribute('aria-invalid', 'true');
-try { bidang.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
-catch (e) { try { bidang.scrollIntoView(); } catch (e2) {} }
-// preventScroll: penggulirannya sudah diatur di atas dengan block:'center';
-// membiarkan focus() menggulir lagi membuatnya melompat ke tepi.
+// Yang digulirkan adalah SELURUH kelompok bidangnya (.field), bukan kolom
+// isiannya saja. Pesan galat duduk DI BAWAH kolom isian; menengahkan kolom
+// isian bisa meninggalkan pesannya tepat di luar tepi bawah — kolomnya
+// terlihat, tetapi kalimat yang harus dibaca tidak. Itu mengulang persis
+// kegagalan yang sedang diperbaiki, hanya beberapa piksel lebih sedikit.
+// URUTANNYA PENTING: fokus dulu, baru digulirkan.
+//
+// focus() membatalkan penggulliran halus yang sedang berjalan — bahkan dengan
+// preventScroll, yang hanya berjanji tidak MEMULAI penggulirannya sendiri,
+// bukan tidak menghentikan yang sudah jalan. Menggulir lebih dulu lalu
+// memfokus membuat penggulirannya mati di tengah jalan dan scrollTop tetap
+// nol; pesannya kembali tertinggal di luar pandangan, persis seperti semula.
 try { bidang.focus({ preventScroll: true }); } catch (e) { try { bidang.focus(); } catch (e2) {} }
+gulirKeTengah((bidang.closest && bidang.closest('.field')) || bidang);
 }
 function bersihkanBidangGalat(pasangan) {
 (pasangan || []).forEach(function (q) {

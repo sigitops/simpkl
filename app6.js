@@ -1868,6 +1868,14 @@ return;
 }
 const nada = { Nasional: 'error', Sekolah: 'warn', Instansi: 'ok' };
 const chipJenis = { Nasional: 'chip-error', Sekolah: 'chip-warning', Instansi: 'chip-success' };
+// Keterangan opsional sejak v8.1, jadi judul kartunya butuh pengganti: kartu
+// tanpa judul terbaca seperti data yang gagal dimuat, bukan seperti libur yang
+// memang tidak perlu penjelasan. Penggantinya diturunkan dari jenisnya sendiri.
+const JUDUL_LIBUR = { Nasional: 'Libur Nasional', Sekolah: 'Kegiatan Sekolah',
+                      Instansi: 'Tempat PKL Tutup' };
+const judulLibur = function (x) {
+return (x.keterangan || '').trim() || JUDUL_LIBUR[x.jenis] || 'Hari Libur';
+};
 const chipWaktu = { 'Berlangsung': 'chip-success', 'Akan datang': 'chip-info', 'Sudah lewat': 'chip-neutral' };
 let bulanTerakhir = '';
 const potongan = [];
@@ -1893,7 +1901,7 @@ ${berentang ? `<span class="hl-tgl-rentang">${jmlHari} hari</span>` : ''}
 </div>
 <div class="hl-isi">
 <div class="hl-kepala">
-<h3 class="hl-judul">${esc(x.keterangan)}</h3>
+<h3 class="hl-judul${(x.keterangan || '').trim() ? '' : ' hl-judul-bawaan'}">${esc(judulLibur(x))}</h3>
 <span class="chip ${chipJenis[x.jenis] || 'chip-neutral'}">${esc(x.jenis)}</span>
 </div>
 <div class="hl-sub"><span class="mi">calendar_month</span> ${berentang
@@ -1961,11 +1969,11 @@ ${tempat.map(t => `<option value="${esc(t.id)}"${d.tempatId === t.id ? ' selecte
 </div>
 </div>
 <div class="field">
-<label class="field-label" for="hlKet">Keterangan <span class="field-wajib">*</span></label>
-<input class="field-input" id="hlKet" maxlength="120" required aria-required="true"
+<label class="field-label" for="hlKet">Keterangan <span class="field-opsional">Opsional</span></label>
+<input class="field-input" id="hlKet" maxlength="120"
 value="${esc(d.keterangan || '')}"
 placeholder="Misalnya: Rapat kerja internal, atau Idul Fitri 1447 H">
-<p class="field-help">Wajib diisi. Keterangan ini yang dibaca siswa pada riwayat presensinya.</p>
+<p class="field-help">Bila diisi, keterangan ini yang dibaca siswa pada riwayat presensinya.</p>
 <div class="field-error" id="errHlKet"></div>
 </div>`,
 [{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
@@ -1996,11 +2004,12 @@ const mulai = $('hlMulai').value, selesai = $('hlSelesai').value || mulai;
 // area yang terlihat sementara tombol Simpan tetap di kaki modal, sehingga
 // menekan Simpan tampak tidak melakukan apa pun sama sekali.
 const BIDANG = [['hlMulai', 'errHlMulai'], ['hlKet', 'errHlKet']];
+// Keterangan tidak lagi diperiksa: sejak v8.1 ia opsional. Tanggal tetap
+// wajib, dan penanda galatnya tetap dipakai untuk bidang itu.
 bersihkanBidangGalat(BIDANG);
 if (!mulai) { tandaiBidangGalat('hlMulai', 'errHlMulai', 'Tanggal mulai wajib diisi.'); return; }
 if (selesai < mulai) {
 tandaiBidangGalat('hlMulai', 'errHlMulai', 'Tanggal selesai mendahului tanggal mulai.'); return; }
-if (!ket) { tandaiBidangGalat('hlKet', 'errHlKet', 'Keterangan wajib diisi.'); return; }
 const tempatId = $('hlTempat').value;
 tampilkanSibuk('Menyimpan hari libur…');
 try {
@@ -2025,7 +2034,7 @@ bukaModal('Hapus Hari Libur', `
 <div class="jr-cuplik">
 <div class="data-label">${esc(tglSingkat(d.tanggalMulai))}${
 d.tanggalSelesai !== d.tanggalMulai ? ' – ' + esc(tglSingkat(d.tanggalSelesai)) : ''}</div>
-<div>${esc(d.keterangan)} &middot; ${esc(d.namaTempat)}</div>
+<div>${esc(judulLibur(d))} &middot; ${esc(d.namaTempat)}</div>
 </div>`,
 [{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
 { label: '<span class="mi">delete</span> Hapus', kelas: 'btn-danger',
@@ -2043,4 +2052,4 @@ if (res.success) { batalkanPaketData(); muatHariLibur(); }
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '8.0';
+window.__SIMPKL_EOF = '8.1';
