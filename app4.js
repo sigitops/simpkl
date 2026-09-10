@@ -77,7 +77,7 @@ box.innerHTML = emptyState('group_off', 'Belum ada siswa PKL aktif',
 return;
 }
 box.innerHTML = `<div class="table-wrap"><table class="data-table">
-<thead><tr><th>Nama Siswa</th><th>Kelas</th><th>Tempat PKL</th><th>Presensi</th><th>Jurnal</th><th></th></tr></thead>
+<thead><tr><th>Nama Siswa</th><th>Kelas</th><th>Tempat PKL</th><th>Presensi</th><th>Jurnal</th><th class="col-aksi">Aksi</th></tr></thead>
 <tbody>${siswa.slice(0, 10).map(s => `
 <tr>
 <td><div class="td-strong">${esc(s.nama)}</div><div class="td-sub">${esc(s.nis)}</div></td>
@@ -86,7 +86,8 @@ box.innerHTML = `<div class="table-wrap"><table class="data-table">
 <td>${chipStatus(s.statusPresensi)}${s.waktuPresensi ?
 `<div class="td-sub">${jamTampil(s.waktuPresensi)} WIB</div>` : ''}</td>
 <td>${chipStatus(s.statusJurnal)}</td>
-<td><div class="td-actions"><button class="btn-icon" aria-label="Detail ${esc(s.nama)}"
+<td class="col-aksi"><div class="td-actions">${tombolBukti(s)}
+<button class="btn-icon" aria-label="Detail ${esc(s.nama)}" title="Lihat detail presensi"
 onclick="bukaHalamanSiswa('${esc(s.siswaId)}')"><span class="mi">visibility</span></button></div></td>
 </tr>`).join('')}</tbody></table></div>`;
 }
@@ -237,6 +238,84 @@ function bukaHalamanSiswa(siswaId) {
 AppState.siswaDetail = siswaId;
 navigateTo('detail-siswa');
 }
+
+// ── Lihat Bukti (v8.0) ─────────────────────────────────────────────────────
+//
+// Pintasan memeriksa bukti kehadiran hari ini tanpa membuka halaman detail.
+// Yang dikerjakan guru pembimbing setiap pagi adalah memeriksa BANYAK siswa
+// berturut-turut; membuka halaman detail per siswa berarti dua perpindahan
+// halaman untuk melihat satu foto, dan halaman detail memuat riwayat sebulan
+// yang tidak sedang dicari.
+//
+// Datanya sudah ada di baris yang sedang dibaca — foto, jam, dan jarak ikut
+// dikirim bersama daftar penempatan — jadi modal ini terbuka TANPA satu pun
+// perjalanan ke server. Nol milidetik, dan tetap benar saat sinyal buruk.
+//
+// Jarak ikut ditampilkan karena foto saja tidak membuktikan apa pun: yang
+// diperiksa adalah "hadir DI TEMPAT PKL-nya", bukan sekadar "ada fotonya".
+function cariBarisSiswa(siswaId) {
+const dari = function (arr) {
+return (arr || []).filter(function (x) { return String(x.siswaId) === String(siswaId); })[0];
+};
+return dari(AppState.dataTabel) || dari(AppState.dataMonitoring) || null;
+}
+function adaBuktiKehadiran(r) {
+return !!(r && (r.fotoMasuk || r.fotoPulang));
+}
+function kartuBukti(judul, ikon, foto, waktu, jarak, nama) {
+if (!foto) {
+return `<div class="bk-sisi bk-kosong">
+<div class="bk-sisi-kepala"><span class="mi">${ikon}</span> ${esc(judul)}</div>
+<div class="bk-hampa"><span class="mi">no_photography</span>
+<span>Belum ada presensi ${esc(judul.toLowerCase())}</span></div></div>`;
+}
+const alt = 'Bukti presensi ' + judul.toLowerCase() + ' ' + nama;
+return `<div class="bk-sisi">
+<div class="bk-sisi-kepala"><span class="mi">${ikon}</span> ${esc(judul)}</div>
+<button class="bk-gambar" type="button" aria-label="Perbesar ${esc(alt)}"
+onclick="bukaPratinjau('${esc(alt)}','${esc(foto)}','','gambar')">
+<img src="${esc(foto)}" alt="${esc(alt)}" loading="lazy">
+<span class="bk-perbesar"><span class="mi">zoom_in</span></span></button>
+<div class="bk-fakta">
+<span class="bk-fakta-butir"><span class="mi">schedule</span>
+<b>${waktu ? esc(jamTampil(waktu)) : '—'}</b> WIB</span>
+<span class="bk-fakta-butir"><span class="mi">location_on</span>
+<b>${(jarak === '' || jarak === null || jarak === undefined) ? '—' : esc(String(jarak)) + ' m'}</b></span>
+</div></div>`;
+}
+function bukaBuktiKehadiran(siswaId) {
+const r = cariBarisSiswa(siswaId);
+if (!r) { toast('Data siswa tidak ditemukan. Muat ulang halaman.', 'warning'); return; }
+const isi = adaBuktiKehadiran(r)
+? `<div class="bk-kepala">
+<div class="bk-nama">${esc(r.nama)}</div>
+<div class="bk-sub">${esc(r.kelas)} &middot; ${esc(r.tempat)}</div>
+</div>
+<div class="bk-grid">
+${kartuBukti('Masuk', 'login', r.fotoMasuk, r.waktuPresensi, r.jarakMasuk, r.nama)}
+${kartuBukti('Pulang', 'logout', r.fotoPulang, r.waktuPulang, r.jarakPulang, r.nama)}
+</div>`
+: `<div class="bk-kepala">
+<div class="bk-nama">${esc(r.nama)}</div>
+<div class="bk-sub">${esc(r.kelas)} &middot; ${esc(r.tempat)}</div>
+</div>
+${emptyState('no_photography', 'Belum ada bukti kehadiran hari ini',
+  'Foto muncul di sini segera setelah siswa melakukan presensi masuk.')}`;
+bukaModal('Bukti Kehadiran Hari Ini', isi, [
+{ label: 'Tutup', kelas: 'btn-outline', aksi: tutupModal },
+{ label: '<span class="mi">visibility</span> Lihat Detail', kelas: 'btn-primary',
+  aksi: function () { tutupModal(); bukaHalamanSiswa(r.siswaId); } }]);
+}
+// Tombolnya dipadamkan — bukan disembunyikan — saat belum ada fotonya. Tombol
+// yang hilang-timbul membuat kolom aksi bergoyang dari baris ke baris, dan
+// guru kehilangan jangkar untuk membidik dengan cepat.
+function tombolBukti(r) {
+const ada = adaBuktiKehadiran(r);
+return `<button class="btn-icon${ada ? '' : ' btn-icon-mati'}"${ada ? '' : ' disabled'}
+aria-label="Lihat bukti kehadiran ${esc(r.nama)}"
+title="${ada ? 'Lihat bukti kehadiran' : 'Belum ada bukti kehadiran hari ini'}"
+onclick="bukaBuktiKehadiran('${esc(r.siswaId)}')"><span class="mi">photo_camera</span></button>`;
+}
 // Menyegarkan apa pun yang sedang tampil sesudah data penempatan berubah.
 // Sejak v7.5 perpindahan tempat bisa dilakukan dari DUA layar — daftar dan
 // halaman detail — jadi memanggil muatTabelMonitoring() saja membuat halaman
@@ -258,6 +337,9 @@ gambarRingkasPresensi(res.data);
 buatTabel({
 id: 'monitoring', mount: 'tabelMonitoring', idPrefix: 'mon',
 judulEkspor: 'Presensi Siswa PKL',
+// Kolom aksinya diberi judul: dua ikon berdampingan tanpa judul kolom
+// memaksa pembaca menebak apa yang ada di sana sebelum menyorotnya.
+labelAksi: 'Aksi',
 data: res.data, kunciPilih: 'siswaId', sortAwal: 'nama',
 cariField: ['nama', 'nis', 'kelas', 'tempat', 'guru'],
 kosong: { ikon: 'group_off', judul: 'Belum ada siswa PKL aktif',
@@ -305,7 +387,9 @@ render: r => (r.menitPulangCepat > 0)
   ? `<span class="tb-cepat">&minus;${r.menitPulangCepat} mnt</span>`
   : `<span class="tb-kosong">—</span>` }
 ],
-aksi: r => `<button class="btn-icon" aria-label="Lihat detail ${esc(r.nama)}"
+aksi: r => `${tombolBukti(r)}
+<button class="btn-icon" aria-label="Lihat detail ${esc(r.nama)}"
+title="Lihat detail presensi"
 onclick="bukaHalamanSiswa('${esc(r.siswaId)}')"><span class="mi">visibility</span></button>
 ${AppState.user.role === 'admin' ? `<button class="btn-icon" aria-label="Pindahkan tempat PKL ${esc(r.nama)}"
 onclick="bukaPindahTempat('${esc(r.siswaId)}')"><span class="mi">swap_horiz</span></button>` : ''}

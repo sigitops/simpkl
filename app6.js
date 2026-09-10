@@ -1961,10 +1961,11 @@ ${tempat.map(t => `<option value="${esc(t.id)}"${d.tempatId === t.id ? ' selecte
 </div>
 </div>
 <div class="field">
-<label class="field-label" for="hlKet">Keterangan</label>
-<input class="field-input" id="hlKet" maxlength="120" value="${esc(d.keterangan || '')}"
+<label class="field-label" for="hlKet">Keterangan <span class="field-wajib">*</span></label>
+<input class="field-input" id="hlKet" maxlength="120" required aria-required="true"
+value="${esc(d.keterangan || '')}"
 placeholder="Misalnya: Rapat kerja internal, atau Idul Fitri 1447 H">
-<p class="field-help">Keterangan ini yang dibaca siswa pada riwayat presensinya.</p>
+<p class="field-help">Wajib diisi. Keterangan ini yang dibaca siswa pada riwayat presensinya.</p>
 <div class="field-error" id="errHlKet"></div>
 </div>`,
 [{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
@@ -1989,10 +1990,17 @@ bantu.textContent = semuaTempat
 async function kirimHariLibur(id) {
 const ket = $('hlKet').value.trim();
 const mulai = $('hlMulai').value, selesai = $('hlSelesai').value || mulai;
-$('errHlKet').textContent = ''; $('errHlMulai').textContent = '';
-if (!mulai) { $('errHlMulai').textContent = 'Tanggal mulai wajib diisi.'; return; }
-if (selesai < mulai) { $('errHlMulai').textContent = 'Tanggal selesai mendahului tanggal mulai.'; return; }
-if (!ket) { $('errHlKet').textContent = 'Keterangan wajib diisi.'; return; }
+// Bidang yang salah DIGULIRKAN ke pandangan, difokuskan, dan pesannya juga
+// ditoastkan. Sebelumnya pesannya hanya dituliskan ke dalam .modal-body yang
+// bisa digulir — pada layar laptop pendek, bidang Keterangan berada di bawah
+// area yang terlihat sementara tombol Simpan tetap di kaki modal, sehingga
+// menekan Simpan tampak tidak melakukan apa pun sama sekali.
+const BIDANG = [['hlMulai', 'errHlMulai'], ['hlKet', 'errHlKet']];
+bersihkanBidangGalat(BIDANG);
+if (!mulai) { tandaiBidangGalat('hlMulai', 'errHlMulai', 'Tanggal mulai wajib diisi.'); return; }
+if (selesai < mulai) {
+tandaiBidangGalat('hlMulai', 'errHlMulai', 'Tanggal selesai mendahului tanggal mulai.'); return; }
+if (!ket) { tandaiBidangGalat('hlKet', 'errHlKet', 'Keterangan wajib diisi.'); return; }
 const tempatId = $('hlTempat').value;
 tampilkanSibuk('Menyimpan hari libur…');
 try {
@@ -2035,4 +2043,4 @@ if (res.success) { batalkanPaketData(); muatHariLibur(); }
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '7.9';
+window.__SIMPKL_EOF = '8.0';

@@ -368,6 +368,49 @@ if (unduhUrl) { btn.href = unduhUrl; btn.hidden = false; } else { btn.hidden = t
 $('modalPreview').hidden = false;
 document.body.style.overflow = 'hidden';
 }
+// ── Menandai bidang isian yang salah (v8.0) ────────────────────────────────
+//
+// Menulis pesan ke dalam <div class="field-error"> saja TIDAK CUKUP, dan
+// itulah akar dari laporan "formulir Hari Libur gagal disimpan tanpa pesan
+// apa pun". Isi modal punya kotak gulirnya sendiri (.modal-body) sedangkan
+// tombol Simpan duduk di kaki yang selalu terlihat. Pada layar laptop yang
+// pendek — 1366x768 setelah dipotong bilah peramban dan taskbar, atau layar
+// mana pun pada zoom 125% — bidang terakhir formulir berada DI BAWAH area
+// yang terlihat. Pengguna menekan Simpan, pesan galat tertulis rapi di tempat
+// yang tidak bisa ia lihat, dan dari kursinya aplikasi tampak diam saja.
+//
+// Karena itu di sini dikerjakan empat hal sekaligus, sesuai praktik baku
+// penanganan galat formulir (WCAG 3.3.1 Error Identification):
+//   1. pesannya ditulis di sebelah bidangnya  — konteks,
+//   2. bidangnya digulirkan ke tengah pandangan — supaya pesan itu terlihat,
+//   3. fokus dipindahkan ke bidangnya — pembaca layar ikut mengumumkannya,
+//      dan pengguna papan ketik langsung berada di tempat yang harus dibetulkan,
+//   4. satu toast di puncak layar sebagai jaring pengaman — ia melayang di
+//      atas modal, jadi ia terlihat bahkan bila penggulirannya gagal.
+function tandaiBidangGalat(idBidang, idPesan, pesan) {
+const kotak = $(idPesan);
+if (kotak) kotak.textContent = pesan;
+toast(pesan, 'warning', 5000);
+const bidang = $(idBidang);
+if (!bidang) return;
+bidang.classList.add('field-invalid');
+bidang.setAttribute('aria-invalid', 'true');
+try { bidang.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+catch (e) { try { bidang.scrollIntoView(); } catch (e2) {} }
+// preventScroll: penggulirannya sudah diatur di atas dengan block:'center';
+// membiarkan focus() menggulir lagi membuatnya melompat ke tepi.
+try { bidang.focus({ preventScroll: true }); } catch (e) { try { bidang.focus(); } catch (e2) {} }
+}
+function bersihkanBidangGalat(pasangan) {
+(pasangan || []).forEach(function (q) {
+const kotak = $(q[1]);
+if (kotak) kotak.textContent = '';
+const bidang = $(q[0]);
+if (!bidang) return;
+bidang.classList.remove('field-invalid');
+bidang.removeAttribute('aria-invalid');
+});
+}
 function tutupPratinjau() {
 $('modalPreview').hidden = true;
 $('previewBody').innerHTML = '';
@@ -1563,7 +1606,11 @@ onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();urutk
 aria-sort="${aktif ? (st.sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}">
 <span class="th-sort-inner">${esc(k.label)}<span class="mi">${ikon}</span></span></th>`;
 }).join('')}
-${cfg.aksi ? '<th></th>' : ''}
+${/* Judul kolom aksi bersifat OPSIONAL dan bawaannya tetap kosong: tabel
+     yang sudah ada tidak berubah kecuali memang diminta lewat cfg.labelAksi.
+     Kolom tanpa judul membuat pembaca menebak isinya dari ikonnya sendiri,
+     jadi tabel yang aksinya lebih dari satu sebaiknya memberinya nama. */''}
+${cfg.aksi ? `<th class="col-aksi">${esc(cfg.labelAksi || '')}</th>` : ''}
 </tr></thead>`;
 const tbody = `<tbody>${potong.map(row => {
 const idRow = row[kunci];
@@ -1576,7 +1623,7 @@ aria-label="Pilih baris"></td>` : ''}
 ${cfg.kolom.map(k => `<td class="${k.kelas || ''}">${
 renderKolom(k, row)
 }</td>`).join('')}
-${cfg.aksi ? `<td><div class="td-actions">${cfg.aksi(row)}</div></td>` : ''}
+${cfg.aksi ? `<td class="col-aksi"><div class="td-actions">${cfg.aksi(row)}</div></td>` : ''}
 </tr>`;
 }).join('')}</tbody>`;
 mount.innerHTML = `<div class="table-wrap"><table class="data-table">${thead}${tbody}</table></div>` +
