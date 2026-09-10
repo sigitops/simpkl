@@ -348,11 +348,18 @@ return dari(AppState.dataTabel) || dari(AppState.dataMonitoring) || null;
 function adaBuktiKehadiran(r) {
 return !!(r && (r.fotoMasuk || r.fotoPulang));
 }
-function kartuBukti(judul, ikon, foto, waktu, jarak, nama) {
+function kartuBukti(sisi, judul, ikon, foto, waktu, jarak, nama) {
+// Kedua sisi diberi WARNA yang berbeda, dan itu bukan hiasan: guru membaca
+// modal ini dengan cepat dan berulang-ulang, dan datang-vs-pulang adalah satu-
+// satunya pembedaan yang harus tertangkap dalam sekali lihat. Warnanya diambil
+// dari token tema lewat satu peubah lokal (--bk-aksen), jadi seluruh isi kartu
+// ikut berganti tanpa satu pun nilai warna ditulis dua kali.
+const kelas = 'bk-sisi bk-' + sisi;
 if (!foto) {
-return `<div class="bk-sisi bk-kosong">
-<div class="bk-sisi-kepala"><span class="mi">${ikon}</span> ${esc(judul)}</div>
-<div class="bk-hampa"><span class="mi">no_photography</span>
+return `<div class="${kelas} bk-kosong">
+<div class="bk-sisi-kepala"><span class="bk-ikon"><span class="mi">${ikon}</span></span>
+<span class="bk-sisi-judul">${esc(judul)}</span></div>
+<div class="bk-hampa"><span class="bk-hampa-bulat"><span class="mi">no_photography</span></span>
 <span>Belum ada presensi ${esc(judul.toLowerCase())}</span></div></div>`;
 }
 const alt = 'Bukti presensi ' + judul.toLowerCase() + ' ' + nama;
@@ -362,35 +369,50 @@ const alt = 'Bukti presensi ' + judul.toLowerCase() + ' ' + nama;
 // mengambilnya lagi, dan pramuat yang hasilnya tidak dipakai tidak ada
 // gunanya. Slot-nya juga membuat rangka sementara punya bentuk sejak awal,
 // jadi modalnya tidak melonjak tingginya saat gambarnya masuk.
-return `<div class="bk-sisi">
-<div class="bk-sisi-kepala"><span class="mi">${ikon}</span> ${esc(judul)}</div>
+//
+// Jamnya diletakkan DI ATAS fotonya, di balik gradasi gelap. Jam adalah
+// keterangan tentang foto itu sendiri — kapan ia diambil — jadi menempelkannya
+// pada fotonya membuat keduanya terbaca sebagai satu bukti, bukan dua
+// keterangan terpisah. Gradasinya menjamin angkanya tetap terbaca baik pada
+// foto siang yang terang maupun ruangan yang gelap.
+return `<div class="${kelas}">
+<div class="bk-sisi-kepala"><span class="bk-ikon"><span class="mi">${ikon}</span></span>
+<span class="bk-sisi-judul">${esc(judul)}</span></div>
 <button class="bk-gambar bk-memuat" type="button" aria-label="Perbesar ${esc(alt)}"
 onclick="bukaPratinjau('${esc(alt)}','${esc(fotoUkuran(foto, 1200))}','','gambar')">
 <span class="bk-slot" data-src="${esc(foto)}" data-alt="${esc(alt)}"></span>
+<span class="bk-jam"><span class="mi">schedule</span>
+<b>${waktu ? esc(jamTampil(waktu)) : '—'}</b><small>WIB</small></span>
 <span class="bk-perbesar"><span class="mi">zoom_in</span></span></button>
 <div class="bk-fakta">
-<span class="bk-fakta-butir"><span class="mi">schedule</span>
-<b>${waktu ? esc(jamTampil(waktu)) : '—'}</b> WIB</span>
 <span class="bk-fakta-butir"><span class="mi">location_on</span>
-<b>${(jarak === '' || jarak === null || jarak === undefined) ? '—' : esc(String(jarak)) + ' m'}</b></span>
+<b>${(jarak === '' || jarak === null || jarak === undefined) ? '—' : esc(String(jarak)) + ' m'}</b>
+dari titik</span>
 </div></div>`;
 }
 function bukaBuktiKehadiran(siswaId) {
 const r = cariBarisSiswa(siswaId);
 if (!r) { toast('Data siswa tidak ditemukan. Muat ulang halaman.', 'warning'); return; }
+// Kepala kartu memuat status harinya sendiri. Modal ini dibuka untuk
+// MEMERIKSA, dan pertanyaan pertama pemeriksanya — hadir, telat, atau apa —
+// tidak boleh menuntut menutup modal dulu untuk dibaca di tabel.
+const kepala = `<div class="bk-kepala">
+<span class="bk-avatar" aria-hidden="true">${esc((r.nama || '?').trim().charAt(0).toUpperCase())}</span>
+<div class="bk-ident">
+<div class="bk-nama">${esc(r.nama)}</div>
+<div class="bk-sub"><span class="mi">school</span>${esc(r.kelas)}
+<span class="bk-titik" aria-hidden="true"></span>
+<span class="mi">domain</span>${esc(r.tempat)}</div>
+</div>
+${chipStatus(r.statusPresensi)}
+</div>`;
 const isi = adaBuktiKehadiran(r)
-? `<div class="bk-kepala">
-<div class="bk-nama">${esc(r.nama)}</div>
-<div class="bk-sub">${esc(r.kelas)} &middot; ${esc(r.tempat)}</div>
-</div>
+? `${kepala}
 <div class="bk-grid">
-${kartuBukti('Masuk', 'login', r.fotoMasuk, r.waktuPresensi, r.jarakMasuk, r.nama)}
-${kartuBukti('Pulang', 'logout', r.fotoPulang, r.waktuPulang, r.jarakPulang, r.nama)}
+${kartuBukti('masuk', 'Masuk', 'login', r.fotoMasuk, r.waktuPresensi, r.jarakMasuk, r.nama)}
+${kartuBukti('pulang', 'Pulang', 'logout', r.fotoPulang, r.waktuPulang, r.jarakPulang, r.nama)}
 </div>`
-: `<div class="bk-kepala">
-<div class="bk-nama">${esc(r.nama)}</div>
-<div class="bk-sub">${esc(r.kelas)} &middot; ${esc(r.tempat)}</div>
-</div>
+: `${kepala}
 ${emptyState('no_photography', 'Belum ada bukti kehadiran hari ini',
   'Foto muncul di sini segera setelah siswa melakukan presensi masuk.')}`;
 bukaModal('Bukti Kehadiran Hari Ini', isi, [
