@@ -121,8 +121,8 @@ const potong = String(j.kegiatan).length > 110 ? String(j.kegiatan).slice(0, 110
 box.innerHTML = `
 <div class="list">
 <div class="list-item">
-<div class="list-lead ${j.status === 'Disetujui' ? 'ok' : j.status === 'Ditolak' ? 'danger' : 'warn'}">
-<span class="mi">${j.status === 'Disetujui' ? 'check' : j.status === 'Ditolak' ? 'close' : 'hourglass_top'}</span>
+<div class="list-lead ${j.status === 'Disetujui' ? 'ok' : j.status === 'Revisi' ? 'danger' : 'warn'}">
+<span class="mi">${j.status === 'Disetujui' ? 'check' : j.status === 'Revisi' ? 'edit_note' : 'hourglass_top'}</span>
 </div>
 <div class="list-main">
 <div class="list-title">Jurnal hari ini</div>

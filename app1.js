@@ -529,6 +529,10 @@ const peta = {
 'Telat': ['chip-warning', 'schedule'], 'Menunggu': ['chip-warning', 'hourglass_top'],
 'Diproses': ['chip-warning', 'hourglass_top'],
 'Di Luar Radius': ['chip-error', 'location_off'], 'Ditolak': ['chip-error', 'cancel'],
+// 'Revisi' HANYA dipakai jurnal. 'Ditolak' tetap ada dan tetap dipakai
+// perizinan, pendaftaran PKL, pengajuan pindah, dan laporan akhir — ketiga
+// hal itu memang keputusan akhir, bukan permintaan perbaikan.
+'Revisi': ['chip-error', 'edit_note'],
 'Belum Presensi': ['chip-error', 'error'],
 'Dibatalkan': ['chip-neutral', 'block'], 'Belum Ada': ['chip-neutral', 'remove'],
 'Izin': ['chip-info', 'event_busy'], 'Sakit': ['chip-info', 'sick'],

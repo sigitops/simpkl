@@ -1037,11 +1037,32 @@
 .jr-cari{flex:1 1 200px;min-width:0;max-width:280px}
 .jr-cuplik{margin-top:12px;padding:12px;border-radius:var(--r-md);
   background:var(--surface-container-low);border:1px solid var(--outline-variant);font-size:13.5px}
-.jr-foto-lama{display:flex;gap:12px;align-items:flex-start;margin-bottom:10px;padding:11px;
-  border-radius:var(--r-md);background:var(--primary-soft);
-  border:1px solid color-mix(in srgb, var(--primary) 22%, transparent);font-size:13px}
-.jr-foto-lama .review-thumb{width:64px;height:64px;object-fit:cover;margin:0;flex:0 0 64px}
-.jr-foto-lama p{margin:3px 0 0;color:var(--on-surface-variant)}
+
+/* ── Dokumentasi jurnal: satu sampai tiga foto (v8.7) ─────────────────────
+   Galeri pembacaan dan pemilih lampiran memakai ukuran ubin yang SAMA, jadi
+   apa yang dilihat siswa saat memilih adalah apa yang ia lihat sesudahnya. */
+.jr-galeri{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.jr-galeri .review-thumb{width:104px;height:78px;margin:0;max-width:none;flex:0 0 auto}
+.jr-lampiran{display:flex;flex-wrap:wrap;gap:10px}
+.jr-lampiran-item{position:relative;width:92px;height:92px;border-radius:var(--r-md);
+  overflow:hidden;border:1px solid var(--outline-variant);background:var(--surface-container)}
+.jr-lampiran-item img{width:100%;height:100%;object-fit:cover;display:block}
+/* Tombol buang duduk DI ATAS fotonya, bukan di bawahnya: daftar tombol yang
+   terpisah dari gambarnya memaksa mata memasangkan urutan sendiri, dan salah
+   pasang di sini berarti menghapus foto yang keliru. */
+.jr-lampiran-buang{position:absolute;top:4px;right:4px;width:26px;height:26px;padding:0;
+  display:grid;place-items:center;border:none;border-radius:var(--r-full);cursor:pointer;
+  background:rgba(17,24,28,.62);color:#fff;backdrop-filter:blur(2px)}
+.jr-lampiran-buang:hover{background:var(--error)}
+.jr-lampiran-buang .mi{font-size:17px}
+.jr-lampiran-tambah{width:92px;height:92px;display:grid;place-items:center;cursor:pointer;
+  border:2px dashed var(--outline);border-radius:var(--r-md);
+  background:var(--surface-container-low);color:var(--on-surface-muted)}
+.jr-lampiran-tambah:hover{border-color:var(--primary);color:var(--primary);
+  background:var(--primary-soft)}
+.jr-lampiran-tambah .mi{font-size:26px}
+/* Galeri pada kartu review guru & halaman Detail Jurnal. */
+.dj-galeri{display:flex;flex-wrap:wrap;gap:8px;align-self:flex-start}
 
 /* Kaki kolom: bantuan di kiri, penghitung karakter di kanan. */
 .field-kaki{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
@@ -1717,4 +1738,4 @@
   .dj-aksi .btn{flex:1 1 100%}
 }
 
-:root{--versi-aset:"8.6"}
+:root{--versi-aset:"8.7"}

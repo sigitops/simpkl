@@ -921,8 +921,8 @@ render: r => `<div>${esc(r.Tempat)}</div><div class="td-sub">${esc(r.Guru)}</div
 render: r => `<span style="color:var(--success);font-weight:600">${r.Disetujui}</span>` },
 { k: 'Menunggu', label: 'Menunggu', sortable: true, tipe: 'angka', kelas: 'td-num',
 render: r => r.Menunggu ? `<span style="color:var(--warning);font-weight:600">${r.Menunggu}</span>` : '0' },
-{ k: 'Ditolak', label: 'Ditolak', sortable: true, tipe: 'angka', kelas: 'td-num',
-render: r => r.Ditolak ? `<span style="color:var(--error);font-weight:600">${r.Ditolak}</span>` : '0' },
+{ k: 'Revisi', label: 'Revisi', sortable: true, tipe: 'angka', kelas: 'td-num',
+render: r => r.Revisi ? `<span style="color:var(--error);font-weight:600">${r.Revisi}</span>` : '0' },
 { k: 'TerakhirIsi', label: 'Terakhir Isi', sortable: true,
 render: r => r.TerakhirIsi ? tglSingkat(r.TerakhirIsi) : '<span class="td-sub">belum pernah</span>' }
 ],
@@ -1120,7 +1120,7 @@ gambarDaftarJurnal();
 }
 const DJ_LABEL_PERIODE = { semua: 'Semua periode', harian: 'Hari ini',
   mingguan: '7 hari terakhir', bulanan: 'Bulan ini', kustom: 'Rentang pilihan' };
-const DJ_NADA = { Disetujui: 'ok', Ditolak: 'danger', Menunggu: 'warn' };
+const DJ_NADA = { Disetujui: 'ok', Revisi: 'danger', Menunggu: 'warn' };
 const DJ_BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
                   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 function gambarDaftarJurnal() {
@@ -1142,7 +1142,7 @@ const items = jurnalTersaring();
 // dipercaya lagi. Sejak v8.5 angkanya menempel pada <option>, karena itulah
 // satu-satunya tempat yang terlihat saat parameternya bersembunyi di balik
 // tombol Filter — pengguna harus bisa memilih tanpa menebak-nebak.
-const hitung = { semua: dasar.length, Menunggu: 0, Disetujui: 0, Ditolak: 0 };
+const hitung = { semua: dasar.length, Menunggu: 0, Disetujui: 0, Revisi: 0 };
 dasar.forEach(function (j) { if (hitung[j.status] !== undefined) hitung[j.status]++; });
 const selStatus = $('dj_s_status');
 if (selStatus) Array.prototype.forEach.call(selStatus.options, function (o) {
@@ -1230,6 +1230,20 @@ return `<div class="dj-bulan"><span>${DJ_BULAN[bl.getMonth()]} ${bl.getFullYear(
 perBulan[k].map(kartuJurnal).join('');
 }).join('') + (st ? paginasiHtml(DJ_TABEL, total, totalHal, mulai, potong.length) : '');
 }
+/**
+ * Dokumentasi satu jurnal, dalam dua ukuran.
+ *
+ * Sejak v8.7 server mengirim fotoList/fotoBesarList (satu sampai tiga). Medan
+ * tunggal `foto`/`fotoBesar` tetap dibaca sebagai daftar berisi satu, supaya
+ * halaman ini tidak kehilangan gambar apa pun bila server sempat menjawab dari
+ * singgahan versi sebelumnya.
+ */
+function fotoKartuJurnal(j) {
+const kecil = (j.fotoList && j.fotoList.length) ? j.fotoList : (j.foto ? [j.foto] : []);
+const besar = (j.fotoBesarList && j.fotoBesarList.length) ? j.fotoBesarList
+  : (j.fotoBesar ? [j.fotoBesar] : kecil);
+return kecil.map(function (u, i) { return { kecil: u, besar: besar[i] || u }; });
+}
 function kartuJurnal(j) {
 const d = new Date(j.tanggal + 'T00:00:00');
 // Nama hari PENUH untuk judulnya, tiga huruf untuk blok tanggalnya.
@@ -1253,16 +1267,22 @@ ${chipStatus(j.status)}
 <span class="dj-bidang-label"><span class="mi">work_history</span> Kegiatan</span>
 <p class="dj-teks">${esc(j.kegiatan) || '<span class="dj-hampa">Tidak diisi</span>'}</p>
 </div>
+${j.pembelajaran ? `<div class="dj-bidang">
+<span class="dj-bidang-label"><span class="mi">lightbulb</span> Pembelajaran / Hal Baru</span>
+<p class="dj-teks">${esc(j.pembelajaran)}</p>
+</div>` : ''}
 ${j.kendala ? `<div class="dj-bidang dj-kendala">
-<span class="dj-bidang-label"><span class="mi">report_problem</span> Kendala</span>
+<span class="dj-bidang-label"><span class="mi">report_problem</span> Tantangan / Kendala</span>
 <p class="dj-teks">${esc(j.kendala)}</p>
 </div>` : ''}
-${j.foto ? `<button class="dj-foto" type="button"
-aria-label="Perbesar dokumentasi jurnal ${esc(tglSingkat(j.tanggal))}"
-onclick="bukaPratinjau('Dokumentasi ${esc(tglSingkat(j.tanggal))}','${esc(j.fotoBesar || j.foto)}','','gambar')">
-<img src="${esc(j.foto)}" alt="Dokumentasi jurnal ${esc(tglSingkat(j.tanggal))}"
+${fotoKartuJurnal(j).length ? `<div class="dj-galeri">${fotoKartuJurnal(j).map(function (f, i) {
+return `<button class="dj-foto" type="button"
+aria-label="Perbesar dokumentasi ke-${i + 1} jurnal ${esc(tglSingkat(j.tanggal))}"
+onclick="bukaPratinjau('Dokumentasi ${esc(tglSingkat(j.tanggal))}','${esc(f.besar)}','','gambar')">
+<img src="${esc(f.kecil)}" alt="Dokumentasi ke-${i + 1} jurnal ${esc(tglSingkat(j.tanggal))}"
 loading="lazy" decoding="async">
-<span class="dj-foto-tanda"><span class="mi">zoom_in</span></span></button>` : ''}
+<span class="dj-foto-tanda"><span class="mi">zoom_in</span></span></button>`;
+}).join('')}</div>` : ''}
 ${j.komentar ? `<div class="dj-komentar">
 <span class="mi">rate_review</span>
 <div><strong>Komentar pembimbing</strong><p>${esc(j.komentar)}</p></div>
@@ -1272,8 +1292,8 @@ ${boleh ? `<div class="dj-aksi">
 <span class="mi">check</span> Setujui</button>
 <button class="btn btn-outline btn-sm" onclick="prosesJurnalDetail('${esc(j.id)}','Disetujui',true)">
 <span class="mi">edit_note</span> Setujui + Komentar</button>
-<button class="btn btn-danger btn-sm" onclick="prosesJurnalDetail('${esc(j.id)}','Ditolak',true)">
-<span class="mi">close</span> Tolak</button>
+<button class="btn btn-danger btn-sm" onclick="prosesJurnalDetail('${esc(j.id)}','Revisi',true)">
+<span class="mi">edit_note</span> Minta Revisi</button>
 </div>` : ''}
 </div>
 </article>`;
@@ -1293,13 +1313,13 @@ const r = d.rekap || {};
 // seluruh jurnal: yang masih menunggu belum ditolak siapa pun, dan
 // memasukkannya ke penyebut membuat angkanya turun hanya karena gurunya belum
 // sempat mereview.
-const diputus = (r.disetujui || 0) + (r.ditolak || 0);
+const diputus = (r.disetujui || 0) + (r.revisi || 0);
 const persen = diputus ? Math.round((r.disetujui || 0) / diputus * 100) : 0;
 const ubin = [
 { ikon: 'menu_book',    nada: '',        nilai: r.total || 0,     label: 'Total Jurnal' },
 { ikon: 'check_circle', nada: 'ok',      nilai: r.disetujui || 0, label: 'Disetujui' },
 { ikon: 'hourglass_top', nada: 'warn',   nilai: r.menunggu || 0,  label: 'Menunggu Review' },
-{ ikon: 'cancel',       nada: 'danger',  nilai: r.ditolak || 0,   label: 'Ditolak' },
+{ ikon: 'edit_note',    nada: 'danger',  nilai: r.revisi || 0,    label: 'Perlu Revisi' },
 { ikon: 'event_available', nada: 'info', nilai: r.bulanIni || 0,  label: 'Terisi Bulan Ini' },
 { ikon: 'verified',     nada: 'ok',      nilai: diputus ? persen + '%' : '—',
   label: 'Disetujui dari yang diputus' }
@@ -1313,7 +1333,7 @@ const periode = [['', 'Semua periode'], ['harian', 'Hari ini'],
                  ['mingguan', '7 hari terakhir'], ['bulanan', 'Bulan ini'],
                  ['kustom', 'Rentang tanggal sendiri']];
 const saring = [['', 'Semua status'], ['Menunggu', 'Menunggu'],
-                ['Disetujui', 'Disetujui'], ['Ditolak', 'Ditolak']];
+                ['Disetujui', 'Disetujui'], ['Revisi', 'Revisi']];
 const kustomHTML = `
 <div class="dj-kustom" id="djKustom" hidden>
 <div class="filter-field">
@@ -1474,19 +1494,23 @@ onchange="tandaiJurnal('${esc(j.id)}', this.checked)">
 </div>
 ${chipStatus('Menunggu')}
 </div>
-<div class="data-label">Uraian Kegiatan</div>
+<div class="data-label">Kegiatan Hari Ini</div>
 <div class="list-text">${esc(j.kegiatan)}</div>
-${j.kendala ? `<div class="data-label" style="margin-top:12px">Kendala</div>
+${j.pembelajaran ? `<div class="data-label" style="margin-top:12px">Pembelajaran / Hal Baru</div>
+<div class="list-text">${esc(j.pembelajaran)}</div>` : ''}
+${j.kendala ? `<div class="data-label" style="margin-top:12px">Tantangan / Kendala</div>
 <div class="list-text">${esc(j.kendala)}</div>` : ''}
-${j.foto ? `<img src="${esc(j.foto)}" alt="Dokumentasi jurnal" class="review-thumb" loading="lazy"
-onclick="bukaPratinjau('Dokumentasi ${esc(j.namaSiswa)}','${esc(j.foto)}','','gambar')">` : ''}
+${fotoKartuJurnal(j).length ? `<div class="jr-galeri">${fotoKartuJurnal(j).map(function (f, i) {
+return `<img src="${esc(f.kecil)}" alt="Dokumentasi ke-${i + 1} jurnal" class="review-thumb" loading="lazy"
+onclick="bukaPratinjau('Dokumentasi ${esc(j.namaSiswa)}','${esc(f.besar)}','','gambar')">`;
+}).join('')}</div>` : ''}
 <div class="btn-row" style="margin-top:16px">
 <button class="btn btn-success btn-sm" onclick="prosesJurnal('${esc(j.id)}','Disetujui')">
 <span class="mi">check</span> Setujui</button>
 <button class="btn btn-outline btn-sm" onclick="prosesJurnal('${esc(j.id)}','Disetujui', true)">
 <span class="mi">comment</span> Setujui + Komentar</button>
-<button class="btn btn-danger btn-sm" onclick="prosesJurnal('${esc(j.id)}','Ditolak', true)">
-<span class="mi">close</span> Tolak</button>
+<button class="btn btn-danger btn-sm" onclick="prosesJurnal('${esc(j.id)}','Revisi', true)">
+<span class="mi">edit_note</span> Minta Revisi</button>
 </div>
 </article>`).join('');
 } catch (err) {
@@ -1564,20 +1588,24 @@ muatAntreanJurnal(); muatRekapJurnal();
 }
 function prosesJurnal(id, status, perluKomentar) {
 if (!perluKomentar) { kirimReviewJurnal(id, status, ''); return; }
-bukaModal(status === 'Ditolak' ? 'Tolak Jurnal' : 'Setujui dengan Komentar', `
+// "Minta Revisi", bukan "Tolak". Jurnal yang dikembalikan guru memang minta
+// diperbaiki dan dikirim ulang — dan siswa yang membacanya sebagai penolakan
+// cenderung membiarkannya, bukan memperbaikinya.
+const revisi = (status === 'Revisi');
+bukaModal(revisi ? 'Minta Revisi Jurnal' : 'Setujui dengan Komentar', `
 <div class="field">
 <label class="field-label" for="rvKomentar">Komentar untuk Siswa</label>
 <textarea class="field-input" id="rvKomentar" rows="4" maxlength="600"
-placeholder="${status === 'Ditolak' ? 'Jelaskan apa yang perlu diperbaiki.' : 'Apresiasi atau masukan (opsional).'}"></textarea>
-${status === 'Ditolak' ? '<p class="field-help">Komentar wajib diisi saat menolak jurnal.</p>' : ''}
+placeholder="${revisi ? 'Jelaskan apa yang perlu diperbaiki.' : 'Apresiasi atau masukan (opsional).'}"></textarea>
+${revisi ? '<p class="field-help">Komentar wajib diisi saat meminta revisi.</p>' : ''}
 <div class="field-error" id="errRvKomentar"></div>
 </div>`,
 [{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
-{ label: status === 'Ditolak' ? '<span class="mi">close</span> Tolak Jurnal' : '<span class="mi">check</span> Setujui',
-kelas: status === 'Ditolak' ? 'btn-danger' : 'btn-success',
+{ label: revisi ? '<span class="mi">edit_note</span> Minta Revisi' : '<span class="mi">check</span> Setujui',
+kelas: revisi ? 'btn-danger' : 'btn-success',
 aksi: () => {
 const k = $('rvKomentar').value.trim();
-if (status === 'Ditolak' && !k) { $('errRvKomentar').textContent = 'Komentar wajib diisi saat menolak.'; return; }
+if (revisi && !k) { $('errRvKomentar').textContent = 'Komentar wajib diisi saat meminta revisi.'; return; }
 tutupModal();
 kirimReviewJurnal(id, status, k);
 } }]);

@@ -201,15 +201,28 @@ list.innerHTML = emptyState('error', 'Gagal memuat jurnal', err.message);
 // yang menjawab pertanyaan sejenis ("bagaimana catatan saya sejauh ini?")
 // sebaiknya juga terbaca dengan cara yang sama, dan satu-satunya cara menjaga
 // itu tetap benar dalam jangka panjang adalah memakai kelas yang sama persis.
+/**
+ * Daftar foto dokumentasi satu jurnal, dalam dua ukuran.
+ *
+ * Sejak v8.7 server mengirim fotoList/fotoBesarList (satu sampai tiga).
+ * Bentuk lama — satu medan `foto` — tetap dibaca sebagai daftar berisi satu,
+ * supaya halaman ini tidak kehilangan gambar apa pun pada saat peralihan,
+ * termasuk bila server sempat menjawab dari singgahan versi sebelumnya.
+ */
+function fotoJurnal(j) {
+const kecil = (j.fotoList && j.fotoList.length) ? j.fotoList : (j.foto ? [j.foto] : []);
+const besar = (j.fotoBesarList && j.fotoBesarList.length) ? j.fotoBesarList : kecil;
+return kecil.map(function (u, i) { return { kecil: u, besar: besar[i] || u }; });
+}
 function gambarRingkasJurnal(items) {
 const box = $('jrRingkas');
 if (!box) return;
-const n = { Disetujui: 0, Menunggu: 0, Ditolak: 0 };
+const n = { Disetujui: 0, Menunggu: 0, Revisi: 0 };
 items.forEach(j => { if (n[j.status] !== undefined) n[j.status]++; });
 const kartu = [
 { nama: 'Disetujui', angka: n.Disetujui, ikon: 'check_circle', nada: 'var(--success)' },
 { nama: 'Menunggu', angka: n.Menunggu, ikon: 'hourglass_top', nada: 'var(--warning)' },
-{ nama: 'Ditolak', angka: n.Ditolak, ikon: 'cancel', nada: 'var(--error)' },
+{ nama: 'Revisi', angka: n.Revisi, ikon: 'edit_note', nada: 'var(--error)' },
 { nama: 'Total', angka: items.length, ikon: 'menu_book', nada: 'var(--primary)' }
 ];
 const total = items.length;
@@ -287,7 +300,7 @@ list.innerHTML = `<div class="rw-jejak">${items.map(function (j) {
 // memakai indeks hasil saringan, tombol Ubah akan membuka jurnal yang salah
 // begitu ada satu saja kata kunci diketik.
 const i = semua.indexOf(j);
-const nada = j.status === 'Disetujui' ? 'ok' : j.status === 'Ditolak' ? 'danger' : 'warn';
+const nada = j.status === 'Disetujui' ? 'ok' : j.status === 'Revisi' ? 'danger' : 'warn';
 const d = new Date(String(j.tanggal).slice(0, 10) + 'T00:00:00');
 const tanda = j.tanggal === kunciHariIni ? 'Hari ini'
   : j.tanggal === kunciKemarin ? 'Kemarin' : '';
@@ -307,12 +320,17 @@ ${chipStatus(j.status)}
 <div class="rw-hari-isi">
 <div class="jr-isi">
 <div class="list-text">${esc(j.kegiatan)}</div>
-${j.kendala ? `<div class="jr-kendala"><span class="data-label">Kendala</span>
+${j.pembelajaran ? `<div class="jr-kendala"><span class="data-label">Pembelajaran / Hal Baru</span>
+<div>${esc(j.pembelajaran)}</div></div>` : ''}
+${j.kendala ? `<div class="jr-kendala"><span class="data-label">Tantangan / Kendala</span>
 <div>${esc(j.kendala)}</div></div>` : ''}
-${j.komentar ? `<div class="alert ${j.status === 'Ditolak' ? 'alert-error' : 'alert-info'} jr-komentar">
+${j.komentar ? `<div class="alert ${j.status === 'Revisi' ? 'alert-error' : 'alert-info'} jr-komentar">
 <span class="mi">comment</span><div><strong>Komentar Guru</strong><p>${esc(j.komentar)}</p></div></div>` : ''}
-${j.foto ? `<img src="${esc(j.foto)}" alt="Dokumentasi ${tglRingkas(j.tanggal)}" class="review-thumb" loading="lazy"
-onclick="bukaPratinjau('Dokumentasi','${esc(j.foto)}','','gambar')">` : ''}
+${fotoJurnal(j).length ? `<div class="jr-galeri">${fotoJurnal(j).map(function (f, k) {
+return `<img src="${esc(f.kecil)}" alt="Dokumentasi ${tglRingkas(j.tanggal)} ke-${k + 1}"
+class="review-thumb" loading="lazy"
+onclick="bukaPratinjau('Dokumentasi','${esc(f.besar)}','','gambar')">`;
+}).join('')}</div>` : ''}
 ${j.status !== 'Disetujui' ? `<div class="jr-aksi">
 <button class="btn btn-outline btn-xs" onclick="bukaFormJurnalKe(${i})">
 <span class="mi">edit</span> Ubah</button>
@@ -331,7 +349,14 @@ resetSaring('jr');
 function bukaFormJurnalKe(indeks) {
 const d = (AppState.dataJurnal || [])[indeks];
 if (!d) { toast('Data jurnal tidak ditemukan. Muat ulang halaman.', 'warning'); return; }
-bukaFormJurnal({ tanggal: d.tanggal, kegiatan: d.kegiatan, kendala: d.kendala, foto: d.foto });
+bukaFormJurnal({ tanggal: d.tanggal, kegiatan: d.kegiatan,
+pembelajaran: d.pembelajaran, kendala: d.kendala,
+// Foto lama dibawa sebagai PASANGAN id + url. Id-nya yang dikirim kembali ke
+// server sebagai "yang dipertahankan"; url-nya hanya untuk digambar. Tanpa
+// id, satu-satunya cara mempertahankan foto lama adalah mengunggahnya ulang.
+fotoLama: (d.fotoId || []).map(function (id, i) {
+return { id: id, url: (d.fotoList || [])[i] || d.foto || '' };
+}) });
 }
 function konfirmasiHapusJurnal(indeks) {
 const d = (AppState.dataJurnal || [])[indeks];
@@ -369,7 +394,11 @@ const hariIni = new Date().toISOString().slice(0, 10);
 // jurnal yang salah: pilih foto untuk tanggal 5 → batal → buka form tanggal 6
 // → simpan. Fotonya masih tersimpan di AppState dan ikut terkirim. Tidak ada
 // galat, tidak ada peringatan — hanya jurnal dengan dokumentasi hari lain.
-AppState.fotoJurnal = null;
+//
+// Sejak v8.7 isinya satu DAFTAR: tiap butir berupa { id, url } untuk foto lama
+// yang dipertahankan, atau { data, url } untuk foto baru yang belum diunggah.
+AppState.fotoJurnal = (d.fotoLama || []).filter(function (f) { return f && f.id && f.url; })
+  .slice(0, JR_FOTO_MAKS);
 bukaModal(d.tanggal ? 'Ubah Jurnal' : 'Tambah Jurnal Kegiatan', `
 <div class="field">
 <label class="field-label" for="jrTanggal">Tanggal Kegiatan</label>
@@ -377,8 +406,8 @@ bukaModal(d.tanggal ? 'Ubah Jurnal' : 'Tambah Jurnal Kegiatan', `
 value="${esc(d.tanggal || hariIni)}" ${d.tanggal ? 'readonly' : ''}>
 </div>
 <div class="field">
-<label class="field-label" for="jrKegiatan">Uraian Kegiatan</label>
-<textarea class="field-input" id="jrKegiatan" rows="5" maxlength="1500"
+<label class="field-label" for="jrKegiatan">Kegiatan Hari Ini <span class="field-wajib" aria-hidden="true">*</span></label>
+<textarea class="field-input" id="jrKegiatan" rows="4" maxlength="1500"
 oninput="hitungKarakterJurnal()"
 placeholder="Tuliskan apa yang Anda kerjakan hari ini secara ringkas dan jelas.">${esc(d.kegiatan || '')}</textarea>
 <div class="field-kaki">
@@ -388,25 +417,58 @@ placeholder="Tuliskan apa yang Anda kerjakan hari ini secara ringkas dan jelas."
 <div class="field-error" id="errJrKegiatan"></div>
 </div>
 <div class="field">
-<label class="field-label" for="jrKendala">Kendala (opsional)</label>
-<textarea class="field-input" id="jrKendala" rows="2" maxlength="500">${esc(d.kendala || '')}</textarea>
+<label class="field-label" for="jrPembelajaran">Pembelajaran / Hal Baru <span class="field-opsional">Opsional</span></label>
+<textarea class="field-input" id="jrPembelajaran" rows="3" maxlength="1000"
+placeholder="Hal baru yang Anda pelajari atau pahami hari ini.">${esc(d.pembelajaran || '')}</textarea>
 </div>
 <div class="field">
-<label class="field-label" for="jrFoto">Foto Dokumentasi (opsional)</label>
-${d.foto ? `<div class="jr-foto-lama">
-<img src="${esc(d.foto)}" alt="Dokumentasi tersimpan" class="review-thumb" loading="lazy">
-<div><strong>Sudah ada dokumentasi.</strong>
-<p>Biarkan kosong bila tidak ingin menggantinya — foto ini akan tetap tersimpan.</p></div>
-</div>` : ''}
-<div class="dropzone" onclick="document.getElementById('jrFoto').click()">
-<span class="mi">add_photo_alternate</span>
-<p id="jrNamaFoto">${d.foto ? 'Ketuk untuk mengganti dokumentasi' : 'Ketuk untuk memilih atau memotret dokumentasi'}</p>
+<label class="field-label" for="jrKendala">Tantangan / Kendala <span class="field-opsional">Opsional</span></label>
+<textarea class="field-input" id="jrKendala" rows="2" maxlength="500"
+placeholder="Hambatan yang Anda temui, bila ada.">${esc(d.kendala || '')}</textarea>
 </div>
-<input type="file" id="jrFoto" accept=".jpg,.jpeg,.png,.webp,.heic,.heif" hidden onchange="pratinjauFotoJurnal(event)">
-<img id="jrPratinjau" class="review-thumb" hidden alt="Pratinjau dokumentasi">
+<div class="field">
+<label class="field-label" for="jrFoto">Lampiran Dokumentasi <span class="field-wajib" aria-hidden="true">*</span></label>
+<p class="field-help" style="margin:0 0 8px">Minimal 1, maksimal ${JR_FOTO_MAKS} foto.
+Pastikan foto jelas, tidak blur, dan menampilkan aktivitas atau hasil pekerjaan Anda.</p>
+<div class="jr-lampiran" id="jrLampiran"></div>
+<input type="file" id="jrFoto" accept=".jpg,.jpeg,.png,.webp,.heic,.heif" hidden multiple
+onchange="pratinjauFotoJurnal(event)">
+<div class="field-error" id="errJrFoto"></div>
 </div>`,
 [{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
 { label: '<span class="mi">save</span> Simpan Jurnal', kelas: 'btn-primary', aksi: kirimJurnal }]);
+gambarLampiranJurnal();
+}
+// Satu tempat, dipakai klien dan dijaga server. Angka yang ditulis dua kali
+// cepat atau lambat berselisih, dan yang menanggungnya adalah pengguna yang
+// diberi tahu "maksimal 3" lalu ditolak pada foto ketiga.
+const JR_FOTO_MAKS = 3;
+function gambarLampiranJurnal() {
+const box = $('jrLampiran');
+if (!box) return;
+const daftar = AppState.fotoJurnal || [];
+box.innerHTML = daftar.map(function (f, i) {
+return `<div class="jr-lampiran-item">
+<img src="${esc(f.url)}" alt="Dokumentasi ke-${i + 1}" loading="lazy">
+<button type="button" class="jr-lampiran-buang" aria-label="Hapus dokumentasi ke-${i + 1}"
+onclick="buangFotoJurnal(${i})"><span class="mi">close</span></button>
+</div>`;
+}).join('') +
+// Tombol tambah menghilang saat kuotanya habis, bukan dipadamkan: tombol yang
+// terlihat tetapi tidak melakukan apa-apa membuat penggunanya mengetuk
+// berulang kali dan menyimpulkan aplikasinya menggantung.
+(daftar.length >= JR_FOTO_MAKS ? '' :
+`<button type="button" class="jr-lampiran-tambah"
+onclick="document.getElementById('jrFoto').click()"
+aria-label="Tambah foto dokumentasi"><span class="mi">add</span></button>`);
+const sisa = $('errJrFoto');
+if (sisa && daftar.length) sisa.textContent = '';
+}
+function buangFotoJurnal(i) {
+const daftar = AppState.fotoJurnal || [];
+daftar.splice(i, 1);
+AppState.fotoJurnal = daftar;
+gambarLampiranJurnal();
 }
 // Penghitung karakter yang hanya bersuara saat mendekati batas. Menampilkan
 // "12 / 1500" sejak huruf pertama hanya menambah keramaian; yang berguna adalah
@@ -421,30 +483,64 @@ out.textContent = n < 10 ? (10 - n) + ' karakter lagi'
 out.classList.toggle('kritis', sisa <= 50 || n < 10);
 }
 function pratinjauFotoJurnal(event) {
-const file = event.target.files && event.target.files[0];
-if (!file) return;
-if (!file.type.startsWith('image/')) { toast('Berkas harus berupa gambar.', 'error'); return; }
-kompresGambar(file, 900, 0.65).then(dataUrl => {
-AppState.fotoJurnal = dataUrl;
-const prev = $('jrPratinjau');
-if (prev) { prev.src = dataUrl; prev.hidden = false; }
-if ($('jrNamaFoto')) $('jrNamaFoto').textContent = file.name;
-}).catch(() => toast('Gambar tidak dapat dibaca.', 'error'));
+const berkas = Array.prototype.slice.call(event.target.files || []);
+// Kotak berkasnya SELALU dikosongkan, bahkan saat gagal. Kalau tidak, memilih
+// berkas yang sama dua kali berturut-turut tidak memicu onchange sama sekali —
+// pengguna yang baru menghapus satu foto lalu memilihnya kembali akan melihat
+// tidak terjadi apa-apa.
+event.target.value = '';
+if (!berkas.length) return;
+const daftar = AppState.fotoJurnal || [];
+const ruang = JR_FOTO_MAKS - daftar.length;
+if (ruang <= 0) { toast('Dokumentasi maksimal ' + JR_FOTO_MAKS + ' foto.', 'warning'); return; }
+if (berkas.length > ruang) {
+toast('Hanya ' + ruang + ' foto lagi yang bisa ditambahkan.', 'warning');
+}
+const dipakai = berkas.slice(0, ruang).filter(function (f) {
+if (f.type.startsWith('image/')) return true;
+toast('Berkas "' + f.name + '" bukan gambar dan dilewati.', 'error');
+return false;
+});
+if (!dipakai.length) return;
+Promise.all(dipakai.map(function (f) { return kompresGambar(f, 900, 0.65); }))
+.then(function (hasil) {
+hasil.forEach(function (dataUrl) {
+if ((AppState.fotoJurnal || []).length < JR_FOTO_MAKS) {
+AppState.fotoJurnal.push({ data: dataUrl, url: dataUrl });
+}
+});
+gambarLampiranJurnal();
+})
+.catch(function () { toast('Gambar tidak dapat dibaca.', 'error'); });
 }
 async function kirimJurnal() {
 const kegiatan = $('jrKegiatan').value.trim();
-$('errJrKegiatan').textContent = '';
-$('jrKegiatan').classList.remove('invalid');
+bersihkanBidangGalat([['jrKegiatan', 'errJrKegiatan']]);
+$('errJrFoto').textContent = '';
 if (kegiatan.length < 10) {
-$('errJrKegiatan').textContent = 'Uraian kegiatan minimal 10 karakter.';
-$('jrKegiatan').classList.add('invalid');
+tandaiBidangGalat('jrKegiatan', 'errJrKegiatan', 'Uraian kegiatan minimal 10 karakter.');
+return;
+}
+// Dokumentasi wajib sejak v8.7. Diperiksa di klien DAN di server: yang di
+// klien supaya penggunanya tahu sebelum menunggu unggahan, yang di server
+// supaya aturannya tetap berlaku bagi permintaan yang tidak lewat layar ini.
+const daftar = AppState.fotoJurnal || [];
+if (!daftar.length) {
+$('errJrFoto').textContent = 'Lampirkan minimal satu foto dokumentasi.';
+toast('Lampirkan minimal satu foto dokumentasi.', 'warning');
+const lam = $('jrLampiran');
+if (lam) gulirKeTengah(lam.closest('.field') || lam);
 return;
 }
 tampilkanSibuk('Menyimpan jurnal…');
 try {
 const res = await panggil('submitJurnal', AppState.sessionToken, {
 tanggal: $('jrTanggal').value, kegiatan: kegiatan,
-kendala: $('jrKendala').value.trim(), fotoBase64: AppState.fotoJurnal || null });
+pembelajaran: $('jrPembelajaran').value.trim(),
+kendala: $('jrKendala').value.trim(),
+fotoTetap: daftar.filter(function (f) { return f.id; }).map(function (f) { return f.id; }),
+fotoBaru: daftar.filter(function (f) { return !f.id && f.data; }).map(function (f) { return f.data; })
+});
 sembunyikanSibuk();
 if (!res.success) { toast(res.message, 'error', 6000); return; }
 AppState.fotoJurnal = null;
