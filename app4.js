@@ -896,6 +896,7 @@ $('rjRingkas').innerHTML = [
 buatTabel({
 id: 'rekapJurnal', mount: 'tabelRekapJurnal', idPrefix: 'rj',
 judulEkspor: 'Rekap Jurnal Harian',
+labelAksi: 'Aksi',
 data: res.data.items, kunciPilih: 'siswaId', sortAwal: 'Nama',
 cariField: ['Nama', 'NIS', 'Kelas', 'Tempat', 'Guru'],
 kosong: { ikon: 'menu_book', judul: 'Belum ada data', desc: 'Belum ada siswa dengan penempatan aktif.' },
@@ -914,36 +915,222 @@ render: r => r.Ditolak ? `<span style="color:var(--error);font-weight:600">${r.D
 { k: 'TerakhirIsi', label: 'Terakhir Isi', sortable: true,
 render: r => r.TerakhirIsi ? tglSingkat(r.TerakhirIsi) : '<span class="td-sub">belum pernah</span>' }
 ],
-aksi: r => `<button class="btn-icon" aria-label="Lihat jurnal ${esc(r.Nama)}"
+aksi: r => `<button class="btn-icon" aria-label="Buka detail jurnal ${esc(r.Nama)}"
+title="Buka halaman detail jurnal"
 onclick="bukaJurnalSiswa('${esc(r.siswaId)}')"><span class="mi">visibility</span></button>`
 });
 } catch (err) {
 $('tabelRekapJurnal').innerHTML = emptyState('error', 'Gagal memuat rekap', err.message);
 }
 }
-async function bukaJurnalSiswa(siswaId) {
-bukaModal('Jurnal Siswa', memuatInline('Mengambil jurnal siswa…'), []);
-try {
-const res = await panggil('getJurnalSiswa', AppState.sessionToken, siswaId);
-if (!res.success) { $('modalBody').innerHTML = emptyState('block', 'Akses ditolak', res.message); return; }
-$('modalTitle').textContent = 'Jurnal — ' + res.data.nama;
-const items = res.data.items;
-$('modalBody').innerHTML = items.length ? `<div class="list">${items.map(j => `
-<div class="list-item" style="align-items:flex-start">
-<div class="list-lead ${j.status === 'Disetujui' ? 'ok' : j.status === 'Ditolak' ? 'danger' : 'warn'}">
-<span class="mi">${j.status === 'Disetujui' ? 'check' : j.status === 'Ditolak' ? 'close' : 'hourglass_top'}</span></div>
-<div class="list-main">
-<div class="list-title">${tglSingkat(j.tanggal)}</div>
-<div class="list-text">${esc(j.kegiatan)}</div>
-${j.komentar ? `<div class="list-sub" style="margin-top:6px"><strong>Komentar:</strong> ${esc(j.komentar)}</div>` : ''}
-</div>
-<div class="list-tail">${chipStatus(j.status)}</div>
-</div>`).join('')}</div>`
-: emptyState('note_add', 'Belum ada jurnal', 'Siswa ini belum pernah mengisi jurnal.');
-$('modalFoot').innerHTML = '';
-} catch (err) {
-$('modalBody').innerHTML = emptyState('error', 'Gagal memuat', err.message);
+// ── Halaman Detail Jurnal Siswa (v8.3) ─────────────────────────────────────
+//
+// Sebelumnya ini sebuah modal yang isinya daftar rata. Tiga akibatnya: seluruh
+// riwayat harus digulir di dalam kotak yang sendirinya berada di layar yang
+// juga digulir; identitas siswanya hanya muncul sebagai satu baris judul; dan
+// guru yang menemukan jurnal perlu diperbaiki harus menutup modalnya dulu,
+// pindah tab, lalu mencari kembali jurnal yang sama.
+//
+// Sebagai halaman, ketiganya selesai: rekapnya terbaca sekaligus, fotonya
+// punya tempat, dan Setujui/Tolak ada persis di sebelah jurnal yang sedang
+// dibaca.
+function bukaJurnalSiswa(siswaId) {
+AppState.jurnalDetail = siswaId;
+navigateTo('detail-jurnal');
 }
+function initDetailJurnal() {
+if (!AppState.jurnalDetail) { navigateTo('rekap-jurnal'); return; }
+muatDetailJurnal(AppState.jurnalDetail);
+}
+async function muatDetailJurnal(siswaId, paksa) {
+const box = $('djIsi');
+if (!box || !siswaId) return;
+box.innerHTML = memuatInline('Mengambil jurnal siswa…');
+let res;
+try { res = await (paksa ? panggil : panggilCepat)('getJurnalSiswa', AppState.sessionToken, siswaId); }
+catch (e) { box.innerHTML = emptyState('wifi_off', 'Gagal memuat jurnal', e.message); return; }
+if (!res.success) { box.innerHTML = emptyState('block', 'Tidak dapat dibuka', res.message); return; }
+AppState.jurnalData = res.data;
+gambarDetailJurnal(res.data);
+}
+// Saringan status dikerjakan DI KLIEN, dari data yang sudah dipegang. Seluruh
+// jurnal seorang siswa paling banyak beberapa ratus baris — memanggil server
+// setiap kali tombol saringnya ditekan berarti menunggu satu sampai dua detik
+// untuk pekerjaan yang selesai dalam hitungan milidetik di sini.
+const DJ_SARING = { status: 'semua' };
+function saringJurnal(nilai, el) {
+DJ_SARING.status = nilai;
+const bar = el && el.parentNode;
+if (bar) Array.prototype.forEach.call(bar.querySelectorAll('.seg-btn'), function (b) {
+b.classList.toggle('active', b === el);
+b.setAttribute('aria-pressed', b === el ? 'true' : 'false');
+});
+gambarDaftarJurnal();
+}
+function jurnalTersaring() {
+const d = AppState.jurnalData || { items: [] };
+if (DJ_SARING.status === 'semua') return d.items;
+return d.items.filter(function (j) { return j.status === DJ_SARING.status; });
+}
+const DJ_NADA = { Disetujui: 'ok', Ditolak: 'danger', Menunggu: 'warn' };
+const DJ_BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+                  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+function gambarDaftarJurnal() {
+const box = $('djDaftar');
+if (!box) return;
+const d = AppState.jurnalData || { items: [] };
+const items = jurnalTersaring();
+const jml = $('djJumlah');
+if (jml) jml.textContent = items.length + ' dari ' + d.items.length + ' jurnal';
+if (!items.length) {
+box.innerHTML = d.items.length
+  ? emptyState('filter_alt_off', 'Tidak ada jurnal pada saringan ini',
+      'Ubah saringan status untuk melihat jurnal lainnya.')
+  : emptyState('note_add', 'Belum ada jurnal',
+      'Siswa ini belum pernah mengisi jurnal kegiatan.');
+return;
+}
+// Dikelompokkan PER BULAN. Daftar rata sepanjang satu semester tidak punya
+// penanda apa pun untuk mata: tanggal 3 Agustus dan 3 September terbaca sama
+// sampai dibaca huruf demi huruf.
+const urutBulan = [], perBulan = {};
+items.forEach(function (j) {
+const k = String(j.tanggal).slice(0, 7);
+if (!perBulan[k]) { perBulan[k] = []; urutBulan.push(k); }
+perBulan[k].push(j);
+});
+box.innerHTML = urutBulan.map(function (k) {
+const bl = new Date(k + '-01T00:00:00');
+return `<div class="dj-bulan"><span>${DJ_BULAN[bl.getMonth()]} ${bl.getFullYear()}</span>
+<span class="dj-bulan-jml">${perBulan[k].length} jurnal</span></div>` +
+perBulan[k].map(kartuJurnal).join('');
+}).join('');
+}
+function kartuJurnal(j) {
+const d = new Date(j.tanggal + 'T00:00:00');
+// Nama hari PENUH untuk judulnya, tiga huruf untuk blok tanggalnya.
+// tglSingkat() sudah menyertakan hari tiga huruf di depannya, jadi judulnya
+// memakai tglRingkas() — kalau tidak, harinya tertulis dua kali.
+const hari = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'][d.getDay()];
+const nada = DJ_NADA[j.status] || 'warn';
+const boleh = (AppState.jurnalData || {}).bolehReview && j.bisaReview;
+return `<article class="dj-kartu nada-${nada}">
+<div class="dj-tgl">
+<span class="dj-tgl-hari">${hari.slice(0, 3)}</span>
+<span class="dj-tgl-angka">${String(d.getDate()).padStart(2, '0')}</span>
+<span class="dj-tgl-bulan">${DJ_BULAN[d.getMonth()].slice(0, 3)}</span>
+</div>
+<div class="dj-isi">
+<div class="dj-kepala">
+<div class="dj-judul">${hari}, ${tglRingkas(j.tanggal)}</div>
+${chipStatus(j.status)}
+</div>
+<div class="dj-bidang">
+<span class="dj-bidang-label"><span class="mi">work_history</span> Kegiatan</span>
+<p class="dj-teks">${esc(j.kegiatan) || '<span class="dj-hampa">Tidak diisi</span>'}</p>
+</div>
+${j.kendala ? `<div class="dj-bidang dj-kendala">
+<span class="dj-bidang-label"><span class="mi">report_problem</span> Kendala</span>
+<p class="dj-teks">${esc(j.kendala)}</p>
+</div>` : ''}
+${j.foto ? `<button class="dj-foto" type="button"
+aria-label="Perbesar dokumentasi jurnal ${esc(tglSingkat(j.tanggal))}"
+onclick="bukaPratinjau('Dokumentasi ${esc(tglSingkat(j.tanggal))}','${esc(j.fotoBesar || j.foto)}','','gambar')">
+<img src="${esc(j.foto)}" alt="Dokumentasi jurnal ${esc(tglSingkat(j.tanggal))}"
+loading="lazy" decoding="async">
+<span class="dj-foto-tanda"><span class="mi">zoom_in</span></span></button>` : ''}
+${j.komentar ? `<div class="dj-komentar">
+<span class="mi">rate_review</span>
+<div><strong>Komentar pembimbing</strong><p>${esc(j.komentar)}</p></div>
+</div>` : ''}
+${boleh ? `<div class="dj-aksi">
+<button class="btn btn-success btn-sm" onclick="prosesJurnalDetail('${esc(j.id)}','Disetujui',false)">
+<span class="mi">check</span> Setujui</button>
+<button class="btn btn-outline btn-sm" onclick="prosesJurnalDetail('${esc(j.id)}','Disetujui',true)">
+<span class="mi">edit_note</span> Setujui + Komentar</button>
+<button class="btn btn-danger btn-sm" onclick="prosesJurnalDetail('${esc(j.id)}','Ditolak',true)">
+<span class="mi">close</span> Tolak</button>
+</div>` : ''}
+</div>
+</article>`;
+}
+// Memakai alur review yang SAMA dengan tab Perlu Review — satu jalur, satu
+// perilaku. Yang berbeda hanya apa yang disegarkan sesudahnya.
+function prosesJurnalDetail(id, status, perluKomentar) {
+AppState.jurnalKembali = true;
+prosesJurnal(id, status, perluKomentar);
+}
+function gambarDetailJurnal(d) {
+const box = $('djIsi');
+if (!box) return;
+const inisial = String(d.nama || '?').trim().charAt(0).toUpperCase();
+const r = d.rekap || {};
+// Persentase disetujui dihitung dari jurnal yang SUDAH diputuskan, bukan dari
+// seluruh jurnal: yang masih menunggu belum ditolak siapa pun, dan
+// memasukkannya ke penyebut membuat angkanya turun hanya karena gurunya belum
+// sempat mereview.
+const diputus = (r.disetujui || 0) + (r.ditolak || 0);
+const persen = diputus ? Math.round((r.disetujui || 0) / diputus * 100) : 0;
+const ubin = [
+{ ikon: 'menu_book',    nada: '',        nilai: r.total || 0,     label: 'Total Jurnal' },
+{ ikon: 'check_circle', nada: 'ok',      nilai: r.disetujui || 0, label: 'Disetujui' },
+{ ikon: 'hourglass_top', nada: 'warn',   nilai: r.menunggu || 0,  label: 'Menunggu Review' },
+{ ikon: 'cancel',       nada: 'danger',  nilai: r.ditolak || 0,   label: 'Ditolak' },
+{ ikon: 'event_available', nada: 'info', nilai: r.bulanIni || 0,  label: 'Terisi Bulan Ini' },
+{ ikon: 'verified',     nada: 'ok',      nilai: diputus ? persen + '%' : '—',
+  label: 'Disetujui dari yang diputus' }
+];
+const saring = [['semua', 'Semua'], ['Menunggu', 'Menunggu'],
+                ['Disetujui', 'Disetujui'], ['Ditolak', 'Ditolak']];
+box.innerHTML = `
+<section class="ds-kepala">
+<div class="ds-avatar">${d.foto
+  ? `<img src="${esc(d.foto)}" alt="Foto ${esc(d.nama)}" loading="lazy">`
+  : esc(inisial)}</div>
+<div class="ds-kepala-teks">
+<h1 class="ds-nama">${esc(d.nama)}</h1>
+<p class="ds-sub">${esc(d.nis)} &middot; ${esc(d.kelas)} &middot; ${esc(d.tempat)}</p>
+<div class="ds-chip">
+<span class="chip chip-neutral"><span class="mi">supervisor_account</span>${esc(d.guru)}</span>
+${r.terakhirIsi ? `<span class="chip chip-neutral">
+<span class="mi">history</span>Terakhir isi ${esc(tglSingkat(r.terakhirIsi))}</span>`
+: `<span class="chip chip-error"><span class="mi">error</span>Belum pernah mengisi</span>`}
+${r.menunggu ? `<span class="chip chip-warning">
+<span class="mi">hourglass_top</span>${r.menunggu} menunggu review</span>` : ''}
+</div>
+</div>
+<div class="ds-aksi">
+<button class="btn btn-outline btn-sm" onclick="bukaHalamanSiswa('${esc(d.siswaId)}')">
+<span class="mi">badge</span> Detail Presensi</button>
+</div>
+</section>
+
+<div class="dj-ringkas">${ubin.map(function (u) {
+return `<div class="dj-ubin nada-${u.nada}">
+<span class="dj-ubin-ikon"><span class="mi">${u.ikon}</span></span>
+<div><div class="dj-ubin-nilai">${u.nilai}</div>
+<div class="dj-ubin-label">${u.label}</div></div>
+</div>`;
+}).join('')}</div>
+
+<section class="card">
+<div class="card-head">
+<h2 class="card-title"><span class="mi">history_edu</span> Riwayat Jurnal</h2>
+<span class="chip chip-neutral" id="djJumlah">—</span>
+</div>
+<div class="card-body">
+<div class="seg-group dj-saring" role="group" aria-label="Saring status jurnal">
+${saring.map(function (o, i) {
+return `<button class="seg-btn${i === 0 ? ' active' : ''}" type="button"
+aria-pressed="${i === 0 ? 'true' : 'false'}"
+onclick="saringJurnal('${o[0]}', this)">${o[1]}</button>`;
+}).join('')}
+</div>
+<div class="dj-daftar" id="djDaftar"></div>
+</div>
+</section>`;
+DJ_SARING.status = 'semua';
+gambarDaftarJurnal();
 }
 async function muatAntreanJurnal() {
 const box = $('panelAntreanJurnal');
@@ -1106,7 +1293,16 @@ toast(res.message, res.success ? 'success' : 'error');
 if (res.success) {
 batalkanPaketData();
 suntikBaris('getAntreanJurnal', [AppState.sessionToken], null, [id], 'id');
+// Halaman Detail Jurnal memanggil alur yang sama, tetapi ia TIDAK berada di
+// halaman rekap — memanggil muatAntreanJurnal()/muatRekapJurnal() dari sana
+// hanya menggambar ke elemen yang tidak ada. Yang perlu disegarkan adalah
+// halaman yang sedang dilihat pengguna.
+if (AppState.jurnalKembali) {
+AppState.jurnalKembali = false;
+muatDetailJurnal(AppState.jurnalDetail, true);
+} else {
 muatAntreanJurnal(); muatRekapJurnal();
+}
 }
 } catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
 }

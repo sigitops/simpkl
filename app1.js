@@ -2554,7 +2554,7 @@ AppState.paketData[halaman] = res.dataAwal;
 // Halaman yang tidak punya butir menunya sendiri, tetapi tetap "milik" sebuah
 // menu. Tanpa peta ini, membuka detail seorang siswa memadamkan seluruh sorotan
 // di sidebar — dan pengguna kehilangan jejak di mana ia sebenarnya berada.
-const MENU_INDUK = { 'detail-siswa': 'monitoring' };
+const MENU_INDUK = { 'detail-siswa': 'monitoring', 'detail-jurnal': 'rekap-jurnal' };
 function tandaiMenuAktif(halaman) {
 const sorot = MENU_INDUK[halaman] || halaman;
 $$('.nav-link[data-page]').forEach(b =>

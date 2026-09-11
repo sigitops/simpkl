@@ -1594,4 +1594,103 @@
   .bk-avatar{width:38px;height:38px;flex:0 0 38px;font-size:15px}
 }
 
-:root{--versi-aset:"8.2"}
+/* ── Halaman Detail Jurnal Siswa (v8.3) ───────────────────────────────────
+   Menggantikan modal jurnal yang lama. Kepala halaman, avatar, dan tombol
+   kembali memakai kelas .ds-* milik halaman Detail Presensi Siswa — dua
+   halaman yang dibuka dengan cara yang sama dari tabel yang mirip harus
+   terasa satu keluarga, bukan dua aplikasi berbeda. */
+.dj-ringkas{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:var(--s-md)}
+.dj-ubin{display:flex;align-items:center;gap:12px;padding:14px;border-radius:var(--r-lg);
+  border:1px solid var(--outline-variant);background:var(--surface-card);
+  box-shadow:var(--elev-1);position:relative;overflow:hidden;
+  --dj-nada:var(--primary);--dj-nada-bg:var(--primary-container)}
+.dj-ubin.nada-ok{--dj-nada:var(--success);--dj-nada-bg:var(--success-bg)}
+.dj-ubin.nada-warn{--dj-nada:var(--warning);--dj-nada-bg:var(--warning-bg)}
+.dj-ubin.nada-danger{--dj-nada:var(--error);--dj-nada-bg:var(--error-bg)}
+.dj-ubin.nada-info{--dj-nada:var(--info);--dj-nada-bg:var(--info-bg)}
+.dj-ubin::before{content:'';position:absolute;inset:0 auto 0 0;width:3px;background:var(--dj-nada)}
+.dj-ubin-ikon{width:40px;height:40px;flex:0 0 40px;border-radius:var(--r-md);display:grid;
+  place-items:center;background:var(--dj-nada-bg);color:var(--dj-nada)}
+.dj-ubin-ikon .mi{font-size:21px}
+.dj-ubin-nilai{font-size:22px;font-weight:800;letter-spacing:-.02em;line-height:1.1;
+  color:var(--on-surface)}
+.dj-ubin-label{font-size:11.5px;font-weight:600;letter-spacing:.02em;
+  color:var(--on-surface-muted);margin-top:2px}
+@media (min-width:760px){ .dj-ringkas{grid-template-columns:repeat(3,1fr)} }
+@media (min-width:1240px){ .dj-ringkas{grid-template-columns:repeat(6,1fr)} }
+
+.dj-daftar{display:flex;flex-direction:column;gap:12px}
+/* Pemisah bulan. Daftar rata sepanjang satu semester tidak punya penanda apa
+   pun untuk mata: 3 Agustus dan 3 September terbaca sama sampai dibaca huruf
+   demi huruf. */
+.dj-bulan{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  margin:10px 2px 2px;font-size:11.5px;font-weight:800;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--on-surface-muted)}
+.dj-bulan:first-child{margin-top:0}
+.dj-bulan-jml{letter-spacing:.02em;text-transform:none;font-weight:600}
+.dj-kartu{display:flex;gap:0;border:1px solid var(--outline-variant);border-radius:var(--r-lg);
+  background:var(--surface-card);overflow:hidden;position:relative;
+  --dj-nada:var(--outline)}
+.dj-kartu.nada-ok{--dj-nada:var(--success)}
+.dj-kartu.nada-warn{--dj-nada:var(--warning)}
+.dj-kartu.nada-danger{--dj-nada:var(--error)}
+.dj-kartu::before{content:'';position:absolute;inset:0 auto 0 0;width:3px;background:var(--dj-nada)}
+.dj-kartu:hover{box-shadow:var(--elev-1);border-color:var(--outline)}
+/* Tanggal sebagai blok berdiri sendiri, bukan sebaris teks: ia jangkar yang
+   dipakai mata untuk melompat di dalam daftar panjang. */
+.dj-tgl{flex:0 0 66px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:1px;padding:14px 6px;background:var(--surface-container-low);
+  border-right:1px solid var(--outline-variant)}
+.dj-tgl-hari{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--on-surface-muted)}
+.dj-tgl-angka{font-size:22px;font-weight:800;letter-spacing:-.02em;line-height:1;
+  color:var(--on-surface)}
+.dj-tgl-bulan{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--dj-nada)}
+.dj-isi{flex:1;min-width:0;padding:13px 15px;display:flex;flex-direction:column;gap:10px}
+.dj-kepala{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.dj-judul{font-size:14px;font-weight:700;color:var(--on-surface)}
+.dj-bidang{display:flex;flex-direction:column;gap:4px}
+.dj-bidang-label{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;
+  letter-spacing:.05em;text-transform:uppercase;color:var(--on-surface-muted)}
+.dj-bidang-label .mi{font-size:15px}
+.dj-teks{margin:0;font-size:13.5px;line-height:1.55;color:var(--on-surface-variant);
+  white-space:pre-wrap;overflow-wrap:anywhere}
+.dj-hampa{color:var(--on-surface-muted);font-style:italic}
+/* Kendala diberi latar kuning lembut: ia satu-satunya bagian jurnal yang
+   mungkin menuntut tindakan dari pembimbingnya. */
+.dj-kendala{background:var(--warning-bg);border-radius:var(--r-md);padding:9px 11px}
+.dj-kendala .dj-bidang-label{color:var(--warning)}
+.dj-foto{align-self:flex-start;position:relative;padding:0;border:1px solid var(--outline-variant);
+  background:none;border-radius:var(--r-md);overflow:hidden;cursor:zoom-in;line-height:0}
+.dj-foto img{width:150px;height:106px;object-fit:cover;display:block;
+  background:var(--surface-container);transition:transform .35s cubic-bezier(.4,0,.2,1)}
+.dj-foto:hover img{transform:scale(1.06)}
+.dj-foto-tanda{position:absolute;right:6px;bottom:6px;width:26px;height:26px;display:grid;
+  place-items:center;border-radius:var(--r-sm);background:var(--surface-card);
+  color:var(--on-surface);box-shadow:var(--elev-2);opacity:0;transition:opacity .15s ease}
+.dj-foto:hover .dj-foto-tanda,.dj-foto:focus-visible .dj-foto-tanda{opacity:1}
+.dj-komentar{display:flex;gap:9px;padding:10px 12px;border-radius:var(--r-md);
+  background:var(--primary-soft);border-left:3px solid var(--primary)}
+.dj-komentar .mi{font-size:18px;color:var(--primary);flex:none}
+.dj-komentar strong{display:block;font-size:11px;font-weight:800;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--primary);margin-bottom:2px}
+.dj-komentar p{margin:0;font-size:13px;line-height:1.5;color:var(--on-surface-variant)}
+/* Tombol putusan duduk di dalam kartunya sendiri. Guru yang menemukan jurnal
+   perlu diperbaiki tidak lagi harus menutup halaman, pindah tab, lalu mencari
+   kembali jurnal yang sama. */
+.dj-aksi{display:flex;flex-wrap:wrap;gap:8px;padding-top:4px;
+  border-top:1px solid var(--outline-variant);margin-top:2px}
+.dj-aksi .btn{flex:0 1 auto}
+@media (max-width:640px){
+  .dj-kartu{flex-direction:column}
+  .dj-tgl{flex:none;flex-direction:row;gap:7px;padding:8px 14px;justify-content:flex-start;
+    border-right:none;border-bottom:1px solid var(--outline-variant)}
+  .dj-tgl-angka{font-size:16px}
+  .dj-isi{padding:12px 14px}
+  .dj-foto img{width:100%;height:auto;aspect-ratio:3/2}
+  .dj-foto{align-self:stretch}
+  .dj-aksi .btn{flex:1 1 100%}
+}
+
+:root{--versi-aset:"8.3"}
