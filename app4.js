@@ -686,8 +686,19 @@ muatRekapDetailSiswa(AppState.siswaDetail, nilaiSaring('ds', 'rentang') || 'bula
  * panelnya baru ada sesudah data siswanya tiba, jadi bentuk yang sama dirakit
  * di klien. Kelas dan id-nya persis sama, sehingga bukaPanelFilter/ubahSaring
  * yang sudah ada bekerja tanpa perlu tahu siapa yang merakitnya.
+ *
+ * Argumen `tambahan` (opsional) disisipkan di bawah daftar parameter, di dalam
+ * badan panel yang sama. Dipakai halaman Detail Jurnal untuk menempelkan dua
+ * kolom tanggal rentang kustom: kolom itu MILIK parameter Periode, jadi ia
+ * harus hidup di dalam panel yang sama — kalau ditaruh di luar, pengguna
+ * memilih "Kustom" lalu panelnya tertutup di atas isian yang baru muncul.
+ *
+ * Argumen `aksiReset` (opsional) mengganti apa yang dijalankan tombol Atur
+ * Ulang. resetSaring() bawaan hanya mengenal <select>; halaman yang menitipkan
+ * kontrol lain lewat `tambahan` harus bisa ikut membersihkannya, kalau tidak
+ * tombol Atur Ulang meninggalkan separuh saringan yang tidak terlihat lagi.
  */
-function panelSaringKlien(pfx, judul, field) {
+function panelSaringKlien(pfx, judul, field, tambahan, aksiReset) {
 return `<div class="filter-wrap">
 <button class="btn btn-outline btn-sm filter-btn" id="${pfx}FilterBtn"
 onclick="bukaPanelFilter('${pfx}')" aria-haspopup="true" aria-expanded="false">
@@ -703,11 +714,11 @@ onclick="tutupPanelFilter('${pfx}')"><span class="mi">close</span></button></div
 <label class="filter-label" for="${pfx}_s_${esc(f.k)}">${esc(f.label)}</label>
 <select class="field-input" id="${pfx}_s_${esc(f.k)}"
 onchange="ubahSaring('${pfx}','${esc(f.k)}',this.value)">
-${f.opsi.map(o => `<option value="${esc(o[0])}"${
+${f.opsi.map(o => `<option value="${esc(o[0])}" data-label="${esc(o[1])}"${
 (nilaiSaring(pfx, f.k) || f.bawaan) === o[0] ? ' selected' : ''}>${esc(o[1])}</option>`).join('')}
-</select></div>`).join('')}</div>
+</select></div>`).join('')}${tambahan || ''}</div>
 <div class="filter-panel-kaki">
-<button class="btn btn-outline btn-sm" onclick="resetSaring('${pfx}')">
+<button class="btn btn-outline btn-sm" onclick="${aksiReset || `resetSaring('${pfx}')`}">
 <span class="mi">restart_alt</span> Atur Ulang</button>
 <button class="btn btn-primary btn-sm" onclick="tutupPanelFilter('${pfx}')">Selesai</button>
 </div></div></div>`;
@@ -1020,28 +1031,22 @@ return dasar.filter(function (j) { return j.status === DJ_SARING.status; });
 function saringAktif() {
 return DJ_SARING.periode !== 'semua' || DJ_SARING.status !== 'semua';
 }
-function tandaiSeg(el) {
-const bar = el && el.parentNode;
-if (!bar) return;
-Array.prototype.forEach.call(bar.querySelectorAll('.seg-btn'), function (b) {
-b.classList.toggle('active', b === el);
-b.setAttribute('aria-pressed', b === el ? 'true' : 'false');
-});
-}
-function saringJurnal(nilai, el) {
-DJ_SARING.status = nilai;
-tandaiSeg(el);
-gambarDaftarJurnal();
-}
-function periodeJurnal(nilai, el) {
-DJ_SARING.periode = nilai;
-tandaiSeg(el);
+// Satu-satunya jalan masuk perubahan saringan sejak v8.5: dipanggil oleh
+// ubahSaring()/resetSaring() lewat daftarkanSaring('dj', …). DJ_SARING tidak
+// lagi ditulisi dari penangan tombol; ia hanya CERMIN dari AppState.saring.dj,
+// supaya panel, lencana, dan daftarnya mustahil berselisih.
+function terapkanSaringJurnal() {
+DJ_SARING.periode = nilaiSaring('dj', 'periode') || 'semua';
+DJ_SARING.status  = nilaiSaring('dj', 'status')  || 'semua';
 const kustom = $('djKustom');
-if (kustom) kustom.hidden = (nilai !== 'kustom');
-// Fokus langsung ke kolom tanggal pertama saat Kustom dipilih: pilihan yang
-// membuka dua kolom isian tanpa menempatkan kursornya menyisakan satu klik
-// yang tidak perlu, dan pengguna papan ketik harus meraba mencarinya.
-if (nilai === 'kustom' && $('djDari')) {
+const tadinyaTertutup = kustom ? kustom.hidden : true;
+if (kustom) kustom.hidden = (DJ_SARING.periode !== 'kustom');
+// Fokus langsung ke kolom tanggal pertama pada saat Kustom BARU dipilih:
+// pilihan yang membuka dua kolom isian tanpa menempatkan kursornya menyisakan
+// satu klik yang tidak perlu, dan pengguna papan ketik harus meraba mencarinya.
+// Hanya saat baru terbuka — kalau setiap penerapan memindahkan fokus, mengubah
+// Status sesudahnya akan merebut kursor dari kotak yang sedang dipakai.
+if (DJ_SARING.periode === 'kustom' && tadinyaTertutup && $('djDari')) {
 try { $('djDari').focus({ preventScroll: true }); } catch (e) {}
 }
 gambarDaftarJurnal();
@@ -1058,23 +1063,21 @@ pesan.textContent = (DJ_SARING.dari && DJ_SARING.sampai && DJ_SARING.dari > DJ_S
 if (DJ_SARING.dari && DJ_SARING.sampai && DJ_SARING.dari > DJ_SARING.sampai) return;
 gambarDaftarJurnal();
 }
-function resetSaringJurnal() {
-DJ_SARING.periode = 'semua'; DJ_SARING.status = 'semua';
+function resetSaringDetailJurnal() {
+// Dua kolom tanggal dibersihkan di sini karena resetSaring() hanya mengenal
+// <select>; sisanya — mengosongkan pilihan, lencana, lalu menerapkan ulang —
+// diserahkan kepadanya supaya tidak ada dua jalan mengatur ulang saringan
+// yang bisa saling menyimpang.
 DJ_SARING.dari = ''; DJ_SARING.sampai = '';
 if ($('djDari')) $('djDari').value = '';
 if ($('djSampai')) $('djSampai').value = '';
-if ($('djKustom')) $('djKustom').hidden = true;
 if ($('djKustomPesan')) $('djKustomPesan').textContent = '';
-['djPeriode', 'djStatus'].forEach(function (id) {
-const bar = $(id);
-if (!bar) return;
-const btn = bar.querySelectorAll('.seg-btn');
-Array.prototype.forEach.call(btn, function (b, i) {
-b.classList.toggle('active', i === 0);
-b.setAttribute('aria-pressed', i === 0 ? 'true' : 'false');
-});
-});
+resetSaring('dj');
+if (typeof SARING_TERAPKAN.dj !== 'function') {
+DJ_SARING.periode = 'semua'; DJ_SARING.status = 'semua';
+if ($('djKustom')) $('djKustom').hidden = true;
 gambarDaftarJurnal();
+}
 }
 const DJ_LABEL_PERIODE = { semua: 'Semua periode', harian: 'Hari ini',
   mingguan: '7 hari terakhir', bulanan: 'Bulan ini', kustom: 'Rentang pilihan' };
@@ -1088,20 +1091,21 @@ const d = AppState.jurnalData || { items: [] };
 const dasar = jurnalPeriode();
 const items = jurnalTersaring();
 
-// Angka pada tombol status mengikuti periode yang sedang dipilih. Tombol
-// bertuliskan "Menunggu 3" yang menyisakan daftar kosong adalah tombol yang
-// berbohong, dan sekali berbohong angkanya tidak akan dipercaya lagi.
+// Angka di belakang tiap pilihan status mengikuti periode yang sedang
+// dipilih. Pilihan bertuliskan "Menunggu (3)" yang menyisakan daftar kosong
+// adalah pilihan yang berbohong, dan sekali berbohong angkanya tidak akan
+// dipercaya lagi. Sejak v8.5 angkanya menempel pada <option>, karena itulah
+// satu-satunya tempat yang terlihat saat parameternya bersembunyi di balik
+// tombol Filter — pengguna harus bisa memilih tanpa menebak-nebak.
 const hitung = { semua: dasar.length, Menunggu: 0, Disetujui: 0, Ditolak: 0 };
 dasar.forEach(function (j) { if (hitung[j.status] !== undefined) hitung[j.status]++; });
-const bar = $('djStatus');
-if (bar) Array.prototype.forEach.call(bar.querySelectorAll('.seg-btn'), function (b) {
-const k = b.getAttribute('data-status');
-const n = b.querySelector('.seg-angka');
-if (n) n.textContent = hitung[k] === undefined ? '0' : hitung[k];
-// Status yang tidak ada satu pun pada periode ini dipadamkan, bukan
-// disembunyikan: tombol yang hilang-timbul membuat barisnya bergoyang dan
-// pengguna kehilangan jangkar untuk membidik.
-b.classList.toggle('seg-btn-kosong', k !== 'semua' && !hitung[k]);
+const selStatus = $('dj_s_status');
+if (selStatus) Array.prototype.forEach.call(selStatus.options, function (o) {
+// data-label = teks aslinya. Kalau angkanya ditambahkan ke textContent yang
+// sudah berangka, labelnya memanjang setiap kali daftar digambar ulang.
+const label = o.getAttribute('data-label') || o.textContent;
+const k = o.value || 'semua';
+o.textContent = label + ' (' + (hitung[k] === undefined ? 0 : hitung[k]) + ')';
 });
 
 const jml = $('djJumlah');
@@ -1124,7 +1128,7 @@ ring.hidden = false;
 ring.innerHTML = `<span class="mi">filter_alt</span>
 <span>Menampilkan <b>${items.length}</b> dari ${(d.items || []).length} jurnal &middot;
 ${esc(bagian.join(' · '))}</span>
-<button class="btn-ghost btn-xs" onclick="resetSaringJurnal()">
+<button class="btn-ghost btn-xs" onclick="resetSaringDetailJurnal()">
 <span class="mi">restart_alt</span> Atur ulang</button>`;
 }
 }
@@ -1137,7 +1141,7 @@ box.innerHTML = (d.items || []).length
   ? emptyState('filter_alt_off', 'Tidak ada jurnal pada saringan ini',
       'Siswa ini punya ' + (d.items || []).length + ' jurnal, tetapi tidak ada yang cocok dengan ' +
       'periode dan status yang dipilih.',
-      `<button class="btn btn-outline btn-sm" onclick="resetSaringJurnal()">
+      `<button class="btn btn-outline btn-sm" onclick="resetSaringDetailJurnal()">
        <span class="mi">restart_alt</span> Tampilkan semua jurnal</button>`)
   : emptyState('note_add', 'Belum ada jurnal',
       'Siswa ini belum pernah mengisi jurnal kegiatan.');
@@ -1233,10 +1237,28 @@ const ubin = [
 { ikon: 'verified',     nada: 'ok',      nilai: diputus ? persen + '%' : '—',
   label: 'Disetujui dari yang diputus' }
 ];
-const periode = [['semua', 'Semua'], ['harian', 'Harian'], ['mingguan', 'Mingguan'],
-                 ['bulanan', 'Bulanan'], ['kustom', 'Kustom']];
-const saring = [['semua', 'Semua'], ['Menunggu', 'Menunggu'],
+// Nilai "" untuk pilihan Semua, BUKAN "semua". Itulah yang dianggap kosong
+// oleh ubahSaring/resetSaring/perbaruiLencanaSaring: dengan begitu lencana di
+// tombol Filter menghitung persis jumlah parameter yang benar-benar
+// mempersempit daftar, dan Atur Ulang mengembalikan kontrolnya ke pilihan
+// pertama tanpa perlu tahu apa-apa tentang halaman ini.
+const periode = [['', 'Semua periode'], ['harian', 'Hari ini'],
+                 ['mingguan', '7 hari terakhir'], ['bulanan', 'Bulan ini'],
+                 ['kustom', 'Rentang tanggal sendiri']];
+const saring = [['', 'Semua status'], ['Menunggu', 'Menunggu'],
                 ['Disetujui', 'Disetujui'], ['Ditolak', 'Ditolak']];
+const kustomHTML = `
+<div class="dj-kustom" id="djKustom" hidden>
+<div class="filter-field">
+<label class="filter-label" for="djDari">Dari Tanggal</label>
+<input class="field-input" type="date" id="djDari" onchange="ubahRentangJurnal()">
+</div>
+<div class="filter-field">
+<label class="filter-label" for="djSampai">Sampai Tanggal</label>
+<input class="field-input" type="date" id="djSampai" onchange="ubahRentangJurnal()">
+</div>
+<p class="dj-kustom-pesan" id="djKustomPesan" role="status"></p>
+</div>`;
 box.innerHTML = `
 <section class="ds-kepala">
 <div class="ds-avatar">${d.foto
@@ -1271,44 +1293,28 @@ return `<div class="dj-ubin nada-${u.nada}">
 <section class="card">
 <div class="card-head">
 <h2 class="card-title"><span class="mi">history_edu</span> Riwayat Jurnal</h2>
+<div class="rw-alat">
 <span class="chip chip-neutral" id="djJumlah">—</span>
+${panelSaringKlien('dj', 'Saring Riwayat Jurnal', [
+  { k: 'periode', label: 'Periode', opsi: periode, bawaan: '' },
+  { k: 'status',  label: 'Status Jurnal', opsi: saring, bawaan: '' }
+], kustomHTML, 'resetSaringDetailJurnal()')}
+</div>
 </div>
 <div class="card-body">
-<div class="dj-alat">
-<div class="dj-alat-baris">
-<span class="dj-alat-label"><span class="mi">date_range</span> Periode</span>
-<div class="seg-group dj-saring" id="djPeriode" role="group" aria-label="Saring periode jurnal">
-${periode.map(function (o, i) {
-return `<button class="seg-btn${i === 0 ? ' active' : ''}" type="button"
-aria-pressed="${i === 0 ? 'true' : 'false'}"
-onclick="periodeJurnal('${o[0]}', this)">${o[1]}</button>`;
-}).join('')}
-</div>
-</div>
-<div class="dj-kustom" id="djKustom" hidden>
-<label class="dj-kustom-label" for="djDari">Dari</label>
-<input class="field-input" type="date" id="djDari" onchange="ubahRentangJurnal()">
-<label class="dj-kustom-label" for="djSampai">sampai</label>
-<input class="field-input" type="date" id="djSampai" onchange="ubahRentangJurnal()">
-<span class="dj-kustom-pesan" id="djKustomPesan" role="status"></span>
-</div>
-<div class="dj-alat-baris">
-<span class="dj-alat-label"><span class="mi">label</span> Status</span>
-<div class="seg-group dj-saring" id="djStatus" role="group" aria-label="Saring status jurnal">
-${saring.map(function (o, i) {
-return `<button class="seg-btn${i === 0 ? ' active' : ''}" type="button" data-status="${esc(o[0])}"
-aria-pressed="${i === 0 ? 'true' : 'false'}"
-onclick="saringJurnal('${o[0]}', this)">${o[1]}<span class="seg-angka">0</span></button>`;
-}).join('')}
-</div>
-</div>
-</div>
 <div class="dj-ringkas-saring" id="djRingkasSaring" hidden></div>
 <div class="dj-daftar" id="djDaftar"></div>
 </div>
 </section>`;
+// Halaman ini bisa dibuka berkali-kali untuk siswa yang berbeda; saringan
+// siswa sebelumnya tidak boleh terbawa dan diam-diam memotong daftar siswa
+// berikutnya.
+AppState.saring = AppState.saring || {};
+AppState.saring.dj = {};
 DJ_SARING.periode = 'semua'; DJ_SARING.status = 'semua';
 DJ_SARING.dari = ''; DJ_SARING.sampai = '';
+daftarkanSaring('dj', terapkanSaringJurnal);
+perbaruiLencanaSaring('dj');
 gambarDaftarJurnal();
 }
 async function muatAntreanJurnal() {
