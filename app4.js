@@ -953,25 +953,131 @@ if (!res.success) { box.innerHTML = emptyState('block', 'Tidak dapat dibuka', re
 AppState.jurnalData = res.data;
 gambarDetailJurnal(res.data);
 }
-// Saringan status dikerjakan DI KLIEN, dari data yang sudah dipegang. Seluruh
-// jurnal seorang siswa paling banyak beberapa ratus baris — memanggil server
-// setiap kali tombol saringnya ditekan berarti menunggu satu sampai dua detik
-// untuk pekerjaan yang selesai dalam hitungan milidetik di sini.
-const DJ_SARING = { status: 'semua' };
-function saringJurnal(nilai, el) {
-DJ_SARING.status = nilai;
+// ── Saringan riwayat jurnal: periode + status ──────────────────────────────
+//
+// SELURUHNYA dikerjakan di klien, dari data yang sudah dipegang. Jurnal seorang
+// siswa paling banyak beberapa ratus baris; memanggil server setiap kali tombol
+// saringnya ditekan berarti menunggu satu sampai dua detik untuk pekerjaan yang
+// selesai dalam hitungan milidetik di sini.
+const DJ_SARING = { periode: 'semua', status: 'semua', dari: '', sampai: '' };
+// Bawaannya "Semua", BUKAN "Bulan ini" seperti halaman Detail Presensi.
+// Alasannya ada di halaman ini sendiri: ubin rekap di atasnya menyebut TOTAL
+// jurnal. Membuka halaman dengan daftar yang sudah tersaring sebulan membuat
+// ubin bertuliskan 12 berdiri persis di atas daftar berisi 5 — dan pembacanya
+// tidak punya cara tahu mana yang salah.
+function mundurHari(iso, n) {
+const d = new Date(String(iso) + 'T00:00:00');
+if (isNaN(d)) return iso;
+d.setDate(d.getDate() - n);
+return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') +
+       '-' + String(d.getDate()).padStart(2, '0');
+}
+// Rentang tanggal yang sedang berlaku, atau null bila tidak dibatasi.
+function rentangJurnal() {
+const hariIni = (AppState.jurnalData || {}).hariIni || '';
+const p = DJ_SARING.periode;
+if (p === 'semua' || !hariIni) {
+if (p !== 'kustom') return null;
+}
+if (p === 'harian')   return { dari: hariIni, sampai: hariIni };
+if (p === 'mingguan') return { dari: mundurHari(hariIni, 6), sampai: hariIni };
+if (p === 'bulanan') {
+// SATU BULAN PENUH, bukan tanggal 1 sampai hari ini. Ubin "Terisi Bulan Ini"
+// di atasnya menghitung seluruh bulan kalender; membatasi saringannya sampai
+// hari ini membuat ubin dan daftarnya berselisih pada satu-satunya keadaan
+// yang bisa memunculkannya — jurnal bertanggal maju.
+const akhir = new Date(Number(hariIni.slice(0, 4)), Number(hariIni.slice(5, 7)), 0);
+return { dari: hariIni.slice(0, 7) + '-01',
+         sampai: hariIni.slice(0, 7) + '-' + String(akhir.getDate()).padStart(2, '0') };
+}
+if (p === 'kustom') {
+// Rentang kustom yang belum lengkap TIDAK menyaring apa pun. Menyaring
+// setengah jalan membuat daftarnya berubah sebelum penggunanya selesai
+// memilih, dan perubahan yang tidak diminta terbaca seperti kerusakan.
+if (!DJ_SARING.dari || !DJ_SARING.sampai) return null;
+return { dari: DJ_SARING.dari, sampai: DJ_SARING.sampai };
+}
+return null;
+}
+function dalamRentang(j, r) {
+if (!r) return true;
+return j.tanggal >= r.dari && j.tanggal <= r.sampai;
+}
+// Yang sudah lolos PERIODE — dipakai dua kali: untuk menghitung angka pada
+// tombol status, dan sebagai bahan saringan status berikutnya. Angka status
+// harus mengikuti periode yang sedang dipilih; kalau tidak, tombol bertuliskan
+// "Menunggu 3" akan menyisakan daftar kosong.
+function jurnalPeriode() {
+const d = AppState.jurnalData || { items: [] };
+const r = rentangJurnal();
+return (d.items || []).filter(function (j) { return dalamRentang(j, r); });
+}
+function jurnalTersaring() {
+const dasar = jurnalPeriode();
+if (DJ_SARING.status === 'semua') return dasar;
+return dasar.filter(function (j) { return j.status === DJ_SARING.status; });
+}
+function saringAktif() {
+return DJ_SARING.periode !== 'semua' || DJ_SARING.status !== 'semua';
+}
+function tandaiSeg(el) {
 const bar = el && el.parentNode;
-if (bar) Array.prototype.forEach.call(bar.querySelectorAll('.seg-btn'), function (b) {
+if (!bar) return;
+Array.prototype.forEach.call(bar.querySelectorAll('.seg-btn'), function (b) {
 b.classList.toggle('active', b === el);
 b.setAttribute('aria-pressed', b === el ? 'true' : 'false');
 });
+}
+function saringJurnal(nilai, el) {
+DJ_SARING.status = nilai;
+tandaiSeg(el);
 gambarDaftarJurnal();
 }
-function jurnalTersaring() {
-const d = AppState.jurnalData || { items: [] };
-if (DJ_SARING.status === 'semua') return d.items;
-return d.items.filter(function (j) { return j.status === DJ_SARING.status; });
+function periodeJurnal(nilai, el) {
+DJ_SARING.periode = nilai;
+tandaiSeg(el);
+const kustom = $('djKustom');
+if (kustom) kustom.hidden = (nilai !== 'kustom');
+// Fokus langsung ke kolom tanggal pertama saat Kustom dipilih: pilihan yang
+// membuka dua kolom isian tanpa menempatkan kursornya menyisakan satu klik
+// yang tidak perlu, dan pengguna papan ketik harus meraba mencarinya.
+if (nilai === 'kustom' && $('djDari')) {
+try { $('djDari').focus({ preventScroll: true }); } catch (e) {}
 }
+gambarDaftarJurnal();
+}
+function ubahRentangJurnal() {
+DJ_SARING.dari = $('djDari') ? $('djDari').value : '';
+DJ_SARING.sampai = $('djSampai') ? $('djSampai').value : '';
+const pesan = $('djKustomPesan');
+if (pesan) {
+pesan.textContent = (DJ_SARING.dari && DJ_SARING.sampai && DJ_SARING.dari > DJ_SARING.sampai)
+  ? 'Tanggal mulai melewati tanggal akhir.' : '';
+}
+// Rentang terbalik tidak dipakai menyaring — ia hanya diberitahukan.
+if (DJ_SARING.dari && DJ_SARING.sampai && DJ_SARING.dari > DJ_SARING.sampai) return;
+gambarDaftarJurnal();
+}
+function resetSaringJurnal() {
+DJ_SARING.periode = 'semua'; DJ_SARING.status = 'semua';
+DJ_SARING.dari = ''; DJ_SARING.sampai = '';
+if ($('djDari')) $('djDari').value = '';
+if ($('djSampai')) $('djSampai').value = '';
+if ($('djKustom')) $('djKustom').hidden = true;
+if ($('djKustomPesan')) $('djKustomPesan').textContent = '';
+['djPeriode', 'djStatus'].forEach(function (id) {
+const bar = $(id);
+if (!bar) return;
+const btn = bar.querySelectorAll('.seg-btn');
+Array.prototype.forEach.call(btn, function (b, i) {
+b.classList.toggle('active', i === 0);
+b.setAttribute('aria-pressed', i === 0 ? 'true' : 'false');
+});
+});
+gambarDaftarJurnal();
+}
+const DJ_LABEL_PERIODE = { semua: 'Semua periode', harian: 'Hari ini',
+  mingguan: '7 hari terakhir', bulanan: 'Bulan ini', kustom: 'Rentang pilihan' };
 const DJ_NADA = { Disetujui: 'ok', Ditolak: 'danger', Menunggu: 'warn' };
 const DJ_BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
                   'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
@@ -979,13 +1085,60 @@ function gambarDaftarJurnal() {
 const box = $('djDaftar');
 if (!box) return;
 const d = AppState.jurnalData || { items: [] };
+const dasar = jurnalPeriode();
 const items = jurnalTersaring();
+
+// Angka pada tombol status mengikuti periode yang sedang dipilih. Tombol
+// bertuliskan "Menunggu 3" yang menyisakan daftar kosong adalah tombol yang
+// berbohong, dan sekali berbohong angkanya tidak akan dipercaya lagi.
+const hitung = { semua: dasar.length, Menunggu: 0, Disetujui: 0, Ditolak: 0 };
+dasar.forEach(function (j) { if (hitung[j.status] !== undefined) hitung[j.status]++; });
+const bar = $('djStatus');
+if (bar) Array.prototype.forEach.call(bar.querySelectorAll('.seg-btn'), function (b) {
+const k = b.getAttribute('data-status');
+const n = b.querySelector('.seg-angka');
+if (n) n.textContent = hitung[k] === undefined ? '0' : hitung[k];
+// Status yang tidak ada satu pun pada periode ini dipadamkan, bukan
+// disembunyikan: tombol yang hilang-timbul membuat barisnya bergoyang dan
+// pengguna kehilangan jangkar untuk membidik.
+b.classList.toggle('seg-btn-kosong', k !== 'semua' && !hitung[k]);
+});
+
 const jml = $('djJumlah');
-if (jml) jml.textContent = items.length + ' dari ' + d.items.length + ' jurnal';
+if (jml) jml.textContent = items.length + ' dari ' + (d.items || []).length + ' jurnal';
+
+// Ringkasan saringan aktif — supaya daftar yang tidak lengkap TIDAK PERNAH
+// terbaca seperti data yang hilang.
+const ring = $('djRingkasSaring');
+if (ring) {
+if (!saringAktif()) { ring.hidden = true; ring.innerHTML = ''; }
+else {
+const r = rentangJurnal();
+const bagian = [];
+if (DJ_SARING.periode !== 'semua') {
+bagian.push(DJ_LABEL_PERIODE[DJ_SARING.periode] +
+  (DJ_SARING.periode === 'kustom' && r ? ' · ' + tglRingkas(r.dari) + ' – ' + tglRingkas(r.sampai) : ''));
+}
+if (DJ_SARING.status !== 'semua') bagian.push('Status ' + DJ_SARING.status);
+ring.hidden = false;
+ring.innerHTML = `<span class="mi">filter_alt</span>
+<span>Menampilkan <b>${items.length}</b> dari ${(d.items || []).length} jurnal &middot;
+${esc(bagian.join(' · '))}</span>
+<button class="btn-ghost btn-xs" onclick="resetSaringJurnal()">
+<span class="mi">restart_alt</span> Atur ulang</button>`;
+}
+}
+
 if (!items.length) {
-box.innerHTML = d.items.length
+// Keadaan kosong yang menerangkan SEBABNYA, dan menawarkan jalan keluarnya.
+// "Tidak ada data" tanpa penjelasan membuat pengguna menduga aplikasinya
+// rusak, padahal ia sendiri yang baru saja menyaringnya.
+box.innerHTML = (d.items || []).length
   ? emptyState('filter_alt_off', 'Tidak ada jurnal pada saringan ini',
-      'Ubah saringan status untuk melihat jurnal lainnya.')
+      'Siswa ini punya ' + (d.items || []).length + ' jurnal, tetapi tidak ada yang cocok dengan ' +
+      'periode dan status yang dipilih.',
+      `<button class="btn btn-outline btn-sm" onclick="resetSaringJurnal()">
+       <span class="mi">restart_alt</span> Tampilkan semua jurnal</button>`)
   : emptyState('note_add', 'Belum ada jurnal',
       'Siswa ini belum pernah mengisi jurnal kegiatan.');
 return;
@@ -1080,6 +1233,8 @@ const ubin = [
 { ikon: 'verified',     nada: 'ok',      nilai: diputus ? persen + '%' : '—',
   label: 'Disetujui dari yang diputus' }
 ];
+const periode = [['semua', 'Semua'], ['harian', 'Harian'], ['mingguan', 'Mingguan'],
+                 ['bulanan', 'Bulanan'], ['kustom', 'Kustom']];
 const saring = [['semua', 'Semua'], ['Menunggu', 'Menunggu'],
                 ['Disetujui', 'Disetujui'], ['Ditolak', 'Ditolak']];
 box.innerHTML = `
@@ -1119,17 +1274,41 @@ return `<div class="dj-ubin nada-${u.nada}">
 <span class="chip chip-neutral" id="djJumlah">—</span>
 </div>
 <div class="card-body">
-<div class="seg-group dj-saring" role="group" aria-label="Saring status jurnal">
-${saring.map(function (o, i) {
+<div class="dj-alat">
+<div class="dj-alat-baris">
+<span class="dj-alat-label"><span class="mi">date_range</span> Periode</span>
+<div class="seg-group dj-saring" id="djPeriode" role="group" aria-label="Saring periode jurnal">
+${periode.map(function (o, i) {
 return `<button class="seg-btn${i === 0 ? ' active' : ''}" type="button"
 aria-pressed="${i === 0 ? 'true' : 'false'}"
-onclick="saringJurnal('${o[0]}', this)">${o[1]}</button>`;
+onclick="periodeJurnal('${o[0]}', this)">${o[1]}</button>`;
 }).join('')}
 </div>
+</div>
+<div class="dj-kustom" id="djKustom" hidden>
+<label class="dj-kustom-label" for="djDari">Dari</label>
+<input class="field-input" type="date" id="djDari" onchange="ubahRentangJurnal()">
+<label class="dj-kustom-label" for="djSampai">sampai</label>
+<input class="field-input" type="date" id="djSampai" onchange="ubahRentangJurnal()">
+<span class="dj-kustom-pesan" id="djKustomPesan" role="status"></span>
+</div>
+<div class="dj-alat-baris">
+<span class="dj-alat-label"><span class="mi">label</span> Status</span>
+<div class="seg-group dj-saring" id="djStatus" role="group" aria-label="Saring status jurnal">
+${saring.map(function (o, i) {
+return `<button class="seg-btn${i === 0 ? ' active' : ''}" type="button" data-status="${esc(o[0])}"
+aria-pressed="${i === 0 ? 'true' : 'false'}"
+onclick="saringJurnal('${o[0]}', this)">${o[1]}<span class="seg-angka">0</span></button>`;
+}).join('')}
+</div>
+</div>
+</div>
+<div class="dj-ringkas-saring" id="djRingkasSaring" hidden></div>
 <div class="dj-daftar" id="djDaftar"></div>
 </div>
 </section>`;
-DJ_SARING.status = 'semua';
+DJ_SARING.periode = 'semua'; DJ_SARING.status = 'semua';
+DJ_SARING.dari = ''; DJ_SARING.sampai = '';
 gambarDaftarJurnal();
 }
 async function muatAntreanJurnal() {

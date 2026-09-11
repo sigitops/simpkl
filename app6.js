@@ -2052,4 +2052,4 @@ if (res.success) { batalkanPaketData(); muatHariLibur(); }
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '8.3';
+window.__SIMPKL_EOF = '8.4';
