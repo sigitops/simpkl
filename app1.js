@@ -1232,10 +1232,27 @@ cari.value = st.cari || '';
 cari.oninput = () => {
 st.cari = cari.value;
 st.halaman = 1;
-renderTabel(cfg.id);
+gambarUlangTabel(cfg.id);
 };
 }
 if (perHal) pasangPerHal(cfg, perHal);
+}
+/**
+ * Satu pintu menggambar ulang sesudah pencarian, jumlah entri, atau halaman
+ * berubah.
+ *
+ * Hampir semua pemakainya adalah tabel, dan renderTabel() yang mengerjakannya.
+ * Halaman yang memakai bilah alat dan paginasi yang SAMA tetapi menyusun
+ * daftarnya sendiri — kartu jurnal pada Detail Riwayat Jurnal, misalnya —
+ * menitipkan perakitnya di cfg.gambarSendiri. Tanpa pintu ini, halaman seperti
+ * itu terpaksa menyalin ulang seluruh mesin pencarian dan paginasi, dan salinan
+ * kedua cepat atau lambat menyimpang dari aslinya.
+ */
+function gambarUlangTabel(id) {
+const st = AppState.tabel[id];
+if (!st) return;
+if (st.cfg && typeof st.cfg.gambarSendiri === 'function') st.cfg.gambarSendiri();
+else renderTabel(id);
 }
 // Nilai bawaan jumlah entri, satu tempat untuk seluruh tabel di semua modul.
 const PER_HAL_BAWAAN = 10;
@@ -1259,7 +1276,7 @@ if (isian) isian.value = kustom ? String(st.perHal) : '';
 const terapkan = (n) => {
 st.perHal = n;
 st.halaman = 1;
-renderTabel(cfg.id);
+gambarUlangTabel(cfg.id);
 };
 sel.onchange = () => {
 if (sel.value === 'kustom') {
@@ -1709,7 +1726,7 @@ function gantiHalaman(id, hal) {
 const st = AppState.tabel[id];
 if (!st || hal < 1) return;
 st.halaman = hal;
-renderTabel(id);
+gambarUlangTabel(id);
 }
 function pilihBaris(id, idRow, nilai) {
 const st = AppState.tabel[id];

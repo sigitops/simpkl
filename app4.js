@@ -1023,13 +1023,39 @@ const d = AppState.jurnalData || { items: [] };
 const r = rentangJurnal();
 return (d.items || []).filter(function (j) { return dalamRentang(j, r); });
 }
+// ── Bilah alat: pencarian, jumlah entri, paginasi (v8.6) ───────────────────
+//
+// Keadaannya dititipkan ke AppState.tabel — tempat yang SAMA dengan seluruh
+// tabel di menu lain — dengan id 'djJurnal'. Dengan begitu pasangToolbarTabel(),
+// pasangPerHal(), paginasiHtml(), dan gantiHalaman() bawaan menyambungkannya
+// apa adanya, dan halaman ini mewarisi perilaku yang sudah dikenal pengguna
+// tanpa satu baris pun mesin pencarian atau paginasi yang disalin ulang.
+const DJ_TABEL = 'djJurnal';
+function stJurnal() { return (AppState.tabel || {})[DJ_TABEL]; }
+function kunciCariJurnal() {
+const st = stJurnal();
+return st ? String(st.cari || '').trim().toLowerCase() : '';
+}
+// Yang dicari adalah apa yang TERBACA di kartunya: uraian kegiatan, kendala,
+// komentar pembimbing, statusnya, dan tanggalnya — baik bentuk ISO (2026-09-10)
+// maupun bentuk yang tertulis di layar (Kam, 10 Sep 2026). Mencari "sep" pada
+// daftar yang memperlihatkan "10 Sep 2026" harus menemukannya; kalau tidak,
+// pengguna menyimpulkan pencariannya rusak.
+function cocokKunciJurnal(j, q) {
+if (!q) return true;
+return (String(j.kegiatan || '') + ' ' + String(j.kendala || '') + ' ' +
+        String(j.komentar || '') + ' ' + String(j.status || '') + ' ' +
+        String(j.tanggal || '') + ' ' + tglSingkat(j.tanggal)).toLowerCase().indexOf(q) !== -1;
+}
 function jurnalTersaring() {
 const dasar = jurnalPeriode();
-if (DJ_SARING.status === 'semua') return dasar;
-return dasar.filter(function (j) { return j.status === DJ_SARING.status; });
+const q = kunciCariJurnal();
+const kena = (DJ_SARING.status === 'semua')
+  ? dasar : dasar.filter(function (j) { return j.status === DJ_SARING.status; });
+return q ? kena.filter(function (j) { return cocokKunciJurnal(j, q); }) : kena;
 }
 function saringAktif() {
-return DJ_SARING.periode !== 'semua' || DJ_SARING.status !== 'semua';
+return DJ_SARING.periode !== 'semua' || DJ_SARING.status !== 'semua' || !!kunciCariJurnal();
 }
 // Satu-satunya jalan masuk perubahan saringan sejak v8.5: dipanggil oleh
 // ubahSaring()/resetSaring() lewat daftarkanSaring('dj', …). DJ_SARING tidak
@@ -1049,6 +1075,11 @@ if (kustom) kustom.hidden = (DJ_SARING.periode !== 'kustom');
 if (DJ_SARING.periode === 'kustom' && tadinyaTertutup && $('djDari')) {
 try { $('djDari').focus({ preventScroll: true }); } catch (e) {}
 }
+// Saringan yang berubah mengembalikan pembacanya ke halaman pertama — sama
+// dengan perilaku tabel di menu lain. Bertahan di halaman 4 sesudah daftarnya
+// menyusut jadi satu halaman hanya memperlihatkan layar kosong.
+const st = stJurnal();
+if (st) st.halaman = 1;
 gambarDaftarJurnal();
 }
 function ubahRentangJurnal() {
@@ -1061,6 +1092,8 @@ pesan.textContent = (DJ_SARING.dari && DJ_SARING.sampai && DJ_SARING.dari > DJ_S
 }
 // Rentang terbalik tidak dipakai menyaring — ia hanya diberitahukan.
 if (DJ_SARING.dari && DJ_SARING.sampai && DJ_SARING.dari > DJ_SARING.sampai) return;
+const st = stJurnal();
+if (st) st.halaman = 1;
 gambarDaftarJurnal();
 }
 function resetSaringDetailJurnal() {
@@ -1072,6 +1105,12 @@ DJ_SARING.dari = ''; DJ_SARING.sampai = '';
 if ($('djDari')) $('djDari').value = '';
 if ($('djSampai')) $('djSampai').value = '';
 if ($('djKustomPesan')) $('djKustomPesan').textContent = '';
+// Kata kunci pencarian ikut dilepas. "Atur ulang" yang menyisakan kotak cari
+// masih terisi mengembalikan daftar yang tetap pendek — dan pengguna
+// menyimpulkan tombolnya tidak bekerja.
+const st = stJurnal();
+if (st) { st.cari = ''; st.halaman = 1; }
+if ($('djTCari')) $('djTCari').value = '';
 resetSaring('dj');
 if (typeof SARING_TERAPKAN.dj !== 'function') {
 DJ_SARING.periode = 'semua'; DJ_SARING.status = 'semua';
@@ -1088,7 +1127,13 @@ function gambarDaftarJurnal() {
 const box = $('djDaftar');
 if (!box) return;
 const d = AppState.jurnalData || { items: [] };
-const dasar = jurnalPeriode();
+const q = kunciCariJurnal();
+// Angkanya dihitung dari yang sudah lolos PERIODE dan KATA KUNCI, tetapi
+// belum lolos status — supaya angka tiap status benar-benar menggambarkan
+// apa yang akan tersisa bila status itu dipilih.
+const dasar = q
+  ? jurnalPeriode().filter(function (j) { return cocokKunciJurnal(j, q); })
+  : jurnalPeriode();
 const items = jurnalTersaring();
 
 // Angka di belakang tiap pilihan status mengikuti periode yang sedang
@@ -1124,6 +1169,7 @@ bagian.push(DJ_LABEL_PERIODE[DJ_SARING.periode] +
   (DJ_SARING.periode === 'kustom' && r ? ' · ' + tglRingkas(r.dari) + ' – ' + tglRingkas(r.sampai) : ''));
 }
 if (DJ_SARING.status !== 'semua') bagian.push('Status ' + DJ_SARING.status);
+if (q) bagian.push('Kata kunci "' + (stJurnal() ? String(stJurnal().cari).trim() : q) + '"');
 ring.hidden = false;
 ring.innerHTML = `<span class="mi">filter_alt</span>
 <span>Menampilkan <b>${items.length}</b> dari ${(d.items || []).length} jurnal &middot;
@@ -1136,22 +1182,43 @@ ${esc(bagian.join(' · '))}</span>
 if (!items.length) {
 // Keadaan kosong yang menerangkan SEBABNYA, dan menawarkan jalan keluarnya.
 // "Tidak ada data" tanpa penjelasan membuat pengguna menduga aplikasinya
-// rusak, padahal ia sendiri yang baru saja menyaringnya.
+// rusak, padahal ia sendiri yang baru saja menyaringnya. Kata kunci
+// disebutkan APA ADANYA — pencarian yang gagal karena salah ketik hanya bisa
+// dikenali penggunanya kalau ia melihat kembali apa yang ia ketikkan.
 box.innerHTML = (d.items || []).length
-  ? emptyState('filter_alt_off', 'Tidak ada jurnal pada saringan ini',
-      'Siswa ini punya ' + (d.items || []).length + ' jurnal, tetapi tidak ada yang cocok dengan ' +
-      'periode dan status yang dipilih.',
+  ? emptyState('filter_alt_off',
+      q ? 'Tidak ada hasil pencarian' : 'Tidak ada jurnal pada saringan ini',
+      q
+        ? 'Tidak ada jurnal yang cocok dengan kata kunci "' +
+          (stJurnal() ? String(stJurnal().cari).trim() : q) + '" pada saringan yang dipilih.'
+        : 'Siswa ini punya ' + (d.items || []).length + ' jurnal, tetapi tidak ada yang cocok dengan ' +
+          'periode dan status yang dipilih.',
       `<button class="btn btn-outline btn-sm" onclick="resetSaringDetailJurnal()">
        <span class="mi">restart_alt</span> Tampilkan semua jurnal</button>`)
   : emptyState('note_add', 'Belum ada jurnal',
       'Siswa ini belum pernah mengisi jurnal kegiatan.');
 return;
 }
-// Dikelompokkan PER BULAN. Daftar rata sepanjang satu semester tidak punya
-// penanda apa pun untuk mata: tanggal 3 Agustus dan 3 September terbaca sama
-// sampai dibaca huruf demi huruf.
+
+// Paginasi memakai keadaan dan perakit yang SAMA dengan tabel di menu lain.
+// "Semua" (perHal = 0) berarti satu halaman penuh, bukan nol baris.
+const st = stJurnal();
+const total = items.length;
+const perHal = (st && st.perHal > 0) ? st.perHal : total;
+const totalHal = Math.max(1, Math.ceil(total / (perHal || 1)));
+// Menyaring sampai halaman yang sedang dibuka tidak ada lagi tidak boleh
+// menyisakan layar kosong: halamannya ditarik ke halaman terakhir yang masih
+// berisi, persis seperti renderTabel().
+if (st && st.halaman > totalHal) st.halaman = totalHal;
+const mulai = st ? (st.halaman - 1) * perHal : 0;
+const potong = items.slice(mulai, mulai + perHal);
+
+// Dikelompokkan PER BULAN — SESUDAH dipotong per halaman, supaya judul
+// bulannya menerangkan kartu yang benar-benar ada di halaman ini. Daftar rata
+// sepanjang satu semester tidak punya penanda apa pun untuk mata: tanggal
+// 3 Agustus dan 3 September terbaca sama sampai dibaca huruf demi huruf.
 const urutBulan = [], perBulan = {};
-items.forEach(function (j) {
+potong.forEach(function (j) {
 const k = String(j.tanggal).slice(0, 7);
 if (!perBulan[k]) { perBulan[k] = []; urutBulan.push(k); }
 perBulan[k].push(j);
@@ -1161,7 +1228,7 @@ const bl = new Date(k + '-01T00:00:00');
 return `<div class="dj-bulan"><span>${DJ_BULAN[bl.getMonth()]} ${bl.getFullYear()}</span>
 <span class="dj-bulan-jml">${perBulan[k].length} jurnal</span></div>` +
 perBulan[k].map(kartuJurnal).join('');
-}).join('');
+}).join('') + (st ? paginasiHtml(DJ_TABEL, total, totalHal, mulai, potong.length) : '');
 }
 function kartuJurnal(j) {
 const d = new Date(j.tanggal + 'T00:00:00');
@@ -1302,20 +1369,66 @@ ${panelSaringKlien('dj', 'Saring Riwayat Jurnal', [
 </div>
 </div>
 <div class="card-body">
+${toolbarJurnalKlien()}
 <div class="dj-ringkas-saring" id="djRingkasSaring" hidden></div>
 <div class="dj-daftar" id="djDaftar"></div>
 </div>
 </section>`;
-// Halaman ini bisa dibuka berkali-kali untuk siswa yang berbeda; saringan
-// siswa sebelumnya tidak boleh terbawa dan diam-diam memotong daftar siswa
-// berikutnya.
+// Halaman ini bisa dibuka berkali-kali untuk siswa yang berbeda; saringan,
+// kata kunci, dan nomor halaman siswa sebelumnya tidak boleh terbawa dan
+// diam-diam memotong daftar siswa berikutnya.
 AppState.saring = AppState.saring || {};
 AppState.saring.dj = {};
 DJ_SARING.periode = 'semua'; DJ_SARING.status = 'semua';
 DJ_SARING.dari = ''; DJ_SARING.sampai = '';
+AppState.tabel = AppState.tabel || {};
+AppState.tabel[DJ_TABEL] = {
+cfg: { id: DJ_TABEL, idPrefix: 'djT', gambarSendiri: gambarDaftarJurnal },
+data: [], cari: '', sortKey: null, sortDir: 'asc',
+halaman: 1, perHal: PER_HAL_BAWAAN, filterNilai: {}, terpilih: {}
+};
+pasangToolbarTabel(AppState.tabel[DJ_TABEL].cfg);
 daftarkanSaring('dj', terapkanSaringJurnal);
 perbaruiLencanaSaring('dj');
 gambarDaftarJurnal();
+}
+/**
+ * Bilah alat "Tampilkan N entri" + pencarian untuk halaman Detail Riwayat
+ * Jurnal.
+ *
+ * Markah, kelas, dan pola id-nya SAMA PERSIS dengan toolbarTabel() milik server
+ * yang dipakai seluruh menu bertabel — hanya blok tombol Filter yang tidak
+ * disertakan, sebab halaman ini sudah punya tombol Filter sendiri di kepala
+ * kartunya. Menyamakan markahnya berarti bilah alat ini mewarisi setiap
+ * perbaikan gaya dan tata letak yang pernah dan akan dibuat untuk yang lain.
+ */
+function toolbarJurnalKlien() {
+return `
+<div class="filter-bar">
+<div class="fb-kiri">
+<label class="entri-wrap">
+<span class="entri-label">Tampilkan</span>
+<select class="field-input select-sm" id="djTPerHal" aria-label="Jumlah entri per halaman">
+<option value="10" selected>10</option><option value="25">25</option>
+<option value="50">50</option><option value="100">100</option>
+<option value="0">Semua</option>
+<option value="kustom">Kustom…</option>
+</select>
+</label>
+<label class="entri-wrap entri-kustom" id="djTKustomWrap" hidden>
+<span class="entri-label">Jumlah</span>
+<input class="field-input select-sm entri-input" type="number" min="1" max="9999"
+       id="djTPerHalKustom" inputmode="numeric" placeholder="Baris"
+       aria-label="Jumlah entri per halaman (isi sendiri)">
+<span class="entri-label">baris</span>
+</label>
+</div>
+<div class="input-affix search-affix">
+<span class="mi">search</span>
+<input class="field-input" type="search" id="djTCari" placeholder="Cari kegiatan, kendala, komentar…"
+       aria-label="Cari jurnal">
+</div>
+</div>`;
 }
 async function muatAntreanJurnal() {
 const box = $('panelAntreanJurnal');
