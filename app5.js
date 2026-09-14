@@ -1178,14 +1178,16 @@ if (ikon) ikon.textContent = buka ? 'expand_less' : 'expand_more';
  * tindakan, dan mengarah tepat ke tindakan yang dibutuhkannya.
  */
 function aksiTempatTb(t, k) {
+// Kartu yang hari kerjanya belum diatur tetap perlu ditunjuk, tetapi TIDAK
+// dengan biru penuh: biru penuh sekarang milik tombol Sistem Shift, dan dua
+// tombol penuh warna bersebelahan tidak menunjuk apa pun. Penandanya memakai
+// nada amber kartunya sendiri, jadi keduanya tetap mudah dibedakan.
 const perluHari = k.nada === 'warn' && !t.pakaiShift;
-const perluShift = k.nada === 'warn' && t.pakaiShift;
 return `<footer class="tb-aksi">
-<button class="btn ${perluHari ? 'btn-primary' : 'btn-outline'}"
+<button class="btn btn-outline${perluHari ? ' tb-btn-perlu' : ''}"
 onclick="bukaJamKerjaTempat('${esc(t.id)}')">
 <span class="mi">edit_calendar</span> Atur Jam &amp; Hari Kerja</button>
-<button class="btn ${perluShift ? 'btn-primary' : 'btn-outline'}"
-onclick="bukaAturShift('${esc(t.id)}')">
+<button class="btn btn-primary" onclick="bukaAturShift('${esc(t.id)}')">
 <span class="mi">alarm</span> ${t.pakaiShift ? 'Ubah Sistem Shift' : 'Aktifkan Sistem Shift'}</button>
 </footer>`;
 }

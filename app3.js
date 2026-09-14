@@ -204,6 +204,44 @@ const JR_UBIN = [
 ];
 const JR_NADA = { Disetujui: 'ok', Revisi: 'danger', Menunggu: 'warn' };
 
+// ── Lini masa jurnal (v9.2) ───────────────────────────────────────────────
+//
+// Dipakai BERSAMA oleh riwayat jurnal siswa (app3) dan detail riwayat jurnal
+// admin/guru (app4). Ditulis di sini karena app3.js dimuat lebih dahulu; keenam
+// berkas app*.js berbagi satu lingkup global, jadi menyalinnya ke app4 berarti
+// dua salinan yang saling menimpa diam-diam.
+//
+// Bentuknya sengaja minimalis: satu garis tipis, satu simpul per hari. Yang
+// dibawa simpul itu BUKAN hiasan — warnanya keadaan jurnal hari itu, dan
+// ikonnya mengulang keadaan yang sama dalam bentuk, supaya yang tidak dapat
+// membedakan warna tetap membacanya.
+const TL_IKON = { Disetujui: 'check', Revisi: 'edit_note', Menunggu: 'hourglass_top' };
+/**
+ * Satu langkah pada lini masa: simpul di kiri, kartunya di kanan.
+ *
+ * `urutan` hanya menunda animasi masuknya — bukan menunda datanya. Seluruh
+ * daftar sudah tergambar sejak milidetik pertama.
+ */
+function langkahLiniMasa(status, isiHtml, urutan) {
+const nada = JR_NADA[status] || 'warn';
+const tunda = Math.min(Number(urutan) || 0, 12) * 45;
+return `<div class="tl-pos" style="--tl-tunda:${tunda}ms">
+<span class="tl-rel" aria-hidden="true">
+<span class="tl-garis"></span>
+<span class="tl-simpul nada-${nada}"><span class="mi">${TL_IKON[status] || 'schedule'}</span></span>
+<span class="tl-garis"></span>
+</span>${isiHtml}</div>`;
+}
+// Penanda bulan duduk DI ATAS garis yang sama, bukan memotongnya. Judul bulan
+// yang memutus garisnya membuat lini masanya terbaca sebagai beberapa daftar
+// terpisah, padahal ia satu perjalanan yang sama.
+function penandaBulanLiniMasa(isiHtml) {
+return `<div class="tl-pos tl-pos-bulan">
+<span class="tl-rel" aria-hidden="true">
+<span class="tl-garis"></span><span class="tl-tanda"></span><span class="tl-garis"></span>
+</span>${isiHtml}</div>`;
+}
+
 /**
  * Mengambil SELURUH jurnal siswa, sekali saja.
  *
@@ -1141,10 +1179,15 @@ const k = String(j.tanggal).slice(0, 7);
 if (!perBulan[k]) { perBulan[k] = []; urut.push(k); }
 perBulan[k].push(j);
 });
-box.innerHTML = `<div class="jb-daftar">` + urut.map(function (k) {
-return `<div class="dj-bulan"><span>${esc(labelBulanJurnal(k))}</span>
-<span class="dj-bulan-jml">${perBulan[k].length} jurnal</span></div>` +
-perBulan[k].map(kartuRiwayatJurnal).join('');
+// Nomor urut berjalan melintasi batas bulan supaya animasi masuknya mengalir
+// sebagai satu perjalanan, bukan mulai ulang di tiap judul bulan.
+let ke = 0;
+box.innerHTML = `<div class="tl">` + urut.map(function (k) {
+return penandaBulanLiniMasa(`<div class="dj-bulan"><span>${esc(labelBulanJurnal(k))}</span>
+<span class="dj-bulan-jml">${perBulan[k].length} jurnal</span></div>`) +
+perBulan[k].map(function (j) {
+return langkahLiniMasa(j.status, kartuRiwayatJurnal(j), ke++);
+}).join('');
 }).join('') + `</div>` +
 (st ? paginasiHtml(JR_TABEL, total, totalHal, mulai, potong.length) : '');
 }

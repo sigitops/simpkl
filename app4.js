@@ -1223,12 +1223,19 @@ const k = String(j.tanggal).slice(0, 7);
 if (!perBulan[k]) { perBulan[k] = []; urutBulan.push(k); }
 perBulan[k].push(j);
 });
-box.innerHTML = urutBulan.map(function (k) {
+// Nomor urutnya berjalan melintasi batas bulan supaya animasi masuknya
+// mengalir sebagai satu perjalanan, bukan mulai ulang di tiap judul bulan.
+let ke = 0;
+box.innerHTML = `<div class="tl">` + urutBulan.map(function (k) {
 const bl = new Date(k + '-01T00:00:00');
-return `<div class="dj-bulan"><span>${DJ_BULAN[bl.getMonth()]} ${bl.getFullYear()}</span>
-<span class="dj-bulan-jml">${perBulan[k].length} jurnal</span></div>` +
-perBulan[k].map(kartuJurnal).join('');
-}).join('') + (st ? paginasiHtml(DJ_TABEL, total, totalHal, mulai, potong.length) : '');
+return penandaBulanLiniMasa(
+`<div class="dj-bulan"><span>${DJ_BULAN[bl.getMonth()]} ${bl.getFullYear()}</span>
+<span class="dj-bulan-jml">${perBulan[k].length} jurnal</span></div>`) +
+perBulan[k].map(function (j) {
+return langkahLiniMasa(j.status, kartuJurnal(j), ke++);
+}).join('');
+}).join('') + `</div>` +
+(st ? paginasiHtml(DJ_TABEL, total, totalHal, mulai, potong.length) : '');
 }
 /**
  * Dokumentasi satu jurnal, dalam dua ukuran.

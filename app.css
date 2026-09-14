@@ -1922,7 +1922,7 @@
   .dj-aksi .btn{flex:1 1 100%}
 }
 
-:root{--versi-aset:"9.1"}
+:root{--versi-aset:"9.2"}
 
 /* ══ TEMPAT PKL BIMBINGAN — modul Guru (v8.9, dirancang ulang v9.1) ════════
    Kartu, bukan tabel: yang dibaca guru di sini bukan deretan angka melainkan
@@ -1935,7 +1935,7 @@
    bawah ini bertumpu pada satu peubah: --tb-nada, warna keadaan kartu itu.  */
 .tb-kartu,.tb-stat{--tb-nada:var(--primary);--tb-latar:var(--primary-soft);--tb-tinta:var(--primary)}
 .nada-ok{--tb-nada:var(--success);--tb-latar:var(--success-bg);--tb-tinta:var(--success)}
-.nada-warn{--tb-nada:var(--warning);--tb-latar:var(--warning-bg);--tb-tinta:#8A5B00}
+.nada-warn{--tb-nada:var(--warning);--tb-latar:var(--warning-bg);--tb-tinta:var(--warning-tinta)}
 .nada-info{--tb-nada:var(--info);--tb-latar:var(--info-bg);--tb-tinta:var(--info)}
 /* --tb-nada mewarnai BIDANG (pita, latar lencana); --tb-tinta mewarnai HURUF.
    Keduanya hampir selalu sama — kecuali amber. --warning (#B87A00) di atas
@@ -1943,7 +1943,6 @@
    lencana "Hari kerja belum diatur" justru lencana yang PALING perlu terbaca.
    Tintanya digelapkan khusus untuk tema terang; di tema gelap amber-nya sudah
    jauh lebih terang daripada latarnya, jadi dikembalikan seperti semula. */
-[data-theme="dark"] .nada-warn{--tb-tinta:var(--warning)}
 
 /* Ikhtisar tiga angka. Angka rata kanan-kiri dengan font tabular supaya
    deretannya tidak bergoyang saat isinya berubah. */
@@ -2157,3 +2156,90 @@
 .jk-aksi .btn{flex:1;min-width:0}
 .jk-aksi .jk-btn-balik{flex:0 0 auto;padding:10px 14px}
 .jk-aksi .jk-btn-rana{flex:2}
+
+/* ══ v9.2 ═════════════════════════════════════════════════════════════════ */
+
+/* Amber yang benar-benar terbaca di tema terang. --warning (#B87A00) di atas
+   --warning-bg hanya mencapai 3,27:1 — di bawah ambang 4,5:1 WCAG AA. Tokennya
+   DITAMBAHKAN, bukan mengubah --warning, jadi tidak ada satu pun komponen lain
+   yang ikut bergeser. Di tema gelap amber-nya sudah jauh lebih terang daripada
+   latarnya, jadi dikembalikan seperti semula. */
+:root,[data-theme="light"]{--warning-tinta:#8A5B00}
+[data-theme="dark"]{--warning-tinta:var(--warning)}
+
+/* ── Lini masa jurnal ─────────────────────────────────────────────────────
+   Dipakai riwayat jurnal siswa DAN detail riwayat jurnal admin/guru.
+
+   Garisnya dirakit dari dua potongan yang mengapit simpulnya, bukan satu garis
+   panjang yang lewat di belakangnya. Garis yang lewat di belakang menuntut
+   "halo" sewarna latar untuk menutupinya — dan latar itu berbeda antara badan
+   kartu, modal, dan halaman, jadi cepat atau lambat ia akan terlihat salah. */
+.tl{display:flex;flex-direction:column}
+.tl-pos{display:flex;gap:14px;align-items:stretch}
+/* Jarak antar langkah diletakkan pada KARTUNYA, bukan sebagai gap lini masa:
+   gap akan memotong garisnya menjadi ruas-ruas yang terputus. */
+.tl-pos>:not(.tl-rel){flex:1 1 auto;min-width:0;margin-bottom:12px}
+.tl-pos:last-child>:not(.tl-rel){margin-bottom:0}
+.tl-rel{flex:0 0 26px;display:flex;flex-direction:column;align-items:center;align-self:stretch}
+.tl-garis{width:2px;border-radius:2px;background:var(--outline-variant)}
+.tl-garis:first-child{flex:0 0 12px}
+.tl-garis:last-child{flex:1 1 auto;min-height:0}
+/* Perjalanannya punya awal dan akhir: garis tidak menjulur ke luar daftar. */
+.tl-pos:first-child .tl-garis:first-child{background:transparent}
+.tl-pos:last-child .tl-garis:last-child{background:transparent}
+.tl-simpul{flex:none;display:grid;place-items:center;width:26px;height:26px;border-radius:50%;
+  background:var(--tl-latar);border:2px solid var(--tl-nada);color:var(--tl-tinta,var(--tl-nada));
+  transition:transform .18s cubic-bezier(.22,.61,.36,1),box-shadow .18s ease}
+.tl-simpul .mi{font-size:15px}
+.tl-simpul{--tl-nada:var(--outline);--tl-latar:var(--surface-container-low)}
+.tl-simpul.nada-ok{--tl-nada:var(--success);--tl-latar:var(--success-bg)}
+.tl-simpul.nada-warn{--tl-nada:var(--warning);--tl-latar:var(--warning-bg);
+  --tl-tinta:var(--warning-tinta)}
+.tl-simpul.nada-danger{--tl-nada:var(--error);--tl-latar:var(--error-bg)}
+/* Simpulnya menanggapi kartunya, bukan hanya dirinya sendiri — termasuk saat
+   kartunya dicapai lewat papan ketik, bukan tetikus. */
+.tl-pos:hover .tl-simpul,.tl-pos:focus-within .tl-simpul{transform:scale(1.15);
+  box-shadow:0 0 0 4px var(--tl-latar)}
+.tl-pos-bulan .tl-garis:first-child{flex:0 0 6px}
+.tl-tanda{flex:none;width:9px;height:9px;border-radius:50%;
+  background:var(--surface-card);border:2px solid var(--outline)}
+.tl-pos-bulan>:not(.tl-rel){margin-bottom:8px}
+.tl-pos-bulan .dj-bulan{margin:0}
+/* Satu pita keadaan saja. Simpul berwarna DITAMBAH garis tepi berwarna di
+   kartunya adalah keterangan yang sama dikatakan dua kali, bersebelahan. */
+.tl-pos .dj-kartu::before{display:none}
+.tl-pos .jb-baris{border-left-width:1px;border-left-color:var(--outline-variant)}
+.tl-pos .jb-baris:hover{border-color:var(--primary)}
+
+/* Masuk berurutan, dari atas ke bawah: itulah kesan perjalanan yang dibawa
+   lini masa. `backwards`, BUKAN `both` — dengan `both` keadaan akhir animasi
+   tetap menempel dan mengalahkan transform pada :hover, sehingga simpulnya
+   berhenti menanggapi sentuhan. */
+@keyframes tlSimpul{from{transform:scale(.4);opacity:0}to{transform:none;opacity:1}}
+@keyframes tlGaris{from{transform:scaleY(0)}to{transform:none}}
+.tl-simpul{animation:tlSimpul .3s cubic-bezier(.22,.61,.36,1) backwards;
+  animation-delay:var(--tl-tunda,0ms)}
+.tl-garis{transform-origin:top;animation:tlGaris .3s ease backwards;
+  animation-delay:var(--tl-tunda,0ms)}
+@media (prefers-reduced-motion:reduce){
+  .tl-simpul,.tl-garis{animation:none}
+  .tl-simpul{transition:none}
+  .tl-pos:hover .tl-simpul,.tl-pos:focus-within .tl-simpul{transform:none}
+}
+@media (max-width:520px){
+  .tl-pos{gap:10px}
+  .tl-rel{flex:0 0 22px}
+  .tl-simpul{width:22px;height:22px}
+  .tl-simpul .mi{font-size:13px}
+}
+
+/* Penanda "perlu dibenahi" pada tombol Atur Jam & Hari Kerja. Memakai nada
+   amber kartunya, bukan biru — biru penuh milik tombol Sistem Shift. */
+.tb-btn-perlu{border-color:var(--tb-nada);background:var(--tb-latar);color:var(--tb-tinta)}
+.tb-btn-perlu:hover{background:var(--tb-latar);border-color:var(--tb-tinta)}
+
+/* Blok tanggal duduk di PUNCAK kartunya, bukan di tengah. Pada kartu tinggi —
+   yang ada kendala, foto, dan komentar pembimbing — tanggal yang melayang di
+   tengah kehilangan hubungannya dengan simpul lini masa di sebelahnya, yang
+   selalu berada di puncak. */
+.tl-pos .dj-tgl{justify-content:flex-start;padding-top:13px}
