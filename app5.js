@@ -1019,7 +1019,6 @@ muatPendaftaran();
 async function muatTempatBimbingan() {
 const box = $('tbDaftar');
 if (!box) return;
-box.innerHTML = memuatInline('Mengambil tempat PKL bimbingan…');
 try {
 const res = await panggilCepat('getTempatBimbingan', AppState.sessionToken);
 if (!res.success) { box.innerHTML = emptyState('block', 'Tidak dapat dibuka', res.message); return; }
@@ -1039,48 +1038,197 @@ box.innerHTML = emptyState('domain_disabled', 'Belum ada tempat PKL bimbingan',
 'Bila daftarnya kosong, berarti belum ada siswa Anda yang ditempatkan.');
 return;
 }
-box.innerHTML = `<div class="tb-daftar">${items.map(kartuTempatBimbingan).join('')}</div>`;
+box.innerHTML = ikhtisarTempatBimbingan(items) + TB_CATATAN +
+`<div class="tb-daftar">${items.map(kartuTempatBimbingan).join('')}</div>`;
 }
-function kartuTempatBimbingan(t) {
-const hari = (t.hariKerjaAngka || []).length
-  ? t.hariKerjaAngka.map(function (n) { return TB_HARI[n]; }).join(', ')
-  : '<span class="tb-hampa">belum diatur</span>';
-return `<article class="card tb-kartu">
-<div class="card-head">
-<h2 class="card-title"><span class="mi">domain</span> ${esc(t.namaInstansi)}</h2>
-<span class="chip chip-neutral">${t.siswa.length} siswa bimbingan</span>
-</div>
-<div class="card-body">
-<div class="tb-kisi">
-<div class="tb-medan">
-<span class="tb-label"><span class="mi">schedule</span> Jam Kerja</span>
-<span class="tb-nilai">${t.pakaiShift
-  ? '<span class="chip chip-info"><span class="mi">alarm</span>Sistem shift &middot; ' +
-    t.jumlahShift + ' shift</span>'
-  : esc(jamTampil(t.jamMasuk)) + ' – ' + esc(jamTampil(t.jamPulang))}</span>
-</div>
-<div class="tb-medan">
-<span class="tb-label"><span class="mi">event_repeat</span> Hari Kerja</span>
-<span class="tb-nilai">${hari}</span>
-</div>
-<div class="tb-medan">
-<span class="tb-label"><span class="mi">group</span> Siswa Bimbingan</span>
-<span class="tb-nilai tb-siswa">${t.siswa.map(function (s) {
-return '<span class="chip chip-neutral">' + esc(s.nama) + '</span>';
-}).join('')}</span>
-</div>
-</div>
-<div class="tb-aksi">
-<button class="btn btn-outline btn-sm" onclick="bukaJamKerjaTempat('${esc(t.id)}')">
+/**
+ * Ikhtisar tiga angka di puncak halaman.
+ *
+ * Dihitung dari daftar yang SUDAH di tangan — nol perjalanan tambahan ke
+ * server. Yang ingin diketahui guru dalam sedetik pertama bukan isi tiap kartu,
+ * melainkan berapa tempat yang ia pegang dan berapa yang sudah bershift;
+ * menghitungnya sendiri dari daftar kartu adalah pekerjaan yang seharusnya
+ * dikerjakan halaman ini.
+ */
+function ikhtisarTempatBimbingan(items) {
+const siswa = items.reduce(function (n, t) { return n + t.siswa.length; }, 0);
+const shift = items.filter(function (t) { return t.pakaiShift; }).length;
+const stat = [
+  { ikon: 'domain', nada: '',     angka: items.length, label: 'Tempat PKL' },
+  { ikon: 'group',  nada: 'ok',   angka: siswa,        label: 'Siswa Bimbingan' },
+  { ikon: 'alarm',  nada: 'info', angka: shift,        label: 'Memakai Shift' }
+];
+return `<section class="tb-ikhtisar" aria-label="Ringkasan tempat PKL bimbingan">
+${stat.map(function (s, i) {
+return `<div class="tb-stat nada-${s.nada}" style="--tb-tunda:${i * 45}ms">
+<span class="tb-stat-ikon"><span class="mi">${s.ikon}</span></span>
+<span class="tb-stat-isi">
+<strong class="tb-stat-angka">${s.angka}</strong>
+<span class="tb-stat-label">${s.label}</span></span>
+</div>`;
+}).join('')}
+</section>`;
+}
+// Batas kewenangan guru disebut sekali, ringkas, dan tidak memakan satu pita
+// penuh setiap kali halaman dibuka. Yang penting diingat hanya satu kalimat:
+// jadwal boleh, identitas tempat tidak.
+const TB_CATATAN = `<p class="tb-catatan"><span class="mi">shield_person</span>
+<span><b>Jam kerja, hari kerja, dan sistem shift</b> dapat Anda ubah di sini.
+Nama instansi, alamat, titik lokasi, radius, dan kuota tetap dikelola Pokja PKL.</span></p>`;
+
+const TB_HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+// Dua huruf, bukan satu: Senin, Selasa, dan Sabtu sama-sama berawalan "S", dan
+// deretan S S R K J S menyuruh pembacanya menebak. Urutannya mulai Senin,
+// mengikuti cara pekan kerja dibaca di sini.
+const TB_HARI_PENDEK = ['Mg', 'Sn', 'Sl', 'Rb', 'Km', 'Jm', 'Sb'];
+const TB_URUT_PEKAN = [1, 2, 3, 4, 5, 6, 0];
+const TB_SISWA_TAMPIL = 4;
+
+function lamaKerjaTb(masuk, pulang) {
+const ke = function (j) {
+const b = String(j || '').split(':');
+return (Number(b[0]) || 0) * 60 + (Number(b[1]) || 0);
+};
+const menit = ke(pulang) - ke(masuk);
+if (!(menit > 0)) return '';
+const jam = Math.floor(menit / 60), sisa = menit % 60;
+return (jam ? jam + ' jam' : '') + (sisa ? (jam ? ' ' : '') + sisa + ' menit' : '') + ' per hari';
+}
+/**
+ * Keadaan satu tempat, disimpulkan menjadi satu nada warna dan satu lencana.
+ *
+ * Inilah yang hilang dari rancangan sebelumnya: seluruh kartu terlihat sama,
+ * sehingga tempat yang hari kerjanya belum diatur — yang membuat siswanya
+ * dihitung Alpha setiap hari — tidak dapat dibedakan dari yang sudah beres.
+ */
+function keadaanTempatTb(t) {
+if (t.pakaiShift && !t.jumlahShift) {
+return { nada: 'warn', ikon: 'alarm_off', teks: 'Shift belum didefinisikan' };
+}
+if (t.pakaiShift) {
+return { nada: 'info', ikon: 'alarm', teks: 'Sistem shift · ' + t.jumlahShift + ' shift' };
+}
+if (!(t.hariKerjaAngka || []).length) {
+return { nada: 'warn', ikon: 'event_busy', teks: 'Hari kerja belum diatur' };
+}
+return { nada: 'ok', ikon: 'task_alt', teks: 'Jam kerja tetap' };
+}
+function pekanTempatTb(t) {
+const aktif = {};
+(t.hariKerjaAngka || []).forEach(function (n) { aktif[n] = true; });
+const nama = TB_URUT_PEKAN.filter(function (n) { return aktif[n]; })
+  .map(function (n) { return TB_HARI[n]; });
+return `<span class="tb-pekan" role="img" aria-label="Hari kerja: ${
+  nama.length ? esc(nama.join(', ')) : 'belum diatur'}">${
+TB_URUT_PEKAN.map(function (n) {
+return `<span class="tb-pekan-hari${aktif[n] ? ' aktif' : ''}" aria-hidden="true"
+title="${esc(TB_HARI[n])}">${TB_HARI_PENDEK[n]}</span>`;
+}).join('')}</span>`;
+}
+function kelasTempatTb(t) {
+const unik = [];
+t.siswa.forEach(function (s) {
+const k = String(s.kelas || '').trim();
+if (k && k !== '-' && unik.indexOf(k) === -1) unik.push(k);
+});
+if (!unik.length) return '';
+return unik.length > 2 ? unik.slice(0, 2).join(' · ') + ' +' + (unik.length - 2)
+                       : unik.join(' · ');
+}
+function orangTempatTb(t) {
+const semua = t.siswa, lebih = semua.length - TB_SISWA_TAMPIL;
+const pil = function (s) {
+return `<span class="tb-orang-pil" title="${esc(s.nama)}${s.kelas ? ' — ' + esc(s.kelas) : ''}">
+<span class="tb-orang-inisial" aria-hidden="true">${esc(inisialNama(s.nama))}</span>
+<span class="tb-orang-nama">${esc(s.nama)}</span></span>`;
+};
+if (lebih <= 0) return `<div class="tb-orang">${semua.map(pil).join('')}</div>`;
+// Sisanya disingkap di tempat, tanpa berpindah halaman dan tanpa memanggil
+// server: seluruh daftarnya sudah ada di tangan sejak kartu ini digambar.
+return `<div class="tb-orang" id="tbOrang-${esc(t.id)}" data-lengkap="0">
+${semua.slice(0, TB_SISWA_TAMPIL).map(pil).join('')}
+<span class="tb-orang-sisa">${semua.slice(TB_SISWA_TAMPIL).map(pil).join('')}</span>
+<button type="button" class="tb-orang-lagi" aria-expanded="false"
+onclick="singkapSiswaTempat('${esc(t.id)}', this)">
+<span class="mi">expand_more</span> <span class="tb-orang-lagi-teks">+${lebih} lainnya</span></button>
+</div>`;
+}
+function singkapSiswaTempat(id, tombol) {
+const box = $('tbOrang-' + id);
+if (!box) return;
+const buka = box.dataset.lengkap !== '1';
+box.dataset.lengkap = buka ? '1' : '0';
+tombol.setAttribute('aria-expanded', buka ? 'true' : 'false');
+const teks = tombol.querySelector('.tb-orang-lagi-teks');
+const ikon = tombol.querySelector('.mi');
+const sisa = box.querySelectorAll('.tb-orang-sisa .tb-orang-pil').length;
+if (teks) teks.textContent = buka ? 'Sembunyikan' : '+' + sisa + ' lainnya';
+if (ikon) ikon.textContent = buka ? 'expand_less' : 'expand_more';
+}
+/**
+ * Dua tombol, dan HANYA SATU yang boleh berteriak.
+ *
+ * Sebelumnya "Aktifkan Sistem Shift" selalu tampil sebagai tombol penuh warna
+ * di hampir setiap kartu. Menyalakan sistem shift adalah tindakan langka yang
+ * mengubah cara seluruh presensi tempat itu dihitung — menjadikannya benda
+ * paling mencolok di layar mengundang orang menekannya tanpa perlu, sementara
+ * kartu yang benar-benar butuh dibenahi tenggelam di antaranya.
+ *
+ * Tombol penuh warna kini muncul hanya pada kartu yang memang menuntut
+ * tindakan, dan mengarah tepat ke tindakan yang dibutuhkannya.
+ */
+function aksiTempatTb(t, k) {
+const perluHari = k.nada === 'warn' && !t.pakaiShift;
+const perluShift = k.nada === 'warn' && t.pakaiShift;
+return `<footer class="tb-aksi">
+<button class="btn ${perluHari ? 'btn-primary' : 'btn-outline'}"
+onclick="bukaJamKerjaTempat('${esc(t.id)}')">
 <span class="mi">edit_calendar</span> Atur Jam &amp; Hari Kerja</button>
-<button class="btn ${t.pakaiShift ? 'btn-outline' : 'btn-primary'} btn-sm"
+<button class="btn ${perluShift ? 'btn-primary' : 'btn-outline'}"
 onclick="bukaAturShift('${esc(t.id)}')">
 <span class="mi">alarm</span> ${t.pakaiShift ? 'Ubah Sistem Shift' : 'Aktifkan Sistem Shift'}</button>
+</footer>`;
+}
+function kartuTempatBimbingan(t, urutan) {
+const k = keadaanTempatTb(t);
+const lama = t.pakaiShift ? 'Jam mengikuti shift masing-masing siswa'
+                          : lamaKerjaTb(t.jamMasuk, t.jamPulang);
+const nHari = (t.hariKerjaAngka || []).length;
+const kelas = kelasTempatTb(t);
+return `<article class="tb-kartu nada-${k.nada}" style="--tb-tunda:${(urutan || 0) * 60 + 90}ms">
+<header class="tb-kepala">
+<span class="tb-lencana" aria-hidden="true"><span class="mi">domain</span></span>
+<div class="tb-judul-blok">
+<h2 class="tb-judul">${esc(t.namaInstansi)}</h2>
+${t.alamat ? `<p class="tb-alamat"><span class="mi" aria-hidden="true">place</span>
+${esc(t.alamat)}</p>` : ''}
+</div>
+<span class="tb-status"><span class="mi" aria-hidden="true">${k.ikon}</span> ${esc(k.teks)}</span>
+</header>
+<div class="tb-kisi">
+<div class="tb-medan">
+<span class="tb-label"><span class="mi" aria-hidden="true">schedule</span> Jam Kerja</span>
+<span class="tb-nilai">${t.pakaiShift
+  ? esc(t.jumlahShift + ' shift aktif')
+  : esc(jamTampil(t.jamMasuk)) + '<span class="tb-pisah">–</span>' + esc(jamTampil(t.jamPulang))}</span>
+${lama ? `<span class="tb-sub">${esc(lama)}</span>` : ''}
+</div>
+<div class="tb-medan">
+<span class="tb-label"><span class="mi" aria-hidden="true">event_repeat</span> Hari Kerja</span>
+${pekanTempatTb(t)}
+<span class="tb-sub">${nHari ? nHari + ' hari dalam sepekan'
+  : '<span class="tb-hampa">belum diatur</span>'}</span>
+</div>
+<div class="tb-medan">
+<span class="tb-label"><span class="mi" aria-hidden="true">group</span> Siswa Bimbingan</span>
+<span class="tb-nilai">${t.siswa.length}<span class="tb-satuan">siswa</span></span>
+${kelas ? `<span class="tb-sub">${esc(kelas)}</span>` : ''}
 </div>
 </div>
+${orangTempatTb(t)}
+${aksiTempatTb(t, k)}
 </article>`;
 }
-const TB_HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 function bukaJamKerjaTempat(id) {
 const t = (AppState.tempatBimbingan || []).filter(function (x) { return x.id === id; })[0];
 if (!t) { toast('Tempat PKL tidak ditemukan. Muat ulang halaman.', 'warning'); return; }
