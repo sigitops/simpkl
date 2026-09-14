@@ -177,30 +177,53 @@ ${r.komentar ? `<div class="jejak-catatan"><b>Catatan guru:</b> ${esc(r.komentar
 </div>
 </div>`;
 }
-async function muatRiwayatJurnal() {
-const filter = ambilFilterAktif();
-if (!filter) return;
-const list = $('listJurnal');
-if (list) list.innerHTML = memuatInline('Mengambil jurnal…');
+// ══════════════════════════════════════════════════════════════════════════
+// MODUL JURNAL SISWA (v8.8) — lima layar, satu alur
+//
+//   jurnal          Beranda: sambutan, ringkasan bulan, jurnal terbaru
+//   jurnal-baru     Formulir buat/ubah, dengan lampiran menempel di dalamnya
+//   jurnal-sukses   Konfirmasi tersimpan
+//   jurnal-riwayat  Daftar lengkap: cari, saring, tampilkan N, paginasi
+//   jurnal-detail   Satu jurnal, empat keadaan
+//
+// SELURUH datanya diambil SATU KALI (getRiwayatJurnal mode 'semua') lalu
+// dipegang di AppState. Sesudah itu berpindah antar kelima layar — termasuk
+// mengganti bulan, menyaring, mencari, dan membuka detail — tidak memanggil
+// server sama sekali. Di Apps Script satu perjalanan berharga satu sampai dua
+// detik; alur lima layar yang memanggil server di tiap langkah akan terasa
+// seperti aplikasi yang macet, padahal datanya sudah ada di tangan.
+// ══════════════════════════════════════════════════════════════════════════
+
+const JR_BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+                  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+const JR_UBIN = [
+  { k: 'total',     ikon: 'menu_book',     nada: '',       label: 'Total Jurnal' },
+  { k: 'Disetujui', ikon: 'check_circle',  nada: 'ok',     label: 'Disetujui' },
+  { k: 'Revisi',    ikon: 'edit_note',     nada: 'danger', label: 'Revisi' },
+  { k: 'Menunggu',  ikon: 'hourglass_top', nada: 'warn',   label: 'Menunggu' }
+];
+const JR_NADA = { Disetujui: 'ok', Revisi: 'danger', Menunggu: 'warn' };
+
+/**
+ * Mengambil SELURUH jurnal siswa, sekali saja.
+ *
+ * Dipanggil di pintu masuk kelima layar. Yang kedua dan seterusnya langsung
+ * kembali tanpa menyentuh jaringan — kecuali `paksa`, yang dipakai sesudah
+ * menyimpan atau menghapus.
+ */
+async function muatJurnalSiswa(paksa) {
+if (!paksa && AppState.dataJurnal) return true;
 try {
-const res = await panggil('getRiwayatJurnal', AppState.sessionToken, filter);
-if (!res.success) { toast(res.message, 'error'); return; }
-const items = res.data.items;
-AppState.dataJurnal = items;
-AppState.jurnalRentang = res.data.rentang.label;
-daftarkanSaring('jr', saringJurnal);
-perbaruiLencanaSaring('jr');
-gambarRingkasJurnal(items);
-saringJurnal();
-} catch (err) {
-list.innerHTML = emptyState('error', 'Gagal memuat jurnal', err.message);
+const res = await panggilCepat('getRiwayatJurnal', AppState.sessionToken, { mode: 'semua' });
+if (!res.success) { toast(res.message, 'error'); return false; }
+AppState.dataJurnal = res.data.items || [];
+AppState.jurnalHariIni = res.data.hariIni || '';
+return true;
+} catch (err) { toast(err.message, 'error'); return false; }
 }
+function jurnalMilik(id) {
+return (AppState.dataJurnal || []).filter(function (j) { return j.id === id; })[0] || null;
 }
-// Ringkasan jurnal memakai komponen yang SAMA dengan Riwayat Presensi —
-// .rw-skor, .rw-kartu-baris, .rw-bar — bukan tiruan yang mirip. Dua halaman
-// yang menjawab pertanyaan sejenis ("bagaimana catatan saya sejauh ini?")
-// sebaiknya juga terbaca dengan cara yang sama, dan satu-satunya cara menjaga
-// itu tetap benar dalam jangka panjang adalah memakai kelas yang sama persis.
 /**
  * Daftar foto dokumentasi satu jurnal, dalam dua ukuran.
  *
@@ -214,235 +237,260 @@ const kecil = (j.fotoList && j.fotoList.length) ? j.fotoList : (j.foto ? [j.foto
 const besar = (j.fotoBesarList && j.fotoBesarList.length) ? j.fotoBesarList : kecil;
 return kecil.map(function (u, i) { return { kecil: u, besar: besar[i] || u }; });
 }
-function gambarRingkasJurnal(items) {
-const box = $('jrRingkas');
-if (!box) return;
-const n = { Disetujui: 0, Menunggu: 0, Revisi: 0 };
-items.forEach(j => { if (n[j.status] !== undefined) n[j.status]++; });
-const kartu = [
-{ nama: 'Disetujui', angka: n.Disetujui, ikon: 'check_circle', nada: 'var(--success)' },
-{ nama: 'Menunggu', angka: n.Menunggu, ikon: 'hourglass_top', nada: 'var(--warning)' },
-{ nama: 'Revisi', angka: n.Revisi, ikon: 'edit_note', nada: 'var(--error)' },
-{ nama: 'Total', angka: items.length, ikon: 'menu_book', nada: 'var(--primary)' }
-];
-const total = items.length;
-const persen = total ? Math.round(n.Disetujui / total * 100) : 0;
-box.innerHTML = `
-<div class="rw-skor">
-<div class="rw-skor-cincin" style="--isi:${persen}">
-<span class="rw-skor-angka">${persen}<small>%</small></span>
-</div>
-<div class="rw-skor-teks">
-<div class="rw-skor-judul">Jurnal Disetujui</div>
-<div class="rw-skor-sub">${n.Disetujui} disetujui dari ${total} jurnal tercatat</div>
-</div>
-</div>
-<div class="rw-kartu-baris">
-${kartu.map(k => `
-<div class="rw-kartu" style="--nada:${k.nada}">
-<span class="rw-kartu-ikon"><span class="mi">${k.ikon}</span></span>
-<span class="rw-kartu-angka">${k.angka}</span>
-<span class="rw-kartu-nama">${esc(k.nama)}</span>
-</div>`).join('')}
-</div>`;
-// Bilah proporsi hanya menghitung KETIGA status; "Total" adalah jumlahnya,
-// bukan bagian dari komposisinya — memasukkannya akan membuat setiap bilah
-// selalu setengah panjang tanpa arti apa pun.
-const wrap = $('jrBarWrap'), bar = $('jrBar'), leg = $('jrBarLegenda');
-if (!wrap || !bar) return;
-if (!total) { wrap.hidden = true; return; }
-wrap.hidden = false;
-const isi = kartu.slice(0, 3).filter(k => k.angka > 0);
-bar.innerHTML = isi.map(k =>
-`<span class="rw-seg" style="width:${(k.angka / total * 100).toFixed(1)}%;background:${k.nada}"
-title="${esc(k.nama)}: ${k.angka}"></span>`).join('');
-if (leg) leg.innerHTML = isi.map(k =>
-`<span class="rw-leg"><i style="background:${k.nada}"></i>${esc(k.nama)}
-<b>${Math.round(k.angka / total * 100)}%</b></span>`).join('');
+// Penanda relatif di samping tanggal. "Hari ini" jauh lebih cepat dikenali
+// daripada "Kamis, 11 Sep 2026" — dan tanggalnya tetap ditulis di sebelahnya
+// supaya tidak ada yang harus menebak tanggal berapa "kemarin" itu.
+function tandaHariJurnal(tanggal) {
+const kini = AppState.jurnalHariIni || '';
+if (!kini || !tanggal) return '';
+if (tanggal === kini) return 'Hari ini';
+const d = new Date(kini + 'T00:00:00');
+d.setDate(d.getDate() - 1);
+const kemarin = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') +
+                '-' + String(d.getDate()).padStart(2, '0');
+return tanggal === kemarin ? 'Kemarin' : '';
 }
-// Penyaringan dikerjakan DI KLIEN atas data yang sudah di tangan. Rentang
-// tanggalnya memang sudah dibatasi server; menyaring status dan kata kunci di
-// sini membuat hasilnya muncul seketika tanpa satu pun perjalanan ke server.
-function saringJurnal() {
-const list = $('listJurnal');
-const chip = $('chipJumlahJurnal');
-if (!list) return;
-const semua = AppState.dataJurnal || [];
-const status = nilaiSaring('jr', 'status');
-const kunci = (($('jrCari') || {}).value || '').trim().toLowerCase();
-const items = semua.filter(function (j) {
-if (status && j.status !== status) return false;
-if (!kunci) return true;
-return (String(j.kegiatan || '') + ' ' + String(j.kendala || '') + ' ' +
-        String(j.komentar || '')).toLowerCase().indexOf(kunci) !== -1;
-});
-if (chip) chip.textContent = items.length + ' jurnal';
-if (!semua.length) {
-list.innerHTML = emptyState('note_add', 'Belum ada jurnal',
-'Tidak ada jurnal pada rentang ' + String(AppState.jurnalRentang || '').toLowerCase() + '.',
-`<button class="btn btn-primary" onclick="bukaFormJurnal()"><span class="mi">add</span> Tulis Jurnal</button>`);
-return;
+function labelBulanJurnal(kunci) {
+const th = Number(String(kunci).slice(0, 4));
+const bl = Number(String(kunci).slice(5, 7)) - 1;
+return (JR_BULAN[bl] || '?') + ' ' + th;
 }
-if (!items.length) {
-list.innerHTML = emptyState('search_off', 'Tidak ada yang cocok',
-'Ubah kata kunci atau pilih status lain.',
-`<button class="btn btn-outline btn-sm" onclick="resetSaringJurnal()">Tampilkan semua</button>`);
-return;
-}
-const hariNama = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-const bulan = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-const kunciHariIni = new Date().toISOString().slice(0, 10);
-const kemarin = new Date(); kemarin.setDate(kemarin.getDate() - 1);
-const kunciKemarin = kemarin.toISOString().slice(0, 10);
 
-list.innerHTML = `<div class="rw-jejak">${items.map(function (j) {
-// Indeksnya dicari pada daftar ASLI, bukan pada hasil saringan — kalau
-// memakai indeks hasil saringan, tombol Ubah akan membuka jurnal yang salah
-// begitu ada satu saja kata kunci diketik.
-const i = semua.indexOf(j);
-const nada = j.status === 'Disetujui' ? 'ok' : j.status === 'Revisi' ? 'danger' : 'warn';
-const d = new Date(String(j.tanggal).slice(0, 10) + 'T00:00:00');
-const tanda = j.tanggal === kunciHariIni ? 'Hari ini'
-  : j.tanggal === kunciKemarin ? 'Kemarin' : '';
-return `<section class="rw-hari nada-${nada}">
-<header class="rw-hari-kepala">
-<div class="rw-hari-tgl">
-<span class="rw-hari-angka">${String(d.getDate()).padStart(2, '0')}</span>
-<span class="rw-hari-bulan">${bulan[d.getMonth()]}</span>
+// ── Layar 1: Beranda Jurnal ───────────────────────────────────────────────
+async function initJurnalSiswa() {
+if (!await muatJurnalSiswa()) return;
+gambarBerandaJurnal();
+}
+// Bulan yang BENAR-BENAR punya jurnal, ditambah bulan berjalan. Menawarkan
+// dua belas bulan kosong membuat penggunanya menelusuri pilihan yang tidak
+// satu pun berisi — dan bulan berjalan harus selalu ada supaya siswa yang
+// belum mengisi apa pun bulan ini tetap melihat ringkasannya (nol).
+function bulanJurnalAda() {
+const ada = {};
+(AppState.dataJurnal || []).forEach(function (j) { ada[String(j.tanggal).slice(0, 7)] = 1; });
+const kini = (AppState.jurnalHariIni || '').slice(0, 7);
+if (kini) ada[kini] = 1;
+return Object.keys(ada).sort().reverse();
+}
+function gambarBerandaJurnal() {
+const salam = $('jbSalam');
+if (salam) {
+const nama = String((AppState.user || {}).nama || '').split(' ')[0] || 'Siswa';
+salam.textContent = 'Halo, ' + nama + '!';
+}
+const sel = $('jbBulan');
+if (sel) {
+const daftar = bulanJurnalAda();
+const kini = (AppState.jurnalHariIni || '').slice(0, 7);
+if (!AppState.jurnalBulan || daftar.indexOf(AppState.jurnalBulan) === -1) {
+AppState.jurnalBulan = daftar.indexOf(kini) !== -1 ? kini : (daftar[0] || kini);
+}
+sel.innerHTML = daftar.map(function (k) {
+return '<option value="' + esc(k) + '"' +
+  (k === AppState.jurnalBulan ? ' selected' : '') + '>' + esc(labelBulanJurnal(k)) + '</option>';
+}).join('');
+}
+gambarUbinJurnal();
+gambarTerbaruJurnal();
+}
+function gantiBulanJurnal() {
+const sel = $('jbBulan');
+if (sel) AppState.jurnalBulan = sel.value;
+gambarUbinJurnal();
+}
+function gambarUbinJurnal() {
+const box = $('jbUbin');
+if (!box) return;
+const bulan = AppState.jurnalBulan || '';
+const dalam = (AppState.dataJurnal || []).filter(function (j) {
+return String(j.tanggal).slice(0, 7) === bulan;
+});
+const n = { total: dalam.length, Disetujui: 0, Revisi: 0, Menunggu: 0 };
+dalam.forEach(function (j) { if (n[j.status] !== undefined) n[j.status]++; });
+box.innerHTML = JR_UBIN.map(function (u) {
+return `<div class="jb-ubin-kartu nada-${u.nada}">
+<span class="jb-ubin-ikon"><span class="mi">${u.ikon}</span></span>
+<div class="jb-ubin-nilai">${n[u.k]}</div>
+<div class="jb-ubin-label">${u.label}</div>
+</div>`;
+}).join('');
+}
+function gambarTerbaruJurnal() {
+const box = $('jbTerbaru');
+if (!box) return;
+const semua = AppState.dataJurnal || [];
+if (!semua.length) {
+box.innerHTML = emptyState('note_add', 'Belum ada jurnal',
+'Mulailah mencatat kegiatan PKL Anda hari ini.',
+`<button class="btn btn-primary" onclick="bukaJurnalBaru()">
+ <span class="mi">add</span> Tulis Jurnal</button>`);
+return;
+}
+// Tiga terbaru saja. Beranda yang memuat seluruh riwayat membuat tombol
+// "Lihat Semua" di atasnya kehilangan arti, dan halamannya jadi dua kali
+// lebih panjang tanpa satu pun informasi baru.
+box.innerHTML = `<div class="jb-daftar">${semua.slice(0, 3).map(kartuRiwayatJurnal).join('')}</div>`;
+}
+function bukaJurnalBaru() {
+AppState.jurnalUbah = null;
+navigateTo('jurnal-baru');
+}
+function bukaJurnalDetail(id) {
+AppState.jurnalPilih = id;
+navigateTo('jurnal-detail');
+}
+function bukaUbahJurnal(id) {
+AppState.jurnalUbah = id;
+navigateTo('jurnal-baru');
+}
+
+/**
+ * Satu baris jurnal, dipakai Beranda DAN Riwayat.
+ *
+ * Bentuk yang sama di dua tempat bukan kebetulan: siswa yang mengenali
+ * barisnya di beranda harus mengenali baris yang sama di riwayat, dan dua
+ * salinan yang mirip akan menyimpang begitu salah satunya disentuh.
+ */
+function kartuRiwayatJurnal(j) {
+const f = fotoJurnal(j);
+const tanda = tandaHariJurnal(j.tanggal);
+const potong = String(j.kegiatan || '');
+return `<button type="button" class="jb-baris nada-${JR_NADA[j.status] || 'warn'}"
+onclick="bukaJurnalDetail('${esc(j.id)}')"
+aria-label="Buka detail jurnal ${esc(tglSingkat(j.tanggal))}">
+<div class="jb-baris-isi">
+<div class="jb-baris-kepala">
+<span class="jb-baris-tgl">${esc(tglRingkas(j.tanggal))}</span>
+${tanda ? `<span class="jb-tanda">${tanda}</span>` : ''}
 </div>
-<div class="rw-hari-info">
-<div class="rw-hari-nama">${hariNama[d.getDay()]}${tanda ? ` <span class="rw-tanda">${tanda}</span>` : ''}</div>
-<div class="rw-hari-sub">${j.tanggalReview
-  ? 'Direview ' + tglRingkas(j.tanggalReview) : 'Menunggu review guru'}</div>
+<p class="jb-baris-teks">${esc(potong)}</p>
+<div class="jb-baris-kaki">${chipStatus(j.status)}
+${f.length > 1 ? `<span class="jb-baris-foto"><span class="mi">photo_library</span>${f.length}</span>` : ''}
 </div>
-${chipStatus(j.status)}
-</header>
-<div class="rw-hari-isi">
-<div class="jr-isi">
-<div class="list-text">${esc(j.kegiatan)}</div>
-${j.pembelajaran ? `<div class="jr-kendala"><span class="data-label">Pembelajaran / Hal Baru</span>
-<div>${esc(j.pembelajaran)}</div></div>` : ''}
-${j.kendala ? `<div class="jr-kendala"><span class="data-label">Tantangan / Kendala</span>
-<div>${esc(j.kendala)}</div></div>` : ''}
-${j.komentar ? `<div class="alert ${j.status === 'Revisi' ? 'alert-error' : 'alert-info'} jr-komentar">
-<span class="mi">comment</span><div><strong>Komentar Guru</strong><p>${esc(j.komentar)}</p></div></div>` : ''}
-${fotoJurnal(j).length ? `<div class="jr-galeri">${fotoJurnal(j).map(function (f, k) {
-return `<img src="${esc(f.kecil)}" alt="Dokumentasi ${tglRingkas(j.tanggal)} ke-${k + 1}"
-class="review-thumb" loading="lazy"
-onclick="bukaPratinjau('Dokumentasi','${esc(f.besar)}','','gambar')">`;
-}).join('')}</div>` : ''}
-${j.status !== 'Disetujui' ? `<div class="jr-aksi">
-<button class="btn btn-outline btn-xs" onclick="bukaFormJurnalKe(${i})">
-<span class="mi">edit</span> Ubah</button>
-<button class="btn btn-danger btn-xs" onclick="konfirmasiHapusJurnal(${i})">
-<span class="mi">delete</span> Hapus</button>
+</div>
+${f.length ? `<span class="jb-baris-gambar"><img src="${esc(f[0].kecil)}"
+alt="Dokumentasi ${esc(tglSingkat(j.tanggal))}" loading="lazy" decoding="async"></span>` : ''}
+<span class="jb-baris-panah"><span class="mi">chevron_right</span></span>
+</button>`;
+}
+
+// ── Layar 2 & 3: Formulir + lampiran ──────────────────────────────────────
+const JR_FOTO_MAKS = 3;
+const JR_BATAS = { kegiatan: 1000, pembelajaran: 1000, kendala: 1000 };
+async function initJurnalBaru() {
+if (!await muatJurnalSiswa()) return;
+gambarFormJurnal();
+}
+function gambarFormJurnal() {
+const box = $('jnForm');
+if (!box) return;
+const ubah = AppState.jurnalUbah ? jurnalMilik(AppState.jurnalUbah) : null;
+// Meminta mengubah jurnal yang sudah tidak ada — terhapus di tab lain,
+// misalnya — tidak boleh menampilkan formulir kosong yang diam-diam membuat
+// jurnal BARU pada tanggal itu.
+if (AppState.jurnalUbah && !ubah) {
+box.innerHTML = emptyState('search_off', 'Jurnal tidak ditemukan',
+'Jurnal yang ingin diubah sudah tidak ada. Muat ulang riwayat Anda.',
+`<button class="btn btn-outline" onclick="navigateTo('jurnal-riwayat')">
+ <span class="mi">history_edu</span> Buka Riwayat</button>`);
+return;
+}
+const d = ubah || {};
+const hariIni = AppState.jurnalHariIni || new Date().toISOString().slice(0, 10);
+const judul = $('jnJudul');
+if (judul) judul.innerHTML = `<span class="mi">${ubah ? 'edit' : 'edit_note'}</span> ` +
+  (ubah ? 'Ubah Jurnal Harian' : 'Buat Jurnal Harian');
+// Lampiran lama dibawa sebagai PASANGAN id + url: id-nya yang dikirim kembali
+// ke server sebagai "yang dipertahankan", url-nya hanya untuk digambar.
+AppState.fotoJurnal = (ubah ? (d.fotoId || []) : []).map(function (id, i) {
+return { id: id, url: (d.fotoList || [])[i] || '' };
+}).filter(function (f) { return f.id && f.url; }).slice(0, JR_FOTO_MAKS);
+
+box.innerHTML = `
+${ubah && d.status === 'Revisi' && d.komentar ? `<div class="jn-revisi">
+<span class="mi">error</span>
+<div><strong>Perlu diperbaiki</strong><p>${esc(d.komentar)}</p></div>
 </div>` : ''}
-</div>
-</div>
-</section>`;
-}).join('')}</div>`;
-}
-function resetSaringJurnal() {
-if ($('jrCari')) $('jrCari').value = '';
-resetSaring('jr');
-}
-function bukaFormJurnalKe(indeks) {
-const d = (AppState.dataJurnal || [])[indeks];
-if (!d) { toast('Data jurnal tidak ditemukan. Muat ulang halaman.', 'warning'); return; }
-bukaFormJurnal({ tanggal: d.tanggal, kegiatan: d.kegiatan,
-pembelajaran: d.pembelajaran, kendala: d.kendala,
-// Foto lama dibawa sebagai PASANGAN id + url. Id-nya yang dikirim kembali ke
-// server sebagai "yang dipertahankan"; url-nya hanya untuk digambar. Tanpa
-// id, satu-satunya cara mempertahankan foto lama adalah mengunggahnya ulang.
-fotoLama: (d.fotoId || []).map(function (id, i) {
-return { id: id, url: (d.fotoList || [])[i] || d.foto || '' };
-}) });
-}
-function konfirmasiHapusJurnal(indeks) {
-const d = (AppState.dataJurnal || [])[indeks];
-if (!d) { toast('Data jurnal tidak ditemukan. Muat ulang halaman.', 'warning'); return; }
-// Menghapus tidak bisa dibatalkan, jadi yang ditampilkan bukan sekadar
-// "Anda yakin?" melainkan APA yang akan hilang — tanggal dan kutipan isinya.
-const cuplik = String(d.kegiatan || '');
-bukaModal('Hapus Jurnal', `
-<div class="alert alert-error"><span class="mi">warning</span>
-<div><strong>Tindakan ini tidak dapat dibatalkan.</strong>
-<p>Jurnal berikut akan dihapus permanen.</p></div></div>
-<div class="jr-cuplik">
-<div class="data-label">${esc(tglSingkat(d.tanggal))}</div>
-<div>${esc(cuplik.length > 180 ? cuplik.slice(0, 180) + '…' : cuplik)}</div>
-</div>`,
-[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
-{ label: '<span class="mi">delete</span> Hapus Permanen', kelas: 'btn-danger',
-aksi: () => kirimHapusJurnal(d.id) }]);
-}
-async function kirimHapusJurnal(id) {
-tutupModal();
-tampilkanSibuk('Menghapus jurnal…');
-try {
-const res = await panggil('hapusJurnal', AppState.sessionToken, id);
-sembunyikanSibuk();
-toast(res.message, res.success ? 'success' : 'error');
-if (res.success) { batalkanPaketData(); muatRiwayatJurnal(); }
-} catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
-}
-function bukaFormJurnal(data) {
-const d = data || {};
-const hariIni = new Date().toISOString().slice(0, 10);
-// WAJIB dibersihkan setiap kali form dibuka. AppState.fotoJurnal dulu hanya
-// dikosongkan saat penyimpanan BERHASIL, jadi urutan ini menempelkan foto ke
-// jurnal yang salah: pilih foto untuk tanggal 5 → batal → buka form tanggal 6
-// → simpan. Fotonya masih tersimpan di AppState dan ikut terkirim. Tidak ada
-// galat, tidak ada peringatan — hanya jurnal dengan dokumentasi hari lain.
-//
-// Sejak v8.7 isinya satu DAFTAR: tiap butir berupa { id, url } untuk foto lama
-// yang dipertahankan, atau { data, url } untuk foto baru yang belum diunggah.
-AppState.fotoJurnal = (d.fotoLama || []).filter(function (f) { return f && f.id && f.url; })
-  .slice(0, JR_FOTO_MAKS);
-bukaModal(d.tanggal ? 'Ubah Jurnal' : 'Tambah Jurnal Kegiatan', `
 <div class="field">
 <label class="field-label" for="jrTanggal">Tanggal Kegiatan</label>
-<input class="field-input" id="jrTanggal" type="date" max="${hariIni}"
-value="${esc(d.tanggal || hariIni)}" ${d.tanggal ? 'readonly' : ''}>
+<input class="field-input" id="jrTanggal" type="date" max="${esc(hariIni)}"
+value="${esc(d.tanggal || hariIni)}" ${ubah ? 'readonly' : ''}>
+<p class="field-help">${ubah ? 'Tanggal jurnal tidak dapat diubah.'
+  : 'Tidak boleh melewati hari ini.'}</p>
 </div>
 <div class="field">
-<label class="field-label" for="jrKegiatan">Kegiatan Hari Ini <span class="field-wajib" aria-hidden="true">*</span></label>
-<textarea class="field-input" id="jrKegiatan" rows="4" maxlength="1500"
+<label class="field-label" for="jrKegiatan">Kegiatan Hari Ini
+<span class="field-wajib" aria-hidden="true">*</span></label>
+<textarea class="field-input" id="jrKegiatan" rows="4" maxlength="${JR_BATAS.kegiatan}"
 oninput="hitungKarakterJurnal()"
 placeholder="Tuliskan apa yang Anda kerjakan hari ini secara ringkas dan jelas.">${esc(d.kegiatan || '')}</textarea>
 <div class="field-kaki">
 <p class="field-help">Minimal 10 karakter.</p>
-<span class="field-hitung" id="jrHitung" aria-live="polite"></span>
+<span class="field-hitung" id="jrHitungKegiatan" aria-live="polite"></span>
 </div>
 <div class="field-error" id="errJrKegiatan"></div>
 </div>
 <div class="field">
-<label class="field-label" for="jrPembelajaran">Pembelajaran / Hal Baru <span class="field-opsional">Opsional</span></label>
-<textarea class="field-input" id="jrPembelajaran" rows="3" maxlength="1000"
+<label class="field-label" for="jrPembelajaran">Pembelajaran / Hal Baru
+<span class="field-opsional">Opsional</span></label>
+<textarea class="field-input" id="jrPembelajaran" rows="3" maxlength="${JR_BATAS.pembelajaran}"
+oninput="hitungKarakterJurnal()"
 placeholder="Hal baru yang Anda pelajari atau pahami hari ini.">${esc(d.pembelajaran || '')}</textarea>
+<div class="field-kaki"><span></span>
+<span class="field-hitung" id="jrHitungPembelajaran" aria-live="polite"></span></div>
 </div>
 <div class="field">
-<label class="field-label" for="jrKendala">Tantangan / Kendala <span class="field-opsional">Opsional</span></label>
-<textarea class="field-input" id="jrKendala" rows="2" maxlength="500"
+<label class="field-label" for="jrKendala">Tantangan / Kendala
+<span class="field-opsional">Opsional</span></label>
+<textarea class="field-input" id="jrKendala" rows="3" maxlength="${JR_BATAS.kendala}"
+oninput="hitungKarakterJurnal()"
 placeholder="Hambatan yang Anda temui, bila ada.">${esc(d.kendala || '')}</textarea>
+<div class="field-kaki"><span></span>
+<span class="field-hitung" id="jrHitungKendala" aria-live="polite"></span></div>
 </div>
 <div class="field">
-<label class="field-label" for="jrFoto">Lampiran Dokumentasi <span class="field-wajib" aria-hidden="true">*</span></label>
-<p class="field-help" style="margin:0 0 8px">Minimal 1, maksimal ${JR_FOTO_MAKS} foto.
-Pastikan foto jelas, tidak blur, dan menampilkan aktivitas atau hasil pekerjaan Anda.</p>
+<label class="field-label" for="jrFoto">Lampiran Dokumentasi
+<span class="field-wajib" aria-hidden="true">*</span></label>
+<div class="jn-tips">
+<span class="mi">lightbulb</span>
+<div><strong>Tips Foto Dokumentasi</strong>
+<p>Pastikan foto jelas, tidak blur, dan menampilkan aktivitas atau hasil
+pekerjaan Anda. Minimal 1, maksimal ${JR_FOTO_MAKS} foto.</p></div>
+</div>
 <div class="jr-lampiran" id="jrLampiran"></div>
 <input type="file" id="jrFoto" accept=".jpg,.jpeg,.png,.webp,.heic,.heif" hidden multiple
 onchange="pratinjauFotoJurnal(event)">
+<div class="jn-ambil">
+<button type="button" class="btn btn-outline btn-sm" onclick="ambilFotoJurnal(true)">
+<span class="mi">photo_camera</span> Ambil Foto</button>
+<button type="button" class="btn btn-outline btn-sm" onclick="ambilFotoJurnal(false)">
+<span class="mi">photo_library</span> Pilih dari Galeri</button>
+</div>
 <div class="field-error" id="errJrFoto"></div>
-</div>`,
-[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
-{ label: '<span class="mi">save</span> Simpan Jurnal', kelas: 'btn-primary', aksi: kirimJurnal }]);
+</div>
+<div class="jn-aksi">
+<button class="btn btn-outline" onclick="navigateTo('${ubah ? 'jurnal-detail' : 'jurnal'}')">
+Batal</button>
+<button class="btn btn-primary" onclick="kirimJurnal()">
+<span class="mi">save</span> Simpan Jurnal</button>
+</div>`;
 gambarLampiranJurnal();
+hitungKarakterJurnal();
 }
-// Satu tempat, dipakai klien dan dijaga server. Angka yang ditulis dua kali
-// cepat atau lambat berselisih, dan yang menanggungnya adalah pengguna yang
-// diberi tahu "maksimal 3" lalu ditolak pada foto ketiga.
-const JR_FOTO_MAKS = 3;
+/**
+ * "Ambil Foto" memasang atribut capture; "Pilih dari Galeri" melepasnya.
+ *
+ * Satu kotak berkas untuk dua tombol, bukan dua kotak: dua <input type=file>
+ * berarti dua daftar berkas yang harus digabungkan sendiri, dan yang satu
+ * mudah tertinggal saat yang lain diubah.
+ */
+function ambilFotoJurnal(pakaiKamera) {
+const f = $('jrFoto');
+if (!f) return;
+if (pakaiKamera) f.setAttribute('capture', 'environment');
+else f.removeAttribute('capture');
+f.click();
+}
 function gambarLampiranJurnal() {
 const box = $('jrLampiran');
 if (!box) return;
@@ -459,7 +507,7 @@ onclick="buangFotoJurnal(${i})"><span class="mi">close</span></button>
 // berulang kali dan menyimpulkan aplikasinya menggantung.
 (daftar.length >= JR_FOTO_MAKS ? '' :
 `<button type="button" class="jr-lampiran-tambah"
-onclick="document.getElementById('jrFoto').click()"
+onclick="ambilFotoJurnal(false)"
 aria-label="Tambah foto dokumentasi"><span class="mi">add</span></button>`);
 const sisa = $('errJrFoto');
 if (sisa && daftar.length) sisa.textContent = '';
@@ -471,16 +519,19 @@ AppState.fotoJurnal = daftar;
 gambarLampiranJurnal();
 }
 // Penghitung karakter yang hanya bersuara saat mendekati batas. Menampilkan
-// "12 / 1500" sejak huruf pertama hanya menambah keramaian; yang berguna adalah
-// peringatan ketika ruangnya benar-benar mau habis.
+// "12 / 1000" sejak huruf pertama hanya menambah keramaian; yang berguna
+// adalah peringatan ketika ruangnya benar-benar mau habis.
 function hitungKarakterJurnal() {
-const ta = $('jrKegiatan'), out = $('jrHitung');
+[['jrKegiatan', 'jrHitungKegiatan', JR_BATAS.kegiatan, true],
+ ['jrPembelajaran', 'jrHitungPembelajaran', JR_BATAS.pembelajaran, false],
+ ['jrKendala', 'jrHitungKendala', JR_BATAS.kendala, false]].forEach(function (b) {
+const ta = $(b[0]), out = $(b[1]);
 if (!ta || !out) return;
-const n = ta.value.length, batas = 1500;
-const sisa = batas - n;
-out.textContent = n < 10 ? (10 - n) + ' karakter lagi'
-: sisa <= 150 ? 'sisa ' + sisa + ' karakter' : '';
-out.classList.toggle('kritis', sisa <= 50 || n < 10);
+const n = ta.value.length, sisa = b[2] - n;
+out.textContent = (b[3] && n < 10) ? (10 - n) + ' karakter lagi'
+  : sisa <= 150 ? 'sisa ' + sisa + ' karakter' : '';
+out.classList.toggle('kritis', sisa <= 50 || (b[3] && n < 10));
+});
 }
 function pratinjauFotoJurnal(event) {
 const berkas = Array.prototype.slice.call(event.target.files || []);
@@ -493,9 +544,7 @@ if (!berkas.length) return;
 const daftar = AppState.fotoJurnal || [];
 const ruang = JR_FOTO_MAKS - daftar.length;
 if (ruang <= 0) { toast('Dokumentasi maksimal ' + JR_FOTO_MAKS + ' foto.', 'warning'); return; }
-if (berkas.length > ruang) {
-toast('Hanya ' + ruang + ' foto lagi yang bisa ditambahkan.', 'warning');
-}
+if (berkas.length > ruang) toast('Hanya ' + ruang + ' foto lagi yang bisa ditambahkan.', 'warning');
 const dipakai = berkas.slice(0, ruang).filter(function (f) {
 if (f.type.startsWith('image/')) return true;
 toast('Berkas "' + f.name + '" bukan gambar dan dilewati.', 'error');
@@ -532,10 +581,11 @@ const lam = $('jrLampiran');
 if (lam) gulirKeTengah(lam.closest('.field') || lam);
 return;
 }
+const tanggal = $('jrTanggal').value;
 tampilkanSibuk('Menyimpan jurnal…');
 try {
 const res = await panggil('submitJurnal', AppState.sessionToken, {
-tanggal: $('jrTanggal').value, kegiatan: kegiatan,
+tanggal: tanggal, kegiatan: kegiatan,
 pembelajaran: $('jrPembelajaran').value.trim(),
 kendala: $('jrKendala').value.trim(),
 fotoTetap: daftar.filter(function (f) { return f.id; }).map(function (f) { return f.id; }),
@@ -545,11 +595,433 @@ sembunyikanSibuk();
 if (!res.success) { toast(res.message, 'error', 6000); return; }
 AppState.fotoJurnal = null;
 batalkanPaketData();
-tutupModal();
-toast(res.message, 'success');
-muatRiwayatJurnal();
+// Layar konfirmasinya membaca keadaan ini, dan datanya disegarkan SEBELUM
+// berpindah supaya ringkasan yang dilihat sesudahnya sudah memuat jurnal
+// yang barusan dikirim.
+AppState.jurnalSukses = { tanggal: tanggal, ubah: !!AppState.jurnalUbah };
+AppState.jurnalUbah = null;
+await muatJurnalSiswa(true);
+navigateTo('jurnal-sukses');
 } catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
 }
+
+// ── Layar 4: Jurnal tersimpan ─────────────────────────────────────────────
+async function initJurnalSukses() {
+// Halaman ini hanya punya arti tepat sesudah menyimpan. Dibuka langsung —
+// dari tombol kembali peramban, misalnya — ia tidak punya apa pun untuk
+// dikonfirmasi, jadi pembacanya dikembalikan ke berandanya.
+if (!AppState.jurnalSukses) { navigateTo('jurnal'); return; }
+if (!await muatJurnalSiswa()) return;
+gambarSuksesJurnal();
+}
+function gambarSuksesJurnal() {
+const box = $('jtIsi');
+if (!box) return;
+const s = AppState.jurnalSukses || {};
+const j = (AppState.dataJurnal || []).filter(function (x) { return x.tanggal === s.tanggal; })[0];
+const status = j ? j.status : 'Menunggu';
+box.innerHTML = `
+<section class="jt-kotak">
+<div class="jt-tanda" aria-hidden="true"><span class="mi">check</span></div>
+<h1 class="jt-judul">Jurnal Berhasil ${s.ubah ? 'Diperbarui' : 'Disimpan'}!</h1>
+<p class="jt-tgl">${esc(tglSingkat(s.tanggal))}</p>
+<div class="jt-chip">${chipStatus(status)}</div>
+<p class="jt-pesan">Jurnal Anda berhasil ${s.ubah ? 'diperbarui' : 'disimpan'} dan
+menunggu persetujuan guru pembimbing.</p>
+<div class="jt-lanjut">
+<span class="mi">tips_and_updates</span>
+<div><strong>Selanjutnya</strong>
+<p>Terus catat kegiatan harianmu secara rutin untuk hasil yang lebih baik.</p></div>
+</div>
+<div class="jt-aksi">
+<button class="btn btn-primary btn-block" onclick="bukaJurnalTersimpan()">
+<span class="mi">visibility</span> Lihat Jurnal Saya</button>
+<button class="btn-ghost" onclick="bukaJurnalBaru()">
+<span class="mi">add</span> Buat Jurnal Lagi</button>
+</div>
+</section>`;
+}
+// "Lihat Jurnal Saya" membuka jurnal yang BARUSAN disimpan, bukan daftar.
+// Membuka daftar berarti penggunanya harus mencari sendiri baris yang baru
+// saja ia kirim — padahal kita tahu persis yang mana.
+function bukaJurnalTersimpan() {
+const s = AppState.jurnalSukses || {};
+const j = (AppState.dataJurnal || []).filter(function (x) { return x.tanggal === s.tanggal; })[0];
+AppState.jurnalSukses = null;
+if (j) bukaJurnalDetail(j.id); else navigateTo('jurnal-riwayat');
+}
+
+// ── Layar 5: Riwayat Jurnal ───────────────────────────────────────────────
+const JR_TABEL = 'jurnalSiswa';
+const JR_SARING = { status: 'semua', periode: 'semua', dari: '', sampai: '' };
+const JR_OPSI_STATUS = [['semua', 'Semua'], ['Disetujui', 'Disetujui'],
+                        ['Menunggu', 'Menunggu'], ['Revisi', 'Revisi']];
+const JR_LABEL_PERIODE = { semua: 'Semua periode', harian: 'Hari ini',
+  mingguan: '7 hari terakhir', bulanan: 'Bulan ini', kustom: 'Rentang pilihan' };
+function stRiwayatJurnal() { return (AppState.tabel || {})[JR_TABEL]; }
+function kunciCariRiwayatJurnal() {
+const st = stRiwayatJurnal();
+return st ? String(st.cari || '').trim().toLowerCase() : '';
+}
+async function initJurnalRiwayat() {
+if (!await muatJurnalSiswa()) return;
+JR_SARING.status = 'semua'; JR_SARING.periode = 'semua';
+JR_SARING.dari = ''; JR_SARING.sampai = '';
+AppState.saring = AppState.saring || {};
+AppState.saring.jr = {};
+AppState.tabel = AppState.tabel || {};
+AppState.tabel[JR_TABEL] = {
+cfg: { id: JR_TABEL, idPrefix: 'jrT', gambarSendiri: gambarRiwayatJurnal },
+data: [], cari: '', sortKey: null, sortDir: 'asc',
+halaman: 1, perHal: PER_HAL_BAWAAN, filterNilai: {}, terpilih: {}
+};
+// Panel saringnya dirakit di klien — bentuk dan id-nya sama persis dengan
+// halaman Detail Presensi dan Detail Jurnal, jadi bukaPanelFilter/ubahSaring
+// bawaan bekerja tanpa perlu tahu siapa yang merakitnya.
+const panel = $('jrPanelSaring');
+if (panel) {
+panel.innerHTML = panelSaringKlien('jr', 'Saring Riwayat Jurnal', [
+{ k: 'periode', label: 'Periode',
+  opsi: [['', 'Semua periode'], ['harian', 'Hari ini'], ['mingguan', '7 hari terakhir'],
+         ['bulanan', 'Bulan ini'], ['kustom', 'Rentang tanggal sendiri']], bawaan: '' }
+], `
+<div class="dj-kustom" id="jrKustom" hidden>
+<div class="filter-field">
+<label class="filter-label" for="jrDari">Dari Tanggal</label>
+<input class="field-input" type="date" id="jrDari" onchange="ubahRentangRiwayatJurnal()">
+</div>
+<div class="filter-field">
+<label class="filter-label" for="jrSampai">Sampai Tanggal</label>
+<input class="field-input" type="date" id="jrSampai" onchange="ubahRentangRiwayatJurnal()">
+</div>
+<p class="dj-kustom-pesan" id="jrKustomPesan" role="status"></p>
+</div>`, 'resetSaringRiwayatJurnal()');
+}
+const bar = $('jrStatus');
+if (bar) bar.innerHTML = JR_OPSI_STATUS.map(function (o, i) {
+return `<button class="seg-btn${i === 0 ? ' active' : ''}" type="button" data-status="${esc(o[0])}"
+aria-pressed="${i === 0 ? 'true' : 'false'}"
+onclick="saringStatusJurnal('${o[0]}', this)">${o[1]}<span class="seg-angka">0</span></button>`;
+}).join('');
+pasangToolbarTabel(AppState.tabel[JR_TABEL].cfg);
+daftarkanSaring('jr', terapkanSaringRiwayat);
+perbaruiLencanaSaring('jr');
+gambarRiwayatJurnal();
+}
+function terapkanSaringRiwayat() {
+JR_SARING.periode = nilaiSaring('jr', 'periode') || 'semua';
+const kustom = $('jrKustom');
+const tadinyaTertutup = kustom ? kustom.hidden : true;
+if (kustom) kustom.hidden = (JR_SARING.periode !== 'kustom');
+// Fokus langsung ke kolom tanggal pertama pada saat Kustom BARU dipilih.
+if (JR_SARING.periode === 'kustom' && tadinyaTertutup && $('jrDari')) {
+try { $('jrDari').focus({ preventScroll: true }); } catch (e) {}
+}
+const st = stRiwayatJurnal();
+if (st) st.halaman = 1;
+gambarRiwayatJurnal();
+}
+function ubahRentangRiwayatJurnal() {
+JR_SARING.dari = $('jrDari') ? $('jrDari').value : '';
+JR_SARING.sampai = $('jrSampai') ? $('jrSampai').value : '';
+const pesan = $('jrKustomPesan');
+if (pesan) {
+pesan.textContent = (JR_SARING.dari && JR_SARING.sampai && JR_SARING.dari > JR_SARING.sampai)
+  ? 'Tanggal mulai melewati tanggal akhir.' : '';
+}
+// Rentang terbalik tidak dipakai menyaring — ia hanya diberitahukan.
+if (JR_SARING.dari && JR_SARING.sampai && JR_SARING.dari > JR_SARING.sampai) return;
+const st = stRiwayatJurnal();
+if (st) st.halaman = 1;
+gambarRiwayatJurnal();
+}
+function saringStatusJurnal(nilai, el) {
+JR_SARING.status = nilai;
+const bar = el && el.parentNode;
+if (bar) Array.prototype.forEach.call(bar.querySelectorAll('.seg-btn'), function (b) {
+b.classList.toggle('active', b === el);
+b.setAttribute('aria-pressed', b === el ? 'true' : 'false');
+});
+const st = stRiwayatJurnal();
+if (st) st.halaman = 1;
+gambarRiwayatJurnal();
+}
+function resetSaringRiwayatJurnal() {
+JR_SARING.dari = ''; JR_SARING.sampai = ''; JR_SARING.status = 'semua';
+if ($('jrDari')) $('jrDari').value = '';
+if ($('jrSampai')) $('jrSampai').value = '';
+if ($('jrKustomPesan')) $('jrKustomPesan').textContent = '';
+if ($('jrTCari')) $('jrTCari').value = '';
+const st = stRiwayatJurnal();
+if (st) { st.cari = ''; st.halaman = 1; }
+const bar = $('jrStatus');
+if (bar) Array.prototype.forEach.call(bar.querySelectorAll('.seg-btn'), function (b, i) {
+b.classList.toggle('active', i === 0);
+b.setAttribute('aria-pressed', i === 0 ? 'true' : 'false');
+});
+resetSaring('jr');
+if (typeof SARING_TERAPKAN.jr !== 'function') {
+JR_SARING.periode = 'semua';
+if ($('jrKustom')) $('jrKustom').hidden = true;
+gambarRiwayatJurnal();
+}
+}
+function mundurHariJurnal(iso, n) {
+const d = new Date(String(iso) + 'T00:00:00');
+if (isNaN(d)) return iso;
+d.setDate(d.getDate() - n);
+return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') +
+       '-' + String(d.getDate()).padStart(2, '0');
+}
+function rentangRiwayatJurnal() {
+const kini = AppState.jurnalHariIni || '';
+const p = JR_SARING.periode;
+if (p === 'kustom') {
+// Rentang kustom yang belum lengkap TIDAK menyaring apa pun. Menyaring
+// setengah jalan membuat daftarnya berubah sebelum penggunanya selesai
+// memilih, dan perubahan yang tidak diminta terbaca seperti kerusakan.
+if (!JR_SARING.dari || !JR_SARING.sampai) return null;
+return { dari: JR_SARING.dari, sampai: JR_SARING.sampai };
+}
+if (!kini || p === 'semua') return null;
+if (p === 'harian') return { dari: kini, sampai: kini };
+if (p === 'mingguan') return { dari: mundurHariJurnal(kini, 6), sampai: kini };
+if (p === 'bulanan') {
+const akhir = new Date(Number(kini.slice(0, 4)), Number(kini.slice(5, 7)), 0);
+return { dari: kini.slice(0, 7) + '-01',
+         sampai: kini.slice(0, 7) + '-' + String(akhir.getDate()).padStart(2, '0') };
+}
+return null;
+}
+function cocokKunciRiwayatJurnal(j, q) {
+if (!q) return true;
+return (String(j.kegiatan || '') + ' ' + String(j.pembelajaran || '') + ' ' +
+        String(j.kendala || '') + ' ' + String(j.komentar || '') + ' ' +
+        String(j.status || '') + ' ' + String(j.tanggal || '') + ' ' +
+        tglSingkat(j.tanggal)).toLowerCase().indexOf(q) !== -1;
+}
+// Yang sudah lolos PERIODE dan KATA KUNCI, tetapi belum lolos status — dipakai
+// menghitung angka pada tiap cip status. Cip bertuliskan "Menunggu 3" yang
+// menyisakan daftar kosong adalah cip yang berbohong.
+function dasarRiwayatJurnal() {
+const r = rentangRiwayatJurnal();
+const q = kunciCariRiwayatJurnal();
+return (AppState.dataJurnal || []).filter(function (j) {
+if (r && !(j.tanggal >= r.dari && j.tanggal <= r.sampai)) return false;
+return cocokKunciRiwayatJurnal(j, q);
+});
+}
+function saringRiwayatAktif() {
+return JR_SARING.status !== 'semua' || JR_SARING.periode !== 'semua' ||
+  !!kunciCariRiwayatJurnal();
+}
+function gambarRiwayatJurnal() {
+const box = $('jrDaftar');
+if (!box) return;
+const semua = AppState.dataJurnal || [];
+const dasar = dasarRiwayatJurnal();
+const items = JR_SARING.status === 'semua' ? dasar
+  : dasar.filter(function (j) { return j.status === JR_SARING.status; });
+
+const hitung = { semua: dasar.length, Disetujui: 0, Menunggu: 0, Revisi: 0 };
+dasar.forEach(function (j) { if (hitung[j.status] !== undefined) hitung[j.status]++; });
+const bar = $('jrStatus');
+if (bar) Array.prototype.forEach.call(bar.querySelectorAll('.seg-btn'), function (b) {
+const k = b.getAttribute('data-status');
+const n = b.querySelector('.seg-angka');
+if (n) n.textContent = hitung[k] === undefined ? '0' : hitung[k];
+// Status yang tidak ada satu pun dipadamkan, bukan disembunyikan: cip yang
+// hilang-timbul membuat barisnya bergoyang dan mata kehilangan jangkar.
+b.classList.toggle('seg-btn-kosong', k !== 'semua' && !hitung[k]);
+});
+
+const jml = $('jrJumlah');
+if (jml) jml.textContent = items.length + ' dari ' + semua.length + ' jurnal';
+
+// Daftar yang tidak lengkap tidak boleh terbaca seperti data yang hilang.
+const ring = $('jrRingkasSaring');
+if (ring) {
+if (!saringRiwayatAktif()) { ring.hidden = true; ring.innerHTML = ''; }
+else {
+const r = rentangRiwayatJurnal();
+const bagian = [];
+if (JR_SARING.periode !== 'semua') {
+bagian.push(JR_LABEL_PERIODE[JR_SARING.periode] +
+  (JR_SARING.periode === 'kustom' && r ? ' · ' + tglRingkas(r.dari) + ' – ' + tglRingkas(r.sampai) : ''));
+}
+if (JR_SARING.status !== 'semua') bagian.push('Status ' + JR_SARING.status);
+const q = kunciCariRiwayatJurnal();
+if (q) bagian.push('Kata kunci "' + String(stRiwayatJurnal().cari).trim() + '"');
+ring.hidden = false;
+ring.innerHTML = `<span class="mi">filter_alt</span>
+<span>Menampilkan <b>${items.length}</b> dari ${semua.length} jurnal &middot;
+${esc(bagian.join(' · '))}</span>
+<button class="btn-ghost btn-xs" onclick="resetSaringRiwayatJurnal()">
+<span class="mi">restart_alt</span> Atur ulang</button>`;
+}
+}
+
+if (!items.length) {
+const q = kunciCariRiwayatJurnal();
+box.innerHTML = semua.length
+  ? emptyState('filter_alt_off', q ? 'Tidak ada hasil pencarian' : 'Tidak ada jurnal pada saringan ini',
+      q ? 'Tidak ada jurnal yang cocok dengan kata kunci "' +
+          String(stRiwayatJurnal().cari).trim() + '" pada saringan yang dipilih.'
+        : 'Anda punya ' + semua.length + ' jurnal, tetapi tidak ada yang cocok dengan ' +
+          'periode dan status yang dipilih.',
+      `<button class="btn btn-outline btn-sm" onclick="resetSaringRiwayatJurnal()">
+       <span class="mi">restart_alt</span> Tampilkan semua jurnal</button>`)
+  : emptyState('note_add', 'Belum ada jurnal',
+      'Mulailah mencatat kegiatan PKL Anda hari ini.',
+      `<button class="btn btn-primary" onclick="bukaJurnalBaru()">
+       <span class="mi">add</span> Tulis Jurnal</button>`);
+return;
+}
+
+const st = stRiwayatJurnal();
+const total = items.length;
+const perHal = (st && st.perHal > 0) ? st.perHal : total;
+const totalHal = Math.max(1, Math.ceil(total / (perHal || 1)));
+if (st && st.halaman > totalHal) st.halaman = totalHal;
+const mulai = st ? (st.halaman - 1) * perHal : 0;
+const potong = items.slice(mulai, mulai + perHal);
+
+// Dikelompokkan PER BULAN, sesudah dipotong per halaman — judul bulannya
+// harus menerangkan baris yang benar-benar ada di halaman ini.
+const urut = [], perBulan = {};
+potong.forEach(function (j) {
+const k = String(j.tanggal).slice(0, 7);
+if (!perBulan[k]) { perBulan[k] = []; urut.push(k); }
+perBulan[k].push(j);
+});
+box.innerHTML = `<div class="jb-daftar">` + urut.map(function (k) {
+return `<div class="dj-bulan"><span>${esc(labelBulanJurnal(k))}</span>
+<span class="dj-bulan-jml">${perBulan[k].length} jurnal</span></div>` +
+perBulan[k].map(kartuRiwayatJurnal).join('');
+}).join('') + `</div>` +
+(st ? paginasiHtml(JR_TABEL, total, totalHal, mulai, potong.length) : '');
+}
+
+// ── Layar 6–9: Detail satu jurnal ─────────────────────────────────────────
+async function initJurnalDetail() {
+if (!AppState.jurnalPilih) { navigateTo('jurnal-riwayat'); return; }
+if (!await muatJurnalSiswa()) return;
+gambarDetailJurnalSiswa();
+}
+function gambarDetailJurnalSiswa() {
+const box = $('jdIsi');
+if (!box) return;
+const j = jurnalMilik(AppState.jurnalPilih);
+if (!j) {
+box.innerHTML = emptyState('search_off', 'Jurnal tidak ditemukan',
+'Jurnal ini sudah tidak ada. Mungkin sudah dihapus.',
+`<button class="btn btn-outline" onclick="navigateTo('jurnal-riwayat')">
+ <span class="mi">history_edu</span> Buka Riwayat</button>`);
+return;
+}
+const f = fotoJurnal(j);
+const tanda = tandaHariJurnal(j.tanggal);
+const bidang = [
+{ ikon: 'work_history', label: 'Kegiatan Hari Ini', nilai: j.kegiatan, wajib: true },
+{ ikon: 'lightbulb', label: 'Pembelajaran / Hal Baru', nilai: j.pembelajaran },
+{ ikon: 'report_problem', label: 'Tantangan / Kendala', nilai: j.kendala }
+];
+box.innerHTML = `
+<section class="jd-kepala nada-${JR_NADA[j.status] || 'warn'}">
+<div class="jd-kepala-teks">
+<h1 class="jd-tgl">${esc(tglRingkas(j.tanggal))}</h1>
+<p class="jd-sub">${tanda ? esc(tanda) + ' &middot; ' : ''}${j.tanggalReview
+  ? 'Direview ' + esc(tglRingkas(j.tanggalReview)) : 'Menunggu review guru pembimbing'}</p>
+</div>
+${chipStatus(j.status)}
+</section>
+
+${j.status === 'Revisi' ? `<div class="jd-banner jd-banner-revisi">
+<span class="mi">error</span>
+<div><strong>Perlu Revisi</strong>
+<p>${j.komentar ? esc(j.komentar) : 'Guru pembimbing meminta jurnal ini diperbaiki.'}</p>
+${j.tanggalReview ? `<span class="jd-banner-waktu">${esc(tglSingkat(j.tanggalReview))}</span>` : ''}
+</div></div>` : ''}
+
+${j.status === 'Disetujui' ? `<div class="jd-banner jd-banner-setuju">
+<span class="mi">verified</span>
+<div><strong>Disetujui guru pembimbing</strong>
+${j.tanggalReview ? `<span class="jd-banner-waktu">${esc(tglSingkat(j.tanggalReview))}</span>` : ''}
+</div></div>` : ''}
+
+<section class="card"><div class="card-body jd-bidang-wrap">
+${bidang.map(function (b) {
+return `<div class="jd-bidang">
+<span class="jd-bidang-label"><span class="mi">${b.ikon}</span> ${b.label}</span>
+<p class="jd-teks">${b.nilai ? esc(b.nilai)
+  : '<span class="jd-hampa">Tidak diisi</span>'}</p>
+</div>`;
+}).join('')}
+<div class="jd-bidang">
+<span class="jd-bidang-label"><span class="mi">photo_library</span> Dokumentasi
+(${f.length})</span>
+${f.length ? `<div class="jd-galeri">${f.map(function (x, i) {
+return `<button type="button" class="dj-foto"
+aria-label="Perbesar dokumentasi ke-${i + 1}"
+onclick="bukaPratinjau('Dokumentasi ${esc(tglSingkat(j.tanggal))}','${esc(x.besar)}','','gambar')">
+<img src="${esc(x.kecil)}" alt="Dokumentasi ke-${i + 1}" loading="lazy" decoding="async">
+<span class="dj-foto-tanda"><span class="mi">zoom_in</span></span></button>`;
+}).join('')}</div>` : '<p class="jd-teks"><span class="jd-hampa">Tidak ada dokumentasi</span></p>'}
+</div>
+</div></section>
+
+${/* Pada keadaan Revisi, komentarnya SUDAH berdiri di spanduk merah di atas.
+     Mencetaknya dua kali membuat pembacanya mengira ada dua catatan berbeda,
+     lalu membandingkan keduanya kata demi kata untuk memastikan sama. */''}
+${j.komentar && j.status !== 'Revisi' ? `<section class="card"><div class="card-body">
+<div class="jd-komentar">
+<span class="jd-komentar-ikon"><span class="mi">rate_review</span></span>
+<div>
+<strong>Komentar Guru</strong>
+${j.tanggalReview ? `<span class="jd-komentar-waktu">${esc(tglSingkat(j.tanggalReview))}</span>` : ''}
+<p>${esc(j.komentar)}</p>
+</div>
+</div>
+</div></section>` : ''}
+
+${j.status === 'Disetujui' ? '' : `<div class="jd-aksi">
+${j.status === 'Revisi'
+  ? `<button class="btn btn-primary btn-block" onclick="bukaUbahJurnal('${esc(j.id)}')">
+     <span class="mi">build</span> Perbaiki Jurnal</button>`
+  : `<button class="btn btn-outline" onclick="bukaUbahJurnal('${esc(j.id)}')">
+     <span class="mi">edit</span> Edit</button>
+     <button class="btn btn-danger" onclick="konfirmasiHapusJurnal('${esc(j.id)}')">
+     <span class="mi">delete</span> Hapus</button>`}
+</div>`}`;
+}
+function konfirmasiHapusJurnal(id) {
+const d = jurnalMilik(id);
+if (!d) { toast('Data jurnal tidak ditemukan. Muat ulang halaman.', 'warning'); return; }
+// Menghapus tidak bisa dibatalkan, jadi yang ditampilkan bukan sekadar
+// "Anda yakin?" melainkan APA yang akan hilang — tanggal dan kutipan isinya.
+const cuplik = String(d.kegiatan || '');
+bukaModal('Hapus Jurnal?', `
+<p>Jurnal tanggal <strong>${esc(tglSingkat(d.tanggal))}</strong> akan dihapus permanen.</p>
+<div class="jr-cuplik">${esc(cuplik.length > 160 ? cuplik.slice(0, 160) + '…' : cuplik)}</div>
+<p class="field-help" style="margin-top:10px">Tindakan ini tidak dapat dibatalkan.</p>`,
+[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
+{ label: '<span class="mi">delete</span> Hapus', kelas: 'btn-danger',
+aksi: () => { tutupModal(); kirimHapusJurnal(d.id); } }]);
+}
+async function kirimHapusJurnal(id) {
+tampilkanSibuk('Menghapus jurnal…');
+try {
+const res = await panggil('hapusJurnal', AppState.sessionToken, id);
+sembunyikanSibuk();
+toast(res.message, res.success ? 'success' : 'error');
+if (!res.success) return;
+batalkanPaketData();
+await muatJurnalSiswa(true);
+AppState.jurnalPilih = null;
+navigateTo('jurnal-riwayat');
+} catch (err) { sembunyikanSibuk(); toast(err.message, 'error'); }
+}
+
 async function muatTempatPKL() {
 const list = $('listTempatPKL');
 if (list) list.innerHTML = memuatInline('Mengambil daftar tempat PKL…');

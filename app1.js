@@ -2575,7 +2575,12 @@ AppState.paketData[halaman] = res.dataAwal;
 // Halaman yang tidak punya butir menunya sendiri, tetapi tetap "milik" sebuah
 // menu. Tanpa peta ini, membuka detail seorang siswa memadamkan seluruh sorotan
 // di sidebar — dan pengguna kehilangan jejak di mana ia sebenarnya berada.
-const MENU_INDUK = { 'detail-siswa': 'monitoring', 'detail-jurnal': 'rekap-jurnal' };
+const MENU_INDUK = { 'detail-siswa': 'monitoring', 'detail-jurnal': 'rekap-jurnal',
+// Keempat layar modul Jurnal siswa menyorot satu menu yang sama. Tanpa ini,
+// menu samping padam begitu siswa menekan "Tambah Jurnal" dan ia kehilangan
+// jejak di mana ia berada.
+'jurnal-baru': 'jurnal', 'jurnal-sukses': 'jurnal',
+'jurnal-riwayat': 'jurnal', 'jurnal-detail': 'jurnal' };
 function tandaiMenuAktif(halaman) {
 const sorot = MENU_INDUK[halaman] || halaman;
 $$('.nav-link[data-page]').forEach(b =>

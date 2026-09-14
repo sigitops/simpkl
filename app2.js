@@ -2,7 +2,11 @@ const INIT_HALAMAN = {
 'beranda':          () => AppState.user.role === 'siswa' ? muatDataBeranda() : muatDataMonitoring(),
 'presensi':         () => initPresensi(),
 'riwayat-presensi': () => { pasangTanggalDefault(); muatRiwayatPresensi(); },
-'jurnal':           () => { pasangTanggalDefault(); muatRiwayatJurnal(); },
+'jurnal':           () => initJurnalSiswa(),
+'jurnal-baru':      () => initJurnalBaru(),
+'jurnal-sukses':    () => initJurnalSukses(),
+'jurnal-riwayat':   () => initJurnalRiwayat(),
+'jurnal-detail':    () => initJurnalDetail(),
 'tempat-pkl':       () => muatTempatPKL(),
 'laporan':          () => muatStatusLaporan(),
 'nilai':            () => muatNilai(),
@@ -112,7 +116,10 @@ const box = $('boxJurnalHariIni');
 if (!box) return;
 if (!d.jurnalHariIni) {
 box.innerHTML = emptyState('note_add', 'Belum ada jurnal hari ini', 'Tuliskan kegiatan Anda.') +
-`<button class="btn btn-primary btn-block" style="margin-top:16px" onclick="navigateTo('jurnal')">
+// Langsung ke FORMULIRNYA, bukan ke beranda modul jurnal. Tombol bertuliskan
+// "Tambah Jurnal" yang mendarat di halaman ringkasan menyisakan satu ketukan
+// lagi yang tidak dimintakan siapa pun.
+`<button class="btn btn-primary btn-block" style="margin-top:16px" onclick="bukaJurnalBaru()">
 <span class="mi">add</span> Tambah Jurnal</button>`;
 return;
 }
@@ -256,7 +263,8 @@ return;
 if (d.penempatan) {
 if (!d.jurnalHariIni) {
 tugas.push({ ikon: 'menu_book', nada: 'info', judul: 'Jurnal Harian',
-sub: 'Buat jurnal hari ini', tanda: 'Hari ini', mendesak: true, ke: 'jurnal' });
+sub: 'Buat jurnal hari ini', tanda: 'Hari ini', mendesak: true,
+ke: 'jurnal-baru', aksi: 'bukaJurnalBaru()' });
 }
 if (d.presensi.masuk && !d.presensi.pulang) {
 tugas.push({ ikon: 'photo_camera', nada: 'ok', judul: 'Presensi Pulang',
@@ -279,16 +287,21 @@ box.innerHTML = emptyState('task_alt', 'Tidak ada tugas tertunda',
 'Semua kewajiban hari ini sudah Anda selesaikan.');
 return;
 }
-box.innerHTML = `<div class="list">${tugas.map(t => `
-<div class="list-item tugas-item" onclick="navigateTo('${t.ke}')" role="button" tabindex="0"
-onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();navigateTo('${t.ke}')}">
+// `aksi` mendahului `ke` bila ada. Sebagian tugas bukan sekadar "buka
+// halaman X": membuka formulir jurnal harus SEKALIGUS memastikan ia formulir
+// baru, bukan lanjutan jurnal yang tadi sempat diubah.
+box.innerHTML = `<div class="list">${tugas.map(t => {
+const aksi = t.aksi || `navigateTo('${t.ke}')`;
+return `
+<div class="list-item tugas-item" onclick="${aksi}" role="button" tabindex="0"
+onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();${aksi}}">
 <div class="list-lead ${t.nada}"><span class="mi">${t.ikon}</span></div>
 <div class="list-main">
 <div class="list-title">${t.judul}</div>
 <div class="list-sub">${t.sub}</div>
 </div>
 <div class="list-tail"><span class="chip ${t.mendesak ? 'chip-error' : 'chip-warning'}">${t.tanda}</span></div>
-</div>`).join('')}</div>`;
+</div>`; }).join('')}</div>`;
 }
 function renderInsight(idElemen, daftar) {
 const el = $(idElemen);
