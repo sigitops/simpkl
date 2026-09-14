@@ -415,7 +415,10 @@ const isi = (id, v) => { if ($(id)) $(id).value = (v === null || v === undefined
 isi('stAppName', c.appName); isi('stTagline', c.appTagline); isi('stAppDesc', c.appDesc);
 isi('stLogo', c.logoUrl); isi('stNamaSekolah', c.namaSekolah); isi('stAlamatSekolah', c.alamatSekolah);
 isi('stKepsek', c.kepalaSekolah); isi('stNipKepsek', c.nipKepalaSekolah);
-isi('stRadius', c.radiusDefault); isi('stToleransi', c.toleransiTelat); isi('stAdminEmail', c.adminEmail);
+isi('stRadius', c.radiusDefault); isi('stToleransi', c.toleransiTelat);
+isi('stJedaPulang', c.jedaPulangMenit === undefined || c.jedaPulangMenit === ''
+  ? '30' : c.jedaPulangMenit);
+isi('stAdminEmail', c.adminEmail);
 isi('stKontakAdmin', c.kontakAdmin); isi('stWaAdmin', c.waAdmin);
 isi('stGoogleClientId', c.googleClientId);
 if ($('stNotif')) $('stNotif').value = c.notifikasiEmail || 'aktif';
@@ -489,6 +492,10 @@ kepalaSekolah: $('stKepsek').value.trim(),
 nipKepalaSekolah: $('stNipKepsek').value.trim(),
 radiusDefault: String(radius || 100),
 toleransiTelat: String(Number($('stToleransi').value) || 15),
+// Nol DIBOLEHKAN dan berarti "tanpa jeda" — karena itu dibandingkan dengan
+// '' , bukan dipaksa lewat || yang akan mengubah 0 menjadi 30.
+jedaPulangMenit: String($('stJedaPulang').value === '' ? 30
+  : Math.max(0, Math.round(Number($('stJedaPulang').value) || 0))),
 notifikasiEmail: $('stNotif').value,
 adminEmail: $('stAdminEmail').value.trim()
 };
@@ -1292,9 +1299,16 @@ if (!kotak || !d) return;
 if (!d.siswa.length) {
 const wadahKosong = $('jsEksporWrap');
 if (wadahKosong) wadahKosong.hidden = true;
+// Menu yang disebut HARUS menu yang benar-benar ada di modul pembacanya.
+// Sampai v8.8 pesan ini menyuruh guru membuka "menu Tempat PKL" yang hanya
+// ada di modul admin — jalan buntu yang membuat guru tidak pernah bisa
+// menyalakan sistem shift sendiri.
+const keTempat = (AppState.user || {}).role === 'admin' ? 'kelola-tempat' : 'tempat-bimbingan';
 kotak.innerHTML = emptyState('event_busy', 'Belum ada siswa bershift',
 'Jadwal hanya berlaku untuk siswa yang ditempatkan di tempat PKL dengan sistem shift aktif. ' +
-'Aktifkan sistem shift lewat menu Tempat PKL terlebih dahulu.');
+'Aktifkan sistem shift pada tempat PKL-nya terlebih dahulu.',
+`<button class="btn btn-primary" onclick="navigateTo('${keTempat}')">
+ <span class="mi">domain</span> Buka Tempat PKL</button>`);
 setelRingkasJadwal();
 return;
 }
@@ -2052,4 +2066,4 @@ if (res.success) { batalkanPaketData(); muatHariLibur(); }
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '8.8';
+window.__SIMPKL_EOF = '9.0';

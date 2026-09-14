@@ -17,6 +17,7 @@ const INIT_HALAMAN = {
 'rekap-jurnal':     () => initRekapJurnal(),
 'rekap-laporan':    () => muatRekapLaporan(),
 'penilaian':        () => muatDaftarPenilaian(),
+'tempat-bimbingan': () => muatTempatBimbingan(),
 'pengumuman':       () => initPengumuman(),
 'pendaftaran':      () => muatPendaftaran(),
 'kelola-tempat':    () => muatTabelMaster(),
@@ -394,9 +395,20 @@ $('btnKamera').disabled = true;
 $('labelKirimPresensi').textContent = 'Terkunci — sudah mengajukan ' + d.izin.jenis;
 return;
 }
-if (d.masuk && !d.pulang) {
+kunciTabPulang(d);
+// Berpindah sendiri ke Pulang HANYA bila jedanya memang sudah lewat.
+//
+// Inilah cacat yang dilaporkan siswa: unggahan selfie memakan beberapa detik,
+// siswa mengira presensinya gagal lalu mengulang — dan karena tabnya sudah
+// diam-diam berpindah, ketukan berikutnya tercatat sebagai PULANG pukul 07.18
+// untuk masuk pukul 07.17. Tab yang berganti arti tanpa diminta adalah tab
+// yang menjebak.
+if (d.masuk && !d.pulang && d.izinPulang && d.izinPulang.boleh) {
 const tab = document.querySelector('.tab-btn[data-jenis="Pulang"]');
 if (tab) pilihJenisPresensi('Pulang', tab);
+} else if (d.masuk && !d.pulang) {
+const tab = document.querySelector('.tab-btn[data-jenis="Masuk"]');
+if (tab) pilihJenisPresensi('Masuk', tab);
 }
 renderRiwayatSingkat();
 cobaNyalakanKameraOtomatis();
@@ -428,7 +440,46 @@ jadwalnya dilengkapi.</p></div>
 </div>`;
 }
 
+/**
+ * Mengunci tab "Pulang" selama jeda minimum sesudah presensi masuk.
+ *
+ * Keadaannya datang dari SERVER (d.izinPulang), bukan dihitung dari jam
+ * ponsel: jam perangkat siswa bisa meleset beberapa menit, dan tombol yang
+ * terbuka di layar lalu ditolak server adalah tombol yang berbohong.
+ */
+function kunciTabPulang(d) {
+const tab = document.querySelector('.tab-btn[data-jenis="Pulang"]');
+const banner = $('bannerKunciPulang');
+const izin = (d && d.izinPulang) || null;
+const terkunci = !!(d && d.masuk && !d.pulang && izin && !izin.boleh);
+AppState.pulangTerkunci = terkunci;
+AppState.izinPulang = izin;
+if (tab) {
+tab.disabled = terkunci;
+tab.setAttribute('aria-disabled', terkunci ? 'true' : 'false');
+tab.title = terkunci
+  ? 'Presensi pulang tersedia pukul ' + jamTampil(izin.pulangSetelah) : '';
+}
+if (!banner) return;
+if (!terkunci) { banner.hidden = true; banner.innerHTML = ''; return; }
+banner.hidden = false;
+banner.innerHTML = `<div class="alert alert-info">
+<span class="mi">lock_clock</span>
+<div><strong>Presensi masuk Anda pukul ${esc(jamTampil(d.masuk.Waktu))} sudah tercatat</strong>
+<p>Presensi pulang baru dapat dilakukan pukul
+<b>${esc(jamTampil(izin.pulangSetelah))}</b> — sekitar ${izin.sisaMenit} menit lagi.
+Bila Anda memang harus pulang lebih awal, hubungi guru pembimbing Anda.</p></div>
+</div>`;
+}
 function pilihJenisPresensi(jenis, tombol) {
+// Tab yang terkunci tetap bisa dipanggil dari kode; pagarnya dipasang di sini
+// supaya tidak ada satu pun jalan masuk yang melewatinya.
+if (jenis === 'Pulang' && AppState.pulangTerkunci) {
+const z = AppState.izinPulang || {};
+toast('Presensi pulang baru dapat dilakukan pukul ' + jamTampil(z.pulangSetelah || '') +
+  ' (± ' + (z.sisaMenit || 0) + ' menit lagi).', 'warning', 6000);
+return;
+}
 AppState.jenisPresensi = jenis;
 $$('.tab-btn[data-jenis]').forEach(b => b.classList.toggle('active', b === tombol));
 $('labelKirimPresensi').textContent = 'Presensi ' + jenis;
@@ -847,6 +898,10 @@ AppState.streamKamera = null;
 }
 const v = $('camVideo');
 if (v) v.srcObject = null;
+// Dipanggil dari keempat tempat yang memang berarti "tidak ada lagi yang boleh
+// memakai kamera": pindah halaman, keluar, tab disembunyikan, dan tutup jendela.
+// Kamera jurnal harus ikut padam di keempatnya. (v9.0)
+if (typeof hentikanKameraJurnal === 'function') hentikanKameraJurnal();
 }
 function evaluasiTombolPresensi() {
 const btn = $('btnKirimPresensi');
@@ -866,19 +921,63 @@ else if (!dalamRadius) label.textContent = 'Terlalu Jauh (' + jarak + ' m)';
 else if (!AppState.fotoTerambil) label.textContent = 'Ambil Foto Dahulu';
 else label.textContent = 'Presensi ' + AppState.jenisPresensi;
 }
-async function kirimPresensi() {
+/**
+ * Pintu masuk tombol besar. Presensi PULANG mengakhiri hari kerja dan tidak
+ * dapat dibatalkan siswa sendiri, jadi ia selalu ditanyakan sekali lagi —
+ * lengkap dengan jam masuknya dan berapa lama ia sudah bekerja, supaya yang
+ * salah tekan punya kesempatan menyadarinya sebelum tercatat.
+ */
+function kirimPresensi() {
+if (!AppState.fotoTerambil || !AppState.posisi) return;
+if (AppState.jenisPresensi !== 'Pulang') { kirimPresensiSekarang(); return; }
+const m = ((AppState.statusPresensi || {}).masuk) || null;
+const z = AppState.izinPulang || {};
+const lama = (z.berlaluMenit > 0)
+  ? (z.berlaluMenit >= 60
+      ? Math.floor(z.berlaluMenit / 60) + ' jam ' + (z.berlaluMenit % 60) + ' menit'
+      : z.berlaluMenit + ' menit')
+  : '';
+bukaModal('Presensi Pulang Sekarang?', `
+<p>Presensi <strong>pulang</strong> menandai berakhirnya kegiatan PKL Anda hari ini
+dan tidak dapat dibatalkan sendiri.</p>
+${m ? `<div class="list" style="margin-top:12px">
+<div class="list-item"><div class="list-main">
+<div class="data-label">Presensi masuk Anda</div>
+<div class="data-value">${esc(jamTampil(m.Waktu))} WIB${lama ? ' &middot; ' + lama + ' yang lalu' : ''}</div>
+</div></div></div>` : ''}
+<p class="field-help" style="margin-top:12px">Bila Anda sebenarnya ingin presensi
+<strong>masuk</strong>, tekan Batal lalu pilih tab Masuk.</p>`,
+[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
+{ label: '<span class="mi">logout</span> Ya, Presensi Pulang', kelas: 'btn-primary',
+  aksi: () => { tutupModal(); kirimPresensiSekarang(); } }]);
+}
+async function kirimPresensiSekarang() {
 if (!AppState.fotoTerambil || !AppState.posisi) return;
 const btn = $('btnKirimPresensi');
 btn.disabled = true;
-tampilkanSibuk('Mengirim presensi…');
+// Unggahan selfie ke Drive memakan beberapa detik. Menyebutkan APA yang sedang
+// berjalan dan melarang menutup halaman adalah selisih antara menunggu dengan
+// tenang dan mengira aplikasinya menggantung lalu menekannya lagi — persis
+// yang membuat presensi pulang tidak sengaja itu terjadi.
+tampilkanSibuk('Mengirim presensi ' + AppState.jenisPresensi.toLowerCase() + '…');
+const mulai = Date.now();
+const tanda = setInterval(function () {
+const t = $('busyText');
+if (!t) return;
+const detik = Math.round((Date.now() - mulai) / 1000);
+t.textContent = detik < 4
+  ? 'Mengirim presensi ' + AppState.jenisPresensi.toLowerCase() + '…'
+  : 'Mengunggah foto… ' + detik + ' detik. Mohon tunggu, jangan menekan ulang.';
+}, 1000);
 try {
 const res = await panggil('submitPresensi', AppState.sessionToken, {
 jenis: AppState.jenisPresensi,
 latitude: AppState.posisi.latitude, longitude: AppState.posisi.longitude,
 akurasi: AppState.posisi.accuracy, fotoBase64: AppState.fotoTerambil, catatan: ''
 });
+clearInterval(tanda);
 sembunyikanSibuk();
-if (!res.success) { toast(res.message, 'error', 6500); btn.disabled = false; return; }
+if (!res.success) { toast(res.message, 'error', 8000); btn.disabled = false; muatKonteksPresensi(); return; }
 const d = res.data;
 const warna = d.status === 'Hadir' ? 'success' : d.status === 'Telat' ? 'warning' : 'error';
 bukaModal('Presensi Tercatat', `
@@ -903,6 +1002,7 @@ ulangiFoto();
 renderRiwayatSingkat();
 muatKonteksPresensi();
 } catch (err) {
+clearInterval(tanda);
 sembunyikanSibuk();
 toast(err.message, 'error');
 btn.disabled = false;

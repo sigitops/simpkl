@@ -231,7 +231,11 @@ return;
 tutupModal();
 toast(res.message, 'success', 7000);
 batalkanPaketData();
-muatTabelMaster();
+// Pengatur shift dibuka dari DUA halaman sejak v8.9 — tabel Tempat PKL milik
+// admin dan daftar Tempat PKL Bimbingan milik guru. Yang disegarkan adalah
+// yang sedang terbuka; memanggil keduanya membuat satu di antaranya
+// menggambar ke elemen yang tidak ada di halaman itu.
+if ($('tbDaftar')) muatTempatBimbingan(); else muatTabelMaster();
 } catch (e) { sembunyikanSibuk(); toast(e.message, 'error'); }
 }
 
@@ -997,6 +1001,153 @@ batalkanPaketData();
 muatPendaftaran();
 } catch (e) { sembunyikanSibuk(); toast(e.message, 'error'); }
 } }]);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// TEMPAT PKL BIMBINGAN (v8.9) — modul Guru
+//
+// Sampai v8.8, menyalakan sistem shift hanya bisa lewat menu Tempat PKL milik
+// admin. Guru yang membuka Jadwal Shift disuruh "aktifkan sistem shift lewat
+// menu Tempat PKL terlebih dahulu" — menu yang memang tidak ada di modulnya,
+// sehingga jadwal shift tidak pernah bisa diatur guru secara mandiri.
+//
+// Halaman ini menutup lubang itu TANPA memberi guru kuasa penuh atas data
+// tempat PKL: yang bisa diubah hanya jam kerja, hari kerja, dan shift, dan
+// hanya pada tempat yang menampung siswa bimbingannya sendiri. Batas itu
+// ditegakkan server lewat bolehAturTempat() di setiap titik tulisnya.
+// ══════════════════════════════════════════════════════════════════════════
+async function muatTempatBimbingan() {
+const box = $('tbDaftar');
+if (!box) return;
+box.innerHTML = memuatInline('Mengambil tempat PKL bimbingan…');
+try {
+const res = await panggilCepat('getTempatBimbingan', AppState.sessionToken);
+if (!res.success) { box.innerHTML = emptyState('block', 'Tidak dapat dibuka', res.message); return; }
+AppState.tempatBimbingan = res.data.items;
+gambarTempatBimbingan();
+} catch (err) {
+box.innerHTML = emptyState('wifi_off', 'Gagal memuat', err.message);
+}
+}
+function gambarTempatBimbingan() {
+const box = $('tbDaftar');
+if (!box) return;
+const items = AppState.tempatBimbingan || [];
+if (!items.length) {
+box.innerHTML = emptyState('domain_disabled', 'Belum ada tempat PKL bimbingan',
+'Halaman ini menampilkan tempat PKL yang sedang menampung siswa bimbingan Anda. ' +
+'Bila daftarnya kosong, berarti belum ada siswa Anda yang ditempatkan.');
+return;
+}
+box.innerHTML = `<div class="tb-daftar">${items.map(kartuTempatBimbingan).join('')}</div>`;
+}
+function kartuTempatBimbingan(t) {
+const hari = (t.hariKerjaAngka || []).length
+  ? t.hariKerjaAngka.map(function (n) { return TB_HARI[n]; }).join(', ')
+  : '<span class="tb-hampa">belum diatur</span>';
+return `<article class="card tb-kartu">
+<div class="card-head">
+<h2 class="card-title"><span class="mi">domain</span> ${esc(t.namaInstansi)}</h2>
+<span class="chip chip-neutral">${t.siswa.length} siswa bimbingan</span>
+</div>
+<div class="card-body">
+<div class="tb-kisi">
+<div class="tb-medan">
+<span class="tb-label"><span class="mi">schedule</span> Jam Kerja</span>
+<span class="tb-nilai">${t.pakaiShift
+  ? '<span class="chip chip-info"><span class="mi">alarm</span>Sistem shift &middot; ' +
+    t.jumlahShift + ' shift</span>'
+  : esc(jamTampil(t.jamMasuk)) + ' – ' + esc(jamTampil(t.jamPulang))}</span>
+</div>
+<div class="tb-medan">
+<span class="tb-label"><span class="mi">event_repeat</span> Hari Kerja</span>
+<span class="tb-nilai">${hari}</span>
+</div>
+<div class="tb-medan">
+<span class="tb-label"><span class="mi">group</span> Siswa Bimbingan</span>
+<span class="tb-nilai tb-siswa">${t.siswa.map(function (s) {
+return '<span class="chip chip-neutral">' + esc(s.nama) + '</span>';
+}).join('')}</span>
+</div>
+</div>
+<div class="tb-aksi">
+<button class="btn btn-outline btn-sm" onclick="bukaJamKerjaTempat('${esc(t.id)}')">
+<span class="mi">edit_calendar</span> Atur Jam &amp; Hari Kerja</button>
+<button class="btn ${t.pakaiShift ? 'btn-outline' : 'btn-primary'} btn-sm"
+onclick="bukaAturShift('${esc(t.id)}')">
+<span class="mi">alarm</span> ${t.pakaiShift ? 'Ubah Sistem Shift' : 'Aktifkan Sistem Shift'}</button>
+</div>
+</div>
+</article>`;
+}
+const TB_HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+function bukaJamKerjaTempat(id) {
+const t = (AppState.tempatBimbingan || []).filter(function (x) { return x.id === id; })[0];
+if (!t) { toast('Tempat PKL tidak ditemukan. Muat ulang halaman.', 'warning'); return; }
+AppState.tempatDiedit = id;
+const dipilih = {};
+(t.hariKerjaAngka || []).forEach(function (n) { dipilih[n] = true; });
+bukaModal('Jam Kerja — ' + t.namaInstansi, `
+<div class="grid-2">
+<div class="field">
+<label class="field-label" for="tbMasuk">Jam Masuk</label>
+<input class="field-input" type="time" id="tbMasuk" value="${esc(t.jamMasuk)}">
+</div>
+<div class="field">
+<label class="field-label" for="tbPulang">Jam Pulang</label>
+<input class="field-input" type="time" id="tbPulang" value="${esc(t.jamPulang)}">
+</div>
+</div>
+<div class="field">
+<label class="field-label">Hari Kerja</label>
+<div class="tb-hari" id="tbHari" role="group" aria-label="Pilih hari kerja">
+${TB_HARI.map(function (n, i) {
+return `<label class="tb-hari-item">
+<input type="checkbox" value="${i}" ${dipilih[i] ? 'checked' : ''}>
+<span>${n.slice(0, 3)}</span></label>`;
+}).join('')}
+</div>
+<p class="field-help">Hari yang tidak dicentang tidak dihitung Alpha bila siswa
+tidak presensi.</p>
+</div>
+${t.pakaiShift ? `<div class="alert alert-info">
+<span class="mi">info</span>
+<div><strong>Tempat ini memakai sistem shift</strong>
+<p>Jam di atas hanya menjadi cadangan bila shift hari itu belum dijadwalkan.
+Jam sesungguhnya mengikuti shift masing-masing siswa.</p></div>
+</div>` : ''}
+<div class="field-error" id="errTb"></div>`,
+[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
+{ label: '<span class="mi">save</span> Simpan', kelas: 'btn-primary', aksi: simpanJamKerjaUI }]);
+}
+async function simpanJamKerjaUI() {
+const err = $('errTb');
+if (err) err.textContent = '';
+const hari = Array.prototype.filter.call(
+  $('tbHari').querySelectorAll('input[type=checkbox]'), function (c) { return c.checked; })
+  .map(function (c) { return TB_HARI[Number(c.value)]; });
+// Nol hari kerja berarti tidak ada satu hari pun yang boleh dihitung Alpha —
+// hampir pasti bukan yang dimaksud, dan server akan menolaknya. Dicegat di
+// sini supaya penggunanya tidak menunggu perjalanan ke server untuk tahu.
+if (!hari.length) {
+if (err) err.textContent = 'Pilih minimal satu hari kerja.';
+return;
+}
+tampilkanSibuk('Menyimpan jam kerja…');
+try {
+const res = await panggil('simpanJamKerjaTempat', AppState.sessionToken,
+AppState.tempatDiedit, { jamMasuk: $('tbMasuk').value, jamPulang: $('tbPulang').value,
+hariKerja: hari.join(', ') });
+sembunyikanSibuk();
+if (!res.success) {
+if (err) err.textContent = res.message; else toast(res.message, 'error', 7000);
+return;
+}
+tutupModal();
+toast(res.message, 'success');
+batalkanPaketData();
+muatTempatBimbingan();
+} catch (e) { sembunyikanSibuk(); toast(e.message, 'error'); }
 }
 
 window.__blok = 5;

@@ -293,6 +293,7 @@ const AppState = {
 sessionToken: null, user: null, config: {}, periode: null, penempatan: null,
 halamanAktif: null, grafik: {},
 posisi: null, watchId: null, streamKamera: null, fotoTerambil: null,
+streamJurnal: null, arahKameraJurnal: 'environment', jurnalJepretan: null,
 jenisPresensi: 'Masuk', modeFilter: 'bulanan',
 dataTabel: [], filterPendaftaran: 'Diproses', timerJam: null,
 tabel: {},
@@ -340,6 +341,10 @@ $('modal').hidden = false;
 document.body.style.overflow = 'hidden';
 }
 function tutupModal() {
+// Kamera jurnal hidup DI DALAM modal ini. Mengosongkan isi modal menghapus
+// elemen <video>-nya, tetapi MediaStream-nya tetap berjalan: lampu kamera
+// menyala terus dan perangkatnya tetap terkunci bagi aplikasi lain. (v9.0)
+if (typeof hentikanKameraJurnal === 'function') hentikanKameraJurnal();
 $('modal').hidden = true;
 $('modal').classList.remove('modal-konfirm');
 $('modalBody').innerHTML = '';

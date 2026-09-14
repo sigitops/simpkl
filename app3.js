@@ -270,6 +270,10 @@ const ada = {};
 (AppState.dataJurnal || []).forEach(function (j) { ada[String(j.tanggal).slice(0, 7)] = 1; });
 const kini = (AppState.jurnalHariIni || '').slice(0, 7);
 if (kini) ada[kini] = 1;
+// Bulan yang baru dipilih lewat kalender ikut masuk daftar meski kosong. Tanpa
+// ini gambarBerandaJurnal() akan menolaknya karena tidak ada di daftar, lalu
+// diam-diam melompat kembali ke bulan berjalan — pilihannya seolah diabaikan.
+if (AppState.jurnalBulan) ada[AppState.jurnalBulan] = 1;
 return Object.keys(ada).sort().reverse();
 }
 function gambarBerandaJurnal() {
@@ -290,13 +294,66 @@ return '<option value="' + esc(k) + '"' +
   (k === AppState.jurnalBulan ? ' selected' : '') + '>' + esc(labelBulanJurnal(k)) + '</option>';
 }).join('');
 }
+setelPemilihBulanJurnal();
 gambarUbinJurnal();
 gambarTerbaruJurnal();
 }
 function gantiBulanJurnal() {
 const sel = $('jbBulan');
 if (sel) AppState.jurnalBulan = sel.value;
+setelPemilihBulanJurnal();
 gambarUbinJurnal();
+}
+
+// ── Pintasan kalender untuk filter bulan (v9.0) ───────────────────────────
+//
+// Daftar pilihannya sengaja hanya memuat bulan yang BENAR-BENAR berisi jurnal —
+// menawarkan dua belas bulan kosong membuat penggunanya menelusuri pilihan yang
+// tidak satu pun berisi. Tetapi siswa yang ingin menengok bulan lain jadi tidak
+// punya jalan sama sekali. Ikon kalender di sebelahnya membuka pemilih bawaan
+// perangkat, yang di ponsel adalah roda bulan-tahun yang sudah dikenal semua
+// orang, tanpa merusak keringkasan daftar pendek itu.
+//
+// Tombolnya BARU DITAMPILKAN bila peramban benar-benar punya showPicker().
+// Tombol yang selalu ada tetapi di sebagian peramban tidak membuka apa pun
+// lebih buruk daripada tidak ada tombolnya sama sekali.
+function adaPemilihBulan() {
+try { return typeof HTMLInputElement !== 'undefined' &&
+             typeof HTMLInputElement.prototype.showPicker === 'function'; }
+catch (e) { return false; }
+}
+function setelPemilihBulanJurnal() {
+const tbl = $('jbBulanIkon'), inp = $('jbBulanKalender');
+if (tbl) tbl.hidden = !adaPemilihBulan();
+if (!inp) return;
+const semua = (AppState.dataJurnal || [])
+  .map(function (j) { return String(j.tanggal).slice(0, 7); })
+  .filter(Boolean).sort();
+const kini = (AppState.jurnalHariIni || '').slice(0, 7);
+// Batas bawah: bulan jurnal paling awal. Batas atas: bulan berjalan — jurnal
+// tidak bisa ada di masa depan, jadi menawarkannya hanya menyesatkan.
+const paling = semua.length ? semua[0] : kini;
+if (paling) inp.min = (kini && kini < paling) ? kini : paling;
+if (kini) inp.max = kini;
+inp.value = AppState.jurnalBulan || kini || '';
+}
+function bukaPemilihBulanJurnal() {
+const inp = $('jbBulanKalender');
+if (!inp) return;
+inp.value = AppState.jurnalBulan || '';
+// showPicker() melempar bila dipanggil di luar gerakan pengguna atau bila
+// elemennya tidak tergambar. Kegagalannya tidak boleh membuat halaman diam:
+// daftar pilihan di sebelahnya tetap jalan, jadi cukup beri tahu sekali.
+try { inp.showPicker(); }
+catch (e) { toast('Kalender tidak dapat dibuka. Gunakan daftar bulan di sebelahnya.', 'warning'); }
+}
+function terapkanBulanKalender() {
+const inp = $('jbBulanKalender');
+if (!inp || !inp.value) return;
+AppState.jurnalBulan = inp.value;
+// Digambar ulang seluruhnya, bukan hanya ubinnya: bulan yang baru dipilih
+// mungkin belum ada di daftar dan harus ikut muncul di sana.
+gambarBerandaJurnal();
 }
 function gambarUbinJurnal() {
 const box = $('jbUbin');
@@ -458,7 +515,9 @@ placeholder="Hambatan yang Anda temui, bila ada.">${esc(d.kendala || '')}</texta
 pekerjaan Anda. Minimal 1, maksimal ${JR_FOTO_MAKS} foto.</p></div>
 </div>
 <div class="jr-lampiran" id="jrLampiran"></div>
-<input type="file" id="jrFoto" accept=".jpg,.jpeg,.png,.webp,.heic,.heif" hidden multiple
+<input type="file" id="jrFoto" accept="image/*,.heic,.heif" hidden multiple
+onchange="pratinjauFotoJurnal(event)">
+<input type="file" id="jrKamera" accept="image/*" capture="environment" hidden
 onchange="pratinjauFotoJurnal(event)">
 <div class="jn-ambil">
 <button type="button" class="btn btn-outline btn-sm" onclick="ambilFotoJurnal(true)">
@@ -477,19 +536,207 @@ Batal</button>
 gambarLampiranJurnal();
 hitungKarakterJurnal();
 }
+function sisaFotoJurnal() {
+return JR_FOTO_MAKS - (AppState.fotoJurnal || []).length;
+}
 /**
- * "Ambil Foto" memasang atribut capture; "Pilih dari Galeri" melepasnya.
+ * "Ambil Foto" menyalakan kamera perangkat; "Pilih dari Galeri" membuka berkas.
  *
- * Satu kotak berkas untuk dua tombol, bukan dua kotak: dua <input type=file>
- * berarti dua daftar berkas yang harus digabungkan sendiri, dan yang satu
- * mudah tertinggal saat yang lain diubah.
+ * AKAR MASALAH v8.8 — keduanya membuka jendela berkas yang sama persis:
+ *
+ *   1. Satu <input type=file> dipakai bergantian, dan atribut `capture`
+ *      dipasang-lepas tepat sebelum .click(). `capture` hanyalah SARAN bagi
+ *      peramban; di peramban desktop ia diabaikan sepenuhnya menurut
+ *      spesifikasi, karena di sana tidak ada "mekanisme perekam" untuk dipilih.
+ *      Di laptop, tombol itu MUSTAHIL membuka kamera lewat jalur ini.
+ *   2. accept-nya berisi daftar EKSTENSI (".jpg,.png,…"). Android mencocokkan
+ *      niat kamera lewat jenis MIME; dengan daftar ekstensi, Chrome kerap
+ *      jatuh ke pemilih dokumen. Yang benar adalah accept="image/*".
+ *   3. `multiple` berdampingan dengan `capture`. Perekam menghasilkan satu
+ *      berkas, jadi keduanya saling bertentangan — beberapa versi Android
+ *      menyelesaikan pertentangan itu dengan MEMBUANG `capture`.
+ *
+ * Perbaikannya berlapis, dari yang paling sesuai keinginan ke yang paling
+ * mungkin tersedia:
+ *
+ *   Lapis 1  getUserMedia() — kamera hidup DI DALAM aplikasi. Sama di ponsel
+ *            dan di laptop, dan persis mesin yang sudah dipakai halaman
+ *            Presensi selama ini.
+ *   Lapis 2  <input capture> khusus — bila getUserMedia tidak ada sama sekali
+ *            (WebView lama, konteks tak aman). Di ponsel ini membuka aplikasi
+ *            kamera bawaan.
+ *   Lapis 3  pesan jujur + jalan ke Galeri — bila perangkatnya memang tidak
+ *            punya kamera. Lebih baik daripada membuka jendela berkas sambil
+ *            berpura-pura itu kamera.
  */
 function ambilFotoJurnal(pakaiKamera) {
-const f = $('jrFoto');
-if (!f) return;
-if (pakaiKamera) f.setAttribute('capture', 'environment');
-else f.removeAttribute('capture');
-f.click();
+if (!pakaiKamera) { const g = $('jrFoto'); if (g) g.click(); return; }
+if (sisaFotoJurnal() <= 0) {
+toast('Dokumentasi maksimal ' + JR_FOTO_MAKS + ' foto.', 'warning');
+return;
+}
+bukaKameraJurnal();
+}
+function kameraJurnalBawaan() {
+const k = $('jrKamera');
+if (!k) { toast('Kamera tidak tersedia. Gunakan "Pilih dari Galeri".', 'warning'); return; }
+k.click();
+}
+function galeriJurnalDariModal() {
+tutupModal();
+const g = $('jrFoto');
+if (g) g.click();
+}
+
+// ── Kamera jurnal: hidup di dalam modal (v9.0) ────────────────────────────
+//
+// Namanya berawalan jk- seluruhnya. Halaman Presensi sudah memiliki kamera
+// dengan nama aktifkanKamera/jepretFoto/hentikanKamera dan AppState.streamKamera;
+// keenam berkas app*.js berbagi SATU lingkup global, jadi nama yang sama akan
+// menimpa diam-diam tanpa satu pun pesan galat.
+const JK_JUDUL = 'Ambil Foto Dokumentasi';
+function bukaKameraJurnal() {
+if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+kameraJurnalBawaan();
+return;
+}
+AppState.jurnalJepretan = null;
+bukaModal(JK_JUDUL, `
+<div class="jk-panggung">
+<video id="jkVideo" playsinline autoplay muted></video>
+<canvas id="jkCanvas" hidden></canvas>
+<div class="jk-lapis" id="jkLapis">
+<span class="spinner"></span>
+<p class="jk-lapis-teks">Menyalakan kamera…</p>
+</div>
+</div>
+<div class="jk-aksi" id="jkAksi">
+<button type="button" class="btn btn-outline jk-btn-balik" onclick="balikKameraJurnal()"
+title="Kamera depan / belakang"><span class="mi">cameraswitch</span> Balik</button>
+<button type="button" class="btn btn-primary jk-btn-rana" onclick="jepretJurnal()">
+<span class="mi">camera</span> Jepret</button>
+</div>
+<p class="jk-info"><span class="mi">lightbulb</span>
+Arahkan ke aktivitas atau hasil pekerjaan Anda, pastikan tidak buram, lalu tekan Jepret.</p>`,
+// Rana dan pembalik kamera duduk TEPAT DI BAWAH jendela bidiknya, bukan di
+// kaki modal. Itu tempat yang dicari jempol di setiap aplikasi kamera, dan di
+// layar 390 px kaki modal memaksa ketiga tombol menumpuk tiga baris — rananya
+// terlempar jauh dari gambar yang sedang dibidik.
+[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal }]);
+nyalakanKameraJurnal(AppState.arahKameraJurnal || 'environment');
+}
+function nyalakanKameraJurnal(arah) {
+hentikanKameraJurnal();
+navigator.mediaDevices.getUserMedia({
+video: { facingMode: arah, width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false })
+.then(function (stream) {
+const v = $('jkVideo');
+// Modal sudah ditutup sementara izin ditunggu. Aliran yang terlanjur
+// terbuka harus tetap dimatikan, atau lampu kameranya menyala tanpa layar.
+if (!v) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+AppState.streamJurnal = stream;
+AppState.arahKameraJurnal = arah;
+v.srcObject = stream;
+v.classList.toggle('jk-cermin', arah === 'user');
+const lapis = $('jkLapis');
+if (lapis) lapis.hidden = true;
+v.play().catch(function () {});
+})
+.catch(function (e) { gagalKameraJurnal(e); });
+}
+function balikKameraJurnal() {
+const semula = AppState.arahKameraJurnal || 'environment';
+const arah = semula === 'environment' ? 'user' : 'environment';
+const lapis = $('jkLapis');
+if (lapis) lapis.hidden = false;
+nyalakanKameraJurnal(arah);
+}
+/**
+ * Kegagalan kamera diterangkan DI TEMPAT, bukan lewat toast yang lalu hilang.
+ * Penyebab paling sering — izin pernah ditolak — hanya bisa dipulihkan lewat
+ * setelan peramban, dan petunjuknya harus tetap terbaca sambil dikerjakan.
+ */
+function gagalKameraJurnal(e) {
+const lapis = $('jkLapis');
+if (!lapis) return;
+const nama = e && e.name;
+const takAdaKamera = nama === 'NotFoundError' || nama === 'DevicesNotFoundError';
+// Rana disingkirkan bersama kegagalannya. Tombol Jepret yang tetap terpampang
+// di bawah layar yang gelap hanya mengundang ketukan yang tidak berbuah apa-apa.
+const aksi = $('jkAksi');
+if (aksi) aksi.hidden = true;
+lapis.hidden = false;
+lapis.innerHTML = '<span class="mi jk-lapis-ikon">videocam_off</span>' +
+'<p class="jk-lapis-judul">' +
+(takAdaKamera ? 'Perangkat ini tidak punya kamera' : 'Kamera tidak dapat dinyalakan') + '</p>' +
+'<p class="jk-lapis-teks">' + esc(pesanGalatKamera(e)) + '</p>' +
+'<div class="jk-lapis-aksi">' +
+(takAdaKamera ? '' :
+'<button type="button" class="btn btn-outline btn-sm" onclick="bukaKameraJurnal()">' +
+'<span class="mi">refresh</span> Coba Lagi</button>') +
+'<button type="button" class="btn btn-primary btn-sm" onclick="galeriJurnalDariModal()">' +
+'<span class="mi">photo_library</span> Pilih dari Galeri</button></div>';
+}
+function jepretJurnal() {
+const v = $('jkVideo'), k = $('jkCanvas');
+if (!AppState.streamJurnal || !v || !v.videoWidth || !k) {
+toast('Kamera belum siap. Tunggu sebentar lalu coba lagi.', 'warning');
+return;
+}
+// Diturunkan ke 900 px — ukuran yang sama dengan foto dari galeri, supaya
+// dokumentasi dari kedua jalur berbobot sama dan sama cepatnya dibuka guru.
+const skala = Math.min(1, 900 / v.videoWidth);
+k.width = Math.round(v.videoWidth * skala);
+k.height = Math.round(v.videoHeight * skala);
+const c = k.getContext('2d');
+// Kamera depan ditampilkan sebagai cermin agar wajar saat mengarahkan, jadi
+// hasilnya ikut dicerminkan supaya sama persis dengan yang tadi dilihat.
+if ((AppState.arahKameraJurnal || 'environment') === 'user') {
+c.translate(k.width, 0); c.scale(-1, 1);
+}
+c.drawImage(v, 0, 0, k.width, k.height);
+AppState.jurnalJepretan = k.toDataURL(jenisGambarTerbaik(), 0.65);
+hentikanKameraJurnal();
+pratinjauJepretanJurnal();
+}
+function pratinjauJepretanJurnal() {
+bukaModal('Pratinjau Dokumentasi', `
+<div class="jk-panggung">
+<img class="jk-hasil" src="${esc(AppState.jurnalJepretan || '')}" alt="Pratinjau foto dokumentasi">
+</div>
+<div class="jk-aksi" id="jkAksi">
+<button type="button" class="btn btn-outline" onclick="bukaKameraJurnal()">
+<span class="mi">refresh</span> Ambil Ulang</button>
+<button type="button" class="btn btn-primary jk-btn-rana" onclick="pakaiJepretanJurnal()">
+<span class="mi">check</span> Gunakan Foto</button>
+</div>
+<p class="jk-info"><span class="mi">check_circle</span>
+Sudah jelas dan terbaca? Bila belum, ambil ulang sebelum disimpan.</p>`,
+[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal }]);
+}
+function pakaiJepretanJurnal() {
+const data = AppState.jurnalJepretan;
+if (!data) { tutupModal(); return; }
+// Kuotanya diperiksa LAGI di sini, bukan hanya sebelum kamera dibuka: foto
+// lain bisa saja masuk lewat galeri sementara modalnya terbuka.
+if (sisaFotoJurnal() <= 0) {
+toast('Dokumentasi maksimal ' + JR_FOTO_MAKS + ' foto.', 'warning');
+tutupModal();
+return;
+}
+AppState.fotoJurnal = AppState.fotoJurnal || [];
+AppState.fotoJurnal.push({ data: data, url: data });
+AppState.jurnalJepretan = null;
+tutupModal();
+gambarLampiranJurnal();
+toast('Dokumentasi ditambahkan.', 'success');
+}
+function hentikanKameraJurnal() {
+const s = AppState.streamJurnal;
+if (s) { try { s.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {} }
+AppState.streamJurnal = null;
+const v = $('jkVideo');
+if (v) v.srcObject = null;
 }
 function gambarLampiranJurnal() {
 const box = $('jrLampiran');
