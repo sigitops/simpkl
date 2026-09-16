@@ -127,6 +127,45 @@ if (css && css !== acuan) return 'app.css';
 return '';
 }
 
+// Cap aset di atas hanya membandingkan app*.js, app.css, dan index.html —
+// ketiganya dilayani Vercel, jadi ketiganya selalu bergerak bersama. Yang TIDAK
+// ikut terbandingkan adalah pasangan yang justru paling mungkin berselisih:
+// Kode.gs di Apps Script diterapkan terpisah dari berkas web di Vercel.
+//
+// Selisih itu berbahaya justru karena tidak terlihat. Kerangka halaman dirakit
+// Kode.gs; bila Kode.gs sudah versi baru sementara app*.js belum, kerangka baru
+// akan memuat kotak yang pemuatnya belum ada di perangkat — dan yang tampil
+// hanyalah pemutar yang berputar selamanya. Sebaliknya bila app*.js lebih baru,
+// pemuatnya memanggil fungsi API yang belum terdaftar di server.
+//
+// Karena itu versi server yang sudah lama dikirim getBootstrapData — dan selama
+// ini diabaikan klien — sekarang dibandingkan dan dikatakan apa adanya.
+let selisihVersiDikabarkan = false;
+function periksaSelisihVersiServer(versiServer) {
+const server = String(versiServer || '');
+const klien = String(window.SIMPKL_VERSI || '');
+if (!server || !klien || server === klien || selisihVersiDikabarkan) return;
+selisihVersiDikabarkan = true;
+// Dibandingkan per bagian, bukan sebagai teks: sebagai teks, "9.10" terbaca
+// lebih kecil daripada "9.9" dan yang dituduh tertinggal justru yang terbaru.
+const angka = function (v) {
+return String(v).split('.').map(function (x) { return parseInt(x, 10) || 0; });
+};
+const a = angka(server), c = angka(klien);
+let serverLebihBaru = false;
+for (let i = 0; i < Math.max(a.length, c.length); i++) {
+const x = a[i] || 0, y = c[i] || 0;
+if (x !== y) { serverLebihBaru = x > y; break; }
+}
+const lebihTua = serverLebihBaru ? 'berkas web di perangkat ini' : 'Apps Script';
+console.warn('Selisih versi: server ' + server + ', klien ' + klien + '.');
+setTimeout(function () {
+toast('Versi Apps Script (' + server + ') dan berkas web (' + klien + ') tidak sama, ' +
+'jadi ' + lebihTua + ' tertinggal. Sebagian menu bisa tampak kosong atau gagal ' +
+'menyimpan sampai keduanya disamakan.', 'warning', 12000);
+}, 1800);
+}
+
 /** @return {boolean} true bila halaman sedang dimuat ulang dan boot harus berhenti. */
 function jagaVersiAset() {
 const basi = versiAsetBasi();
@@ -2422,12 +2461,86 @@ console.error('Registri halaman belum siap:', e);
 toast('Aplikasi belum sepenuhnya dimuat. Muat ulang halaman.', 'error', 7000);
 return;
 }
-if (typeof fn !== 'function') return;
+if (typeof fn !== 'function') {
+// Kerangka halaman ini dirakit server, sedangkan pemuatnya ada di app*.js.
+// Bila namanya tidak ada di registri, berkas app*.js di perangkat ini lebih
+// tua daripada kerangkanya — dan dahulu jalur ini diam saja, sehingga yang
+// dilihat pengguna hanyalah pemutar yang berputar selamanya.
+if (Object.prototype.hasOwnProperty.call(JUDUL_HALAMAN || {}, halaman)) {
+gantiPemutarMacet('Halaman ini belum dikenali oleh berkas aplikasi di perangkat Anda.',
+'Tutup lalu buka kembali tab ini, atau tekan Ctrl+Shift+R untuk mengambil versi terbaru.');
+}
+return;
+}
 try { fn(); }
 catch (e) {
 console.error('Gagal menyiapkan halaman "' + halaman + '":', e);
 toast('Gagal menyiapkan halaman: ' + e.message, 'error');
+gantiPemutarMacet('Gagal menyiapkan halaman', e.message);
 }
+jagaPemutarMacet(halaman);
+}
+
+// ── Jaring pengaman: pemuat yang tidak pernah selesai ──────────────────────
+//
+// Kerangka tiap halaman dirakit di SERVER dan sudah membawa pemutar bertuliskan
+// "Mengambil …". Yang menggantinya adalah pemuat di app*.js. Ada dua cara
+// pemutar itu bisa tertinggal selamanya, dan dua-duanya TIDAK meninggalkan
+// jejak apa pun di konsol:
+//
+//   1. berkas app*.js di perangkat lebih tua daripada kerangka yang baru saja
+//      dirakit server, sehingga fungsi pemuatnya belum ada;
+//   2. satu pemuat gagal lebih dulu di dalam blok try yang sama, sehingga
+//      pemuat sesudahnya tidak pernah dipanggil.
+//
+// Keduanya kini ditutup di sumbernya — tiap kotak memuat dirinya sendiri, dan
+// registri halaman yang tidak dikenali berbicara. Fungsi di bawah adalah
+// lapisan terakhir untuk sebab yang belum terpikirkan: apa pun yang terjadi,
+// pengguna tidak pernah ditinggal menatap pemutar tanpa keterangan.
+//
+// Ambangnya SENGAJA lebih panjang daripada batas waktu satu permintaan
+// (BATAS_WAKTU_MS). Permintaan yang masih berjalan pasti sudah menulis
+// hasilnya — atau galatnya — sebelum pengawas ini sempat berbicara, jadi ia
+// tidak pernah memotong pemuatan yang sebenarnya sehat.
+const PEMUTAR_MACET_MS = 55000;
+let jamPengawasMacet = 0;
+
+/** Mengganti setiap pemutar yang masih tersisa dengan keterangan yang bisa ditindaklanjuti. */
+function gantiPemutarMacet(judul, pesan) {
+const wadah = document.getElementById('pageContent') || document.body;
+const sisa = wadah.querySelectorAll('.muat-inline');
+if (!sisa.length) return 0;
+sisa.forEach(function (el) {
+const kotak = el.parentElement;
+if (!kotak) return;
+kotak.innerHTML = emptyState('sync_problem', judul || 'Bagian ini tidak selesai dimuat',
+pesan || 'Coba muat ulang halaman.');
+});
+return sisa.length;
+}
+
+function jagaPemutarMacet(halaman) {
+clearTimeout(jamPengawasMacet);
+jamPengawasMacet = setTimeout(function () {
+if (AppState.halamanAktif !== halaman) return;
+const n = gantiPemutarMacet('Bagian ini tidak selesai dimuat',
+'Server tidak menjawab pada waktunya. Muat ulang halaman untuk mencoba lagi.');
+if (n) console.warn('Pengawas: ' + n + ' pemuat pada halaman "' + halaman + '" tidak pernah selesai.');
+}, PEMUTAR_MACET_MS);
+}
+
+/**
+ * Mengisi satu kotak dengan keterangan galat — dipakai pemuat yang gagal.
+ *
+ * Tanpa ini, pemuat yang berhenti di tengah jalan meninggalkan pemutar bawaan
+ * kerangka apa adanya, dan satu-satunya tanda bahwa ada yang salah adalah toast
+ * yang menghilang sendiri beberapa detik kemudian.
+ */
+function galatKotak(id, pesan, judul) {
+const kotak = document.getElementById(id);
+if (!kotak) return;
+kotak.innerHTML = emptyState('sync_problem', judul || 'Gagal memuat',
+pesan || 'Coba muat ulang halaman.');
 }
 function perbaruiNavAktif(halaman) {
 $$('.nav-link[data-page]').forEach(el => el.classList.toggle('active', el.dataset.page === halaman));
@@ -3025,6 +3138,7 @@ AppState.penempatan = res.data.penempatan;
 if (res.data.skema) SKEMA_MASTER = res.data.skema;
 if (res.data.menu) MENU = res.data.menu;
 if (res.data.judulHalaman) JUDUL_HALAMAN = res.data.judulHalaman;
+periksaSelisihVersiServer(res.data.versi);
 const c = AppState.config;
 $('brandName').textContent = c.appName || 'SIM PKL';
 $('brandDesc').textContent = c.appDesc || 'Manajemen Praktik Kerja';

@@ -23,11 +23,13 @@ const INIT_HALAMAN = {
 'kelola-tempat':    () => muatTabelMaster(),
 'kelola-siswa':     () => muatTabelMaster(),
 'kelola-guru':      () => muatTabelMaster(),
-'kelola-periode':   () => muatTabelMaster(),
+// Kartu Tutup Periode ikut tinggal di halaman ini sejak v9.6.
+'kelola-periode':   () => { muatTabelMaster(); muatTutupPeriode(); },
 'sertifikat':       () => initSertifikat(),
 'jadwal-shift':     () => initJadwalShift(),
 'hari-libur':       () => muatHariLibur(),
 'pengaturan':       () => muatPengaturan(),
+'cadangan':         () => muatCadangan(),
 'login':            () => {}
 };
 async function muatDataBeranda() {

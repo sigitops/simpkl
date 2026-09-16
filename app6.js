@@ -406,10 +406,23 @@ $('modalBody').innerHTML = (res.success && res.data.length)
 $('modalBody').innerHTML = emptyState('error', 'Gagal memuat', err.message);
 }
 }
-async function muatPengaturan() {
+// Halaman Pengaturan memuat beberapa kotak sekaligus. Dahulu semuanya berbagi
+// SATU blok try: begitu getAllConfig gagal — sesi kedaluwarsa, jaringan putus,
+// apa pun — fungsinya berhenti di situ, dan kotak-kotak sesudahnya tidak pernah
+// dipanggil. Yang tersisa di layar adalah pemutar bawaan kerangka yang berputar
+// selamanya, sementara satu-satunya tanda bahwa ada yang salah adalah toast
+// yang hilang sendiri beberapa detik kemudian.
+//
+// Sekarang tiap kotak berdiri sendiri, dan kegagalannya ditulis DI DALAM
+// kotaknya. Satu kotak boleh gagal tanpa membungkam kotak lain.
+function muatPengaturan() {
+muatKonfigurasiAplikasi();
+muatTabelAkun();
+}
+async function muatKonfigurasiAplikasi() {
 try {
 const res = await panggilCepat('getAllConfig', AppState.sessionToken);
-if (!res.success) { toast(res.message, 'error'); return; }
+if (!res.success) { toast(res.message, 'error'); galatKotak('boxPenyimpanan', res.message, 'Tidak dapat dibuka'); return; }
 const c = res.data;
 const isi = (id, v) => { if ($(id)) $(id).value = (v === null || v === undefined) ? '' : v; };
 isi('stAppName', c.appName); isi('stTagline', c.appTagline); isi('stAppDesc', c.appDesc);
@@ -446,18 +459,15 @@ target="_blank" rel="noopener" aria-label="Buka folder ${l}">
 <div class="alert alert-info" style="margin-top:12px">
 <span class="mi">database</span>
 <div><strong>Database</strong>
-<p>Spreadsheet <code>DB_SIM_PKL</code> berisi seluruh data. Cadangannya diatur pada kartu
-<b>Pencadangan Data</b> di bawah.</p></div>
+<p>Spreadsheet <code>DB_SIM_PKL</code> berisi seluruh data. Pencadangan dan pemulihannya
+ada di menu <a href="#" onclick="navigateTo('cadangan');return false"><b>Cadangan &amp; Pemulihan</b></a>.</p></div>
 </div>
 <a class="btn btn-outline btn-block" style="margin-top:12px"
 href="${HTTPS}docs.google.com/spreadsheets/d/${esc(c.spreadsheetId || '')}"
 target="_blank" rel="noopener">
 <span class="mi">table_view</span> Buka Spreadsheet Database</a>`;
 }
-muatTabelAkun();
-muatCadangan();
-muatTutupPeriode();
-} catch (err) { toast(err.message, 'error'); }
+} catch (err) { toast(err.message, 'error'); galatKotak('boxPenyimpanan', err.message); }
 }
 
 // ── Pencadangan & Tutup Periode (v9.5) ────────────────────────────────────
@@ -493,19 +503,19 @@ const box = $('boxCadangan');
 if (!box) return;
 const items = d.items || [];
 box.innerHTML = `
-<p class="muted-sm">Setiap cadangan adalah <b>salinan utuh</b> spreadsheet database, tersimpan di
-Google Drive Anda sendiri dan bisa dibuka langsung seperti spreadsheet biasa.
-${d.batas} cadangan terbaru disimpan; selebihnya dibuang otomatis.</p>
+<p class="muted-sm">${d.batas} cadangan terbaru disimpan; selebihnya dibuang otomatis.</p>
 ${items.length ? `<div class="list">${items.map(function (f, i) {
-return `<div class="list-item">
+return `<div class="list-item cd-baris">
 <div class="list-lead ${i === 0 ? 'ok' : ''}"><span class="mi">${i === 0 ? 'verified' : 'history'}</span></div>
 <div class="list-main">
 <div class="list-title">${waktuCadangan(f.waktu)}${i === 0 ? ' · terbaru' : ''}</div>
 <div class="list-sub">${esc(f.nama)} · ${ukuranSingkat(f.ukuran)}</div>
 </div>
-<div class="list-tail">
+<div class="list-tail cd-aksi">
+<button class="btn btn-outline btn-sm" onclick="pulihkanCadanganUI('${esc(f.id)}','${esc(f.nama)}')">
+<span class="mi">restore</span> Pulihkan</button>
 <a class="btn-icon" href="${esc(f.url)}" target="_blank" rel="noopener"
-aria-label="Buka cadangan ${esc(f.nama)}"><span class="mi">open_in_new</span></a>
+aria-label="Buka cadangan ${esc(f.nama)} di Google Drive"><span class="mi">open_in_new</span></a>
 <button class="btn-icon" onclick="hapusCadanganUI('${esc(f.id)}','${esc(f.nama)}')"
 aria-label="Hapus cadangan ${esc(f.nama)}"><span class="mi">delete</span></button>
 </div>
@@ -513,12 +523,6 @@ aria-label="Hapus cadangan ${esc(f.nama)}"><span class="mi">delete</span></butto
 }).join('')}</div>` :
 emptyState('cloud_off', 'Belum ada cadangan',
 'Tekan "Cadangkan Sekarang" untuk membuat salinan pertama.')}
-<div class="alert alert-info" style="margin-top:12px">
-<span class="mi">info</span>
-<div><strong>Foto tidak ikut disalin</strong>
-<p>Baris presensi dan jurnal hanya menyimpan id berkasnya, dan salinan ini tetap menunjuk
-foto yang sama di Drive. Foto juga tidak pernah dihapus oleh Tutup Periode.</p></div>
-</div>
 ${d.folderUrl ? `<a class="btn btn-outline btn-block" style="margin-top:12px"
 href="${esc(d.folderUrl)}" target="_blank" rel="noopener">
 <span class="mi">folder_open</span> Buka Folder Cadangan</a>` : ''}`;
@@ -545,6 +549,108 @@ sembunyikanSibuk();
 toast(res.message, res.success ? 'success' : 'error');
 if (res.success) muatCadangan();
 } catch (e) { sembunyikanSibuk(); toast(e.message, 'error'); }
+}
+
+// ── Pemulihan database (v9.6) ─────────────────────────────────────────────
+//
+// Tindakan paling berbahaya di seluruh aplikasi, jadi jalannya dibuat berbeda
+// dari tombol lain: kata konfirmasi wajib diketik, tombolnya mati sampai kata
+// itu benar, dan begitu berjalan dialognya berubah menjadi layar kemajuan yang
+// TIDAK bisa ditutup — sebab menutup tab di tengah pemulihan meninggalkan
+// database separuh lama separuh baru.
+function pulihkanCadanganUI(id, nama) {
+bukaModal('Pulihkan Database', `
+<div class="alert alert-error">
+<span class="mi">warning</span>
+<div><strong>Seluruh data sekarang akan ditimpa</strong>
+<p>Isi database dikembalikan persis seperti pada cadangan
+<b>${esc(nama)}</b>. Semua perubahan sesudah cadangan itu dibuat — presensi, jurnal,
+nilai, penempatan — akan hilang.</p></div>
+</div>
+<ul class="pl-poin">
+<li><span class="mi">shield</span>
+<div>Keadaan sekarang <b>dicadangkan otomatis</b> lebih dulu, jadi pemulihan yang
+salah pilih masih bisa dibatalkan.</div></li>
+<li><span class="mi">key</span>
+<div>Sesi yang sedang berjalan <b>tidak ikut dipulihkan</b> — Anda tidak akan
+terlempar keluar di tengah jalan.</div></li>
+<li><span class="mi">schedule</span>
+<div>Berjalan <b>bertahap</b>. Biarkan tab ini terbuka sampai selesai.</div></li>
+</ul>
+<div class="field">
+<label class="field-label" for="plKonfirmasi">Ketik <b>PULIHKAN</b> untuk melanjutkan</label>
+<input class="field-input" id="plKonfirmasi" type="text" autocomplete="off"
+placeholder="PULIHKAN" oninput="periksaKataPulih()">
+<div class="field-error" id="errPulih"></div>
+</div>`,
+[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
+{ label: '<span class="mi">restore</span> Pulihkan Sekarang', kelas: 'btn-danger',
+  aksi: function () { jalankanPemulihan(id, nama); } }]);
+periksaKataPulih();
+const inp = $('plKonfirmasi');
+if (inp) inp.focus();
+}
+
+function periksaKataPulih() {
+const inp = $('plKonfirmasi'), btn = $('modalBtn1');
+if (!btn) return;
+btn.disabled = !inp || inp.value.trim().toUpperCase() !== 'PULIHKAN';
+}
+
+/** Menggambar layar kemajuan di dalam dialog yang sedang terbuka. */
+function gambarKemajuanPulih(selesai, total, sheet) {
+const badan = $('modalBody');
+if (!badan) return;
+const persen = total ? Math.round((selesai / total) * 100) : 0;
+badan.innerHTML = `
+<div class="pl-maju">
+<div class="pl-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+aria-valuenow="${persen}"><span style="width:${persen}%"></span></div>
+<p class="pl-status">${selesai} dari ${total} sheet dipulihkan${sheet ? ' · ' + esc(sheet) : ''}</p>
+<p class="muted-sm">Jangan tutup tab ini sampai selesai.</p>
+</div>`;
+const kaki = $('modalFoot');
+if (kaki) kaki.innerHTML = '';
+}
+
+async function jalankanPemulihan(id, nama) {
+const inp = $('plKonfirmasi');
+const kata = inp ? inp.value.trim() : '';
+gambarKemajuanPulih(0, 1, 'menyiapkan cadangan pengaman…');
+let mulai = 0, penjagaPutaran = 0;
+try {
+for (;;) {
+// Pagar terhadap jawaban server yang tidak pernah maju: tanpa ini, satu
+// `berikut` yang tidak bertambah akan memutar permintaan tanpa akhir.
+if (++penjagaPutaran > 60) throw new Error('Pemulihan tidak kunjung maju. Coba ulangi.');
+const res = await panggil('pulihkanCadangan', AppState.sessionToken, id, mulai, kata);
+if (!res.success) {
+const err = $('errPulih');
+const sibuk = !!(res.data && res.data.sibuk);
+if (err) { err.textContent = res.message; return; }
+tutupModal();
+toast(res.message, sibuk ? 'warning' : 'error', 12000);
+return;
+}
+const d = res.data;
+gambarKemajuanPulih(d.berikut, d.total, d.dipulihkan.length
+  ? d.dipulihkan[d.dipulihkan.length - 1].sheet : '');
+if (d.tuntas) {
+tutupModal();
+toast(res.message, 'success', 10000);
+// Seluruh singgahan klien kini menunjuk data sebelum pemulihan.
+SinggahData.bersihkan();
+setTimeout(function () { location.reload(); }, 1200);
+return;
+}
+if (d.berikut <= mulai) throw new Error('Pemulihan tidak kunjung maju. Coba ulangi.');
+mulai = d.berikut;
+}
+} catch (e) {
+const err = $('errPulih');
+if (err) err.textContent = e.message;
+else { tutupModal(); toast(e.message, 'error', 12000); }
+}
 }
 
 async function muatTutupPeriode() {
@@ -653,6 +759,9 @@ tutupModal();
 toast(res.message, 'success', 12000);
 batalkanPaketData();
 muatTutupPeriode();
+// Sejak v9.6 kartu ini tinggal di halaman Periode PKL, jadi tabel periodenya
+// ikut digambar ulang: barisnya baru saja berubah menjadi tidak aktif.
+if ($('tabelMaster')) muatTabelMaster();
 muatCadangan();
 } catch (e) { sembunyikanSibuk(); toast(e.message, 'error'); }
 }
@@ -2267,4 +2376,4 @@ if (res.success) { batalkanPaketData(); muatHariLibur(); }
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '9.5';
+window.__SIMPKL_EOF = '9.6';
