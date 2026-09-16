@@ -1922,7 +1922,7 @@
   .dj-aksi .btn{flex:1 1 100%}
 }
 
-:root{--versi-aset:"9.4"}
+:root{--versi-aset:"9.5"}
 
 /* ══ TEMPAT PKL BIMBINGAN — modul Guru (v8.9, dirancang ulang v9.1) ════════
    Kartu, bukan tabel: yang dibaca guru di sini bukan deretan angka melainkan
@@ -2243,3 +2243,32 @@
    tengah kehilangan hubungannya dengan simpul lini masa di sebelahnya, yang
    selalu berada di puncak. */
 .tl-pos .dj-tgl{justify-content:flex-start;padding-top:13px}
+
+/* ══ v9.5 ═════════════════════════════════════════════════════════════════ */
+
+/* Kartu tindakan yang tidak bisa dibatalkan sendiri. Pita merah tipis di tepi
+   atas, bukan latar merah penuh: kartu ini duduk di antara kartu pengaturan
+   biasa dan harus terbaca beda, bukan berteriak. */
+.kartu-bahaya{border-color:var(--error)}
+.kartu-bahaya .card-head{border-bottom-color:var(--error)}
+.kartu-bahaya .card-title .mi{color:var(--error)}
+
+/* Tiga angka dampak Tutup Periode. Angkanya besar karena inilah yang harus
+   dibaca sebelum menekan, bukan kalimat di sekelilingnya. */
+.tp-ubin{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
+.tp-kotak{padding:12px 10px;border-radius:var(--r-lg);text-align:center;
+  border:1px solid var(--outline-variant);background:var(--surface-container-low)}
+.tp-ikon{display:inline-grid;place-items:center;width:32px;height:32px;margin-bottom:6px;
+  border-radius:var(--r-md);background:var(--error-bg);color:var(--error)}
+.tp-ikon .mi{font-size:18px}
+.tp-angka{font-size:22px;font-weight:700;line-height:1.1;color:var(--on-surface);
+  font-variant-numeric:tabular-nums}
+.tp-label{font-size:11.5px;line-height:1.35;color:var(--on-surface-muted);margin-top:3px}
+@media (max-width:420px){
+  .tp-ubin{gap:6px}
+  .tp-kotak{padding:10px 6px}
+  .tp-angka{font-size:19px}
+  .tp-label{font-size:11px}
+}
+.tp-daftar{margin:6px 0 0;padding-left:18px;font-size:13.5px;line-height:1.7}
+.tp-daftar li{margin:0}

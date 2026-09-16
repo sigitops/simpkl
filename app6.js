@@ -446,7 +446,8 @@ target="_blank" rel="noopener" aria-label="Buka folder ${l}">
 <div class="alert alert-info" style="margin-top:12px">
 <span class="mi">database</span>
 <div><strong>Database</strong>
-<p>Spreadsheet <code>DB_SIM_PKL</code> berisi seluruh data. Buat salinan berkala sebagai cadangan.</p></div>
+<p>Spreadsheet <code>DB_SIM_PKL</code> berisi seluruh data. Cadangannya diatur pada kartu
+<b>Pencadangan Data</b> di bawah.</p></div>
 </div>
 <a class="btn btn-outline btn-block" style="margin-top:12px"
 href="${HTTPS}docs.google.com/spreadsheets/d/${esc(c.spreadsheetId || '')}"
@@ -454,8 +455,208 @@ target="_blank" rel="noopener">
 <span class="mi">table_view</span> Buka Spreadsheet Database</a>`;
 }
 muatTabelAkun();
+muatCadangan();
+muatTutupPeriode();
 } catch (err) { toast(err.message, 'error'); }
 }
+
+// ── Pencadangan & Tutup Periode (v9.5) ────────────────────────────────────
+//
+// Keduanya tinggal di halaman Pengaturan dan hanya dapat dibuka admin; server
+// memeriksa perannya lagi di setiap fungsi, sebab menyembunyikan kartunya saja
+// tidak menghalangi permintaan yang dikirim langsung ke API.
+function ukuranSingkat(bita) {
+const n = Number(bita) || 0;
+if (n < 1024) return n + ' B';
+if (n < 1048576) return (n / 1024).toFixed(0) + ' KB';
+return (n / 1048576).toFixed(1) + ' MB';
+}
+function waktuCadangan(iso) {
+if (!iso) return '-';
+const d = new Date(iso);
+if (isNaN(d)) return '-';
+const p = x => ('0' + x).slice(-2);
+return tglSingkat(d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())) +
+       ' ' + p(d.getHours()) + '.' + p(d.getMinutes());
+}
+async function muatCadangan() {
+const box = $('boxCadangan');
+if (!box) return;
+try {
+const res = await panggilCepat('daftarCadangan', AppState.sessionToken);
+if (!res.success) { box.innerHTML = emptyState('cloud_off', 'Tidak dapat dibuka', res.message); return; }
+gambarCadangan(res.data);
+} catch (e) { box.innerHTML = emptyState('wifi_off', 'Gagal memuat', e.message); }
+}
+function gambarCadangan(d) {
+const box = $('boxCadangan');
+if (!box) return;
+const items = d.items || [];
+box.innerHTML = `
+<p class="muted-sm">Setiap cadangan adalah <b>salinan utuh</b> spreadsheet database, tersimpan di
+Google Drive Anda sendiri dan bisa dibuka langsung seperti spreadsheet biasa.
+${d.batas} cadangan terbaru disimpan; selebihnya dibuang otomatis.</p>
+${items.length ? `<div class="list">${items.map(function (f, i) {
+return `<div class="list-item">
+<div class="list-lead ${i === 0 ? 'ok' : ''}"><span class="mi">${i === 0 ? 'verified' : 'history'}</span></div>
+<div class="list-main">
+<div class="list-title">${waktuCadangan(f.waktu)}${i === 0 ? ' · terbaru' : ''}</div>
+<div class="list-sub">${esc(f.nama)} · ${ukuranSingkat(f.ukuran)}</div>
+</div>
+<div class="list-tail">
+<a class="btn-icon" href="${esc(f.url)}" target="_blank" rel="noopener"
+aria-label="Buka cadangan ${esc(f.nama)}"><span class="mi">open_in_new</span></a>
+<button class="btn-icon" onclick="hapusCadanganUI('${esc(f.id)}','${esc(f.nama)}')"
+aria-label="Hapus cadangan ${esc(f.nama)}"><span class="mi">delete</span></button>
+</div>
+</div>`;
+}).join('')}</div>` :
+emptyState('cloud_off', 'Belum ada cadangan',
+'Tekan "Cadangkan Sekarang" untuk membuat salinan pertama.')}
+<div class="alert alert-info" style="margin-top:12px">
+<span class="mi">info</span>
+<div><strong>Foto tidak ikut disalin</strong>
+<p>Baris presensi dan jurnal hanya menyimpan id berkasnya, dan salinan ini tetap menunjuk
+foto yang sama di Drive. Foto juga tidak pernah dihapus oleh Tutup Periode.</p></div>
+</div>
+${d.folderUrl ? `<a class="btn btn-outline btn-block" style="margin-top:12px"
+href="${esc(d.folderUrl)}" target="_blank" rel="noopener">
+<span class="mi">folder_open</span> Buka Folder Cadangan</a>` : ''}`;
+}
+async function buatCadanganUI() {
+tampilkanSibuk('Menyalin database…');
+try {
+const res = await panggil('cadangkanDatabase', AppState.sessionToken, '');
+sembunyikanSibuk();
+const sibuk = !!(res.data && res.data.sibuk);
+toast(res.message, res.success ? 'success' : sibuk ? 'warning' : 'error', res.success ? 7000 : 9000);
+if (res.success) muatCadangan();
+} catch (e) { sembunyikanSibuk(); toast(e.message, 'error'); }
+}
+async function hapusCadanganUI(id, nama) {
+const ya = await konfirmasi('Hapus Cadangan',
+'Cadangan "' + nama + '" akan dipindahkan ke sampah Google Drive. ' +
+'Masih bisa Anda pulihkan dari sana selama 30 hari.');
+if (!ya) return;
+tampilkanSibuk('Menghapus cadangan…');
+try {
+const res = await panggil('hapusCadangan', AppState.sessionToken, id);
+sembunyikanSibuk();
+toast(res.message, res.success ? 'success' : 'error');
+if (res.success) muatCadangan();
+} catch (e) { sembunyikanSibuk(); toast(e.message, 'error'); }
+}
+
+async function muatTutupPeriode() {
+const box = $('boxTutupPeriode');
+if (!box) return;
+try {
+const res = await panggilCepat('pratinjauTutupPeriode', AppState.sessionToken);
+if (!res.success) {
+box.innerHTML = emptyState('event_busy', 'Tidak ada periode aktif', res.message);
+return;
+}
+gambarTutupPeriode(res.data);
+} catch (e) { box.innerHTML = emptyState('wifi_off', 'Gagal memuat', e.message); }
+}
+function gambarTutupPeriode(d) {
+const box = $('boxTutupPeriode');
+if (!box) return;
+AppState.tutupPeriode = d;
+const ubin = [
+{ ikon: 'assignment_turned_in', n: d.penempatan, label: 'Penempatan diselesaikan' },
+{ ikon: 'group', n: d.siswa, label: 'Siswa dibebaskan' },
+{ ikon: 'domain', n: d.tempat, label: 'Tempat PKL diselaraskan' }
+];
+box.innerHTML = `
+<div class="info-tonal">
+<span class="mi">event</span>
+<div><span class="info-eyebrow">Periode aktif</span>
+<div class="info-strong">${esc(d.periode.label)}</div>
+<div class="info-sub">${esc(tglRingkas(d.periode.mulai) || '-')} &ndash;
+${esc(tglRingkas(d.periode.selesai) || '-')}</div></div>
+</div>
+<div class="tp-ubin">${ubin.map(function (u) {
+return `<div class="tp-kotak"><span class="tp-ikon"><span class="mi">${u.ikon}</span></span>
+<div class="tp-angka">${u.n}</div><div class="tp-label">${u.label}</div></div>`;
+}).join('')}</div>
+${d.tanpaPeriode ? `<div class="alert alert-warning" style="margin-top:12px">
+<span class="mi">help</span>
+<div><strong>${d.tanpaPeriode} penempatan tanpa penanda periode</strong>
+<p>Baris lama dari sebelum kolom periode selalu terisi. Ikut ditutup — bila dibiarkan
+aktif, kuota dan dashboard tidak akan pernah benar lagi.</p></div>
+</div>` : ''}
+<div class="alert alert-info" style="margin-top:12px">
+<span class="mi">shield</span>
+<div><strong>Mengarsipkan, bukan menghapus</strong>
+<p>Presensi, jurnal, nilai, laporan, dan sertifikat angkatan ini <b>tetap utuh</b> —
+masih bisa dibuka untuk legalisir dan laporan. Yang berubah hanya status penempatannya.
+Cadangan diambil otomatis sebelum apa pun disentuh.</p></div>
+</div>
+<button class="btn btn-danger btn-block" style="margin-top:12px"
+onclick="bukaDialogTutupPeriode()" ${d.penempatan ? '' : 'disabled'}>
+<span class="mi">lock</span> Tutup Periode Ini</button>
+${d.penempatan ? '' : `<p class="field-help" style="margin-top:8px">Tidak ada penempatan aktif
+pada periode ini, jadi tidak ada yang perlu ditutup.</p>`}`;
+}
+function bukaDialogTutupPeriode() {
+const d = AppState.tutupPeriode;
+if (!d) return;
+bukaModal('Tutup Periode ' + d.periode.label, `
+<div class="alert alert-warning">
+<span class="mi">warning</span>
+<div><strong>Yang akan terjadi</strong>
+<ul class="tp-daftar">
+<li><b>${d.penempatan}</b> penempatan berubah status menjadi <b>Selesai</b></li>
+<li><b>${d.siswa}</b> siswa dibebaskan — status penempatannya dikosongkan</li>
+<li>Kuota <b>${d.tempat}</b> tempat PKL dihitung ulang</li>
+<li>Periode <b>${esc(d.periode.label)}</b> dinonaktifkan</li>
+</ul></div>
+</div>
+<p class="muted-sm">Sesudah ini siswa angkatan lama <b>tidak dapat presensi lagi</b>, dan
+aplikasi akan meminta Anda mengaktifkan periode baru lewat menu <b>Kelola Periode</b>
+sebelum angkatan berikutnya bisa mulai.</p>
+<div class="field">
+<label class="field-label" for="tpKonfirmasi">Ketik <b>TUTUP</b> untuk melanjutkan</label>
+<input class="field-input" id="tpKonfirmasi" type="text" autocomplete="off"
+placeholder="TUTUP" oninput="periksaKataTutup()">
+<div class="field-error" id="errTutupPeriode"></div>
+</div>`,
+[{ label: 'Batal', kelas: 'btn-outline', aksi: tutupModal },
+{ label: '<span class="mi">lock</span> Tutup Periode', kelas: 'btn-danger',
+  aksi: jalankanTutupPeriode }]);
+// Tombolnya mati sampai kata konfirmasinya benar. Dialog yang tombolnya sudah
+// hidup sejak dibuka mengundang orang menekannya lebih dulu, baru membaca.
+periksaKataTutup();
+const inp = $('tpKonfirmasi');
+if (inp) inp.focus();
+}
+function periksaKataTutup() {
+const inp = $('tpKonfirmasi'), btn = $('modalBtn1');
+if (btn) btn.disabled = !inp || inp.value.trim().toUpperCase() !== 'TUTUP';
+}
+async function jalankanTutupPeriode() {
+const inp = $('tpKonfirmasi');
+const kata = inp ? inp.value.trim() : '';
+tampilkanSibuk('Mencadangkan database…');
+try {
+const res = await panggil('tutupPeriode', AppState.sessionToken, kata);
+sembunyikanSibuk();
+if (!res.success) {
+const err = $('errTutupPeriode');
+const sibuk = !!(res.data && res.data.sibuk);
+if (err) err.textContent = res.message;
+else toast(res.message, sibuk ? 'warning' : 'error', 10000);
+return;
+}
+tutupModal();
+toast(res.message, 'success', 12000);
+batalkanPaketData();
+muatTutupPeriode();
+muatCadangan();
+} catch (e) { sembunyikanSibuk(); toast(e.message, 'error'); }
+}
+
 function pratinjauLogo() {
 const url = $('stLogo') ? $('stLogo').value.trim() : '';
 const box = $('logoPreview'), img = $('logoPreviewImg');
@@ -2066,4 +2267,4 @@ if (res.success) { batalkanPaketData(); muatHariLibur(); }
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '9.4';
+window.__SIMPKL_EOF = '9.5';
