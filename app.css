@@ -1922,7 +1922,7 @@
   .dj-aksi .btn{flex:1 1 100%}
 }
 
-:root{--versi-aset:"9.6"}
+:root{--versi-aset:"9.7"}
 
 /* ══ TEMPAT PKL BIMBINGAN — modul Guru (v8.9, dirancang ulang v9.1) ════════
    Kartu, bukan tabel: yang dibaca guru di sini bukan deretan angka melainkan
@@ -2282,14 +2282,90 @@
   color:var(--on-surface-muted)}
 .cd-poin li b{color:var(--on-surface)}
 .cd-poin .mi{flex:0 0 auto;font-size:19px;color:var(--primary);margin-top:1px}
-.cd-aksi{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.cd-kapan{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.cd-kapan li{display:flex;gap:10px;align-items:center;font-size:13.5px;line-height:1.5;
+  color:var(--on-surface-muted)}
+.cd-kapan li b{color:var(--on-surface)}
+.cd-kapan .mi{flex:0 0 auto;font-size:18px;color:var(--on-surface-muted)}
+
+/* ── Tata halaman (v9.7) ────────────────────────────────────────────────
+   Daftar cadangan adalah benda utama halaman ini, keterangannya pendamping.
+   Membaginya rata membuat nama berkas yang panjang terpotong dua baris pada
+   lebar layar meja yang biasa dipakai. */
+.cd-tata{display:grid;gap:var(--s-md);grid-template-columns:minmax(0,1fr)}
+@media (min-width:1080px){
+  .cd-tata{grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);align-items:start}
+}
+
+/* Pita status: satu kalimat yang menjawab "apakah data saya aman sekarang?".
+   Warnanya tidak pernah menjadi satu-satunya penanda — ikon dan kalimatnya
+   mengatakan hal yang sama. */
+.cd-kartu-pita .card-body{padding:0}
+.cd-pita{display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:16px 18px;border-radius:var(--r-xl);border:1px solid var(--outline-variant);
+  background:var(--surface-card)}
+.cd-pita-ikon{flex:0 0 auto;display:grid;place-items:center;width:52px;height:52px;
+  border-radius:var(--r-lg)}
+.cd-pita-ikon .mi{font-size:28px}
+.cd-pita-teks{flex:1 1 240px;min-width:0}
+.cd-pita-utama{font-size:18px;font-weight:700;letter-spacing:-.01em;color:var(--on-surface)}
+.cd-pita-sub{margin-top:3px;font-size:13px;line-height:1.5;color:var(--on-surface-muted)}
+.cd-pita.baik{border-color:color-mix(in srgb,var(--success) 34%,transparent)}
+.cd-pita.baik .cd-pita-ikon{background:var(--success-bg);color:var(--success)}
+.cd-pita.hati{border-color:color-mix(in srgb,var(--warning) 40%,transparent)}
+.cd-pita.hati .cd-pita-ikon{background:var(--warning-bg);color:var(--warning-tinta)}
+.cd-pita.bahaya{border-color:color-mix(in srgb,var(--error) 38%,transparent)}
+.cd-pita.bahaya .cd-pita-ikon{background:var(--error-bg);color:var(--error)}
+
+.cd-meter{flex:0 0 auto;min-width:148px;text-align:right}
+.cd-meter-angka{font-size:15px;font-weight:700;color:var(--on-surface);
+  font-variant-numeric:tabular-nums}
+.cd-meter-angka span{font-weight:500;color:var(--on-surface-muted)}
+.cd-meter-bar{height:6px;margin:6px 0 5px;border-radius:999px;overflow:hidden;
+  background:var(--surface-container)}
+.cd-meter-bar>span{display:block;height:100%;border-radius:999px;background:var(--primary);
+  transition:width .3s ease}
+.cd-meter-teks{font-size:11.5px;color:var(--on-surface-muted)}
+
+/* Riwayat cadangan sebagai garis waktu: yang dicari orang di sini adalah
+   URUTAN — mana yang terbaru, seberapa jauh jarak antarsalinan. */
+.cd-daftar{list-style:none;margin:0;padding:0}
+.cd-item{display:flex;gap:14px;position:relative;padding:0 0 4px}
+.cd-rel{flex:0 0 32px;display:flex;flex-direction:column;align-items:center;position:relative}
+.cd-rel::after{content:'';flex:1;width:2px;background:var(--outline-variant);margin-top:2px}
+.cd-item:last-child .cd-rel::after{display:none}
+.cd-titik{display:grid;place-items:center;width:32px;height:32px;flex:0 0 32px;
+  border-radius:50%;background:var(--surface-container);color:var(--on-surface-muted);
+  border:2px solid var(--surface-card)}
+.cd-titik .mi{font-size:17px}
+.cd-item.terbaru .cd-titik{background:var(--success-bg);color:var(--success)}
+.cd-isi{flex:1;min-width:0;padding:10px 12px 12px;margin-bottom:10px;
+  border:1px solid var(--outline-variant);border-radius:var(--r-lg);
+  background:var(--surface-card);transition:border-color .2s ease,box-shadow .2s ease}
+.cd-isi:hover{border-color:var(--primary);box-shadow:var(--elev-1)}
+.cd-item.terbaru .cd-isi{background:var(--surface-container-low)}
+.cd-baris-judul{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cd-judul{font-size:15px;font-weight:600;color:var(--on-surface)}
+.cd-lencana{font-size:11px}
+.cd-sub{margin-top:2px;font-size:12.5px;color:var(--on-surface-muted);
+  font-variant-numeric:tabular-nums}
+.cd-berkas{margin-top:6px;font-size:11.5px;color:var(--on-surface-muted);
+  font-family:ui-monospace,Menlo,monospace;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.cd-aksi{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:10px}
+.cd-catatan{margin:8px 0 0;text-align:center}
 @media (max-width:560px){
-  /* Di ponsel tombol Pulihkan turun ke barisnya sendiri dan melebar penuh:
-     tiga sasaran sentuh berdesakan di satu baris sempit adalah cara tercepat
-     menekan Hapus padahal yang dimaksud Pulihkan. */
-  .cd-baris{flex-wrap:wrap}
-  .cd-aksi{width:100%;justify-content:flex-start;margin-top:8px}
-  .cd-aksi .btn{flex:1 1 auto}
+  /* Di ponsel tombol Pulihkan melebar penuh: tiga sasaran sentuh berdesakan di
+     satu baris sempit adalah cara tercepat menekan Hapus padahal yang dimaksud
+     Pulihkan. Ketiganya juga dibesarkan ke 44 px — ukuran terkecil yang masih
+     bisa ditekan jempol dengan andal, dan di sini salah tekan berarti menghapus
+     cadangan. */
+  .cd-aksi .btn{flex:1 1 auto;min-height:44px}
+  .cd-aksi .btn-icon{width:44px;height:44px;flex:0 0 44px}
+  .cd-pita{gap:12px;padding:14px}
+  .cd-pita-utama{font-size:16.5px}
+  .cd-meter{flex:1 1 100%;text-align:left;min-width:0}
+  .cd-item{gap:10px}
 }
 .pl-poin{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:9px}
 .pl-poin li{display:flex;gap:9px;align-items:flex-start;font-size:13px;line-height:1.55;

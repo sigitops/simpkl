@@ -23,8 +23,9 @@ const INIT_HALAMAN = {
 'kelola-tempat':    () => muatTabelMaster(),
 'kelola-siswa':     () => muatTabelMaster(),
 'kelola-guru':      () => muatTabelMaster(),
-// Kartu Tutup Periode ikut tinggal di halaman ini sejak v9.6.
-'kelola-periode':   () => { muatTabelMaster(); muatTutupPeriode(); },
+// Panel Tutup Periode tinggal di halaman ini sejak v9.6, dan sejak v9.7 baru
+// dimuat ketika tombol aksinya pada baris periode ditekan.
+'kelola-periode':   () => muatTabelMaster(),
 'sertifikat':       () => initSertifikat(),
 'jadwal-shift':     () => initJadwalShift(),
 'hari-libur':       () => muatHariLibur(),

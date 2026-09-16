@@ -489,43 +489,160 @@ const p = x => ('0' + x).slice(-2);
 return tglSingkat(d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())) +
        ' ' + p(d.getHours()) + '.' + p(d.getMinutes());
 }
+/**
+ * Jarak waktu dalam kalimat manusia: "2 jam lalu", bukan "16 Sep 2026 15.24".
+ *
+ * Pertanyaan pertama siapa pun yang membuka halaman ini bukan "kapan tepatnya"
+ * melainkan "sudah berapa lama". Tanggal lengkapnya tetap ditampilkan tepat di
+ * bawahnya, jadi tidak ada keterangan yang hilang.
+ */
+function waktuRelatif(iso) {
+if (!iso) return '';
+const d = new Date(iso);
+if (isNaN(d)) return '';
+const detik = Math.max(0, Math.round((Date.now() - d.getTime()) / 1000));
+if (detik < 90) return 'baru saja';
+const menit = Math.round(detik / 60);
+if (menit < 60) return menit + ' menit lalu';
+const jam = Math.round(menit / 60);
+if (jam < 24) return jam + ' jam lalu';
+const hari = Math.round(jam / 24);
+if (hari < 31) return hari + ' hari lalu';
+const bulan = Math.round(hari / 30);
+if (bulan < 12) return bulan + ' bulan lalu';
+return Math.round(bulan / 12) + ' tahun lalu';
+}
+
+/** Umur cadangan terbaru dalam hari; -1 bila belum ada cadangan sama sekali. */
+function umurCadanganHari(iso) {
+if (!iso) return -1;
+const d = new Date(iso);
+if (isNaN(d)) return -1;
+return Math.max(0, (Date.now() - d.getTime()) / 86400000);
+}
+
 async function muatCadangan() {
 const box = $('boxCadangan');
-if (!box) return;
+const pita = $('boxRingkasCadangan');
+if (!box && !pita) return;
 try {
 const res = await panggilCepat('daftarCadangan', AppState.sessionToken);
-if (!res.success) { box.innerHTML = emptyState('cloud_off', 'Tidak dapat dibuka', res.message); return; }
+if (!res.success) { galatCadangan('Tidak dapat dibuka', res.message); return; }
 gambarCadangan(res.data);
-} catch (e) { box.innerHTML = emptyState('wifi_off', 'Gagal memuat', e.message); }
+} catch (e) { galatCadangan('Gagal memuat', e.message); }
 }
+
+/**
+ * Kedua kotak halaman ini diisi satu pemuat yang sama, jadi kegagalannya harus
+ * mengosongkan keduanya. Satu kotak yang tertinggal berisi pemutar adalah
+ * persis cacat yang dibereskan v9.6.
+ */
+function galatCadangan(judul, pesan) {
+const pita = $('boxRingkasCadangan');
+if (pita) {
+pita.innerHTML = `<div class="cd-pita bahaya">
+<div class="cd-pita-ikon"><span class="mi">sync_problem</span></div>
+<div class="cd-pita-teks"><div class="cd-pita-utama">${esc(judul)}</div>
+<div class="cd-pita-sub">${esc(pesan || 'Status cadangan tidak dapat dibaca.')}</div></div>
+<button class="btn btn-outline btn-sm" onclick="muatCadangan()">
+<span class="mi">refresh</span> Coba lagi</button></div>`;
+}
+const box = $('boxCadangan');
+if (box) box.innerHTML = emptyState('wifi_off', judul, pesan || '');
+const chip = $('cdJumlahChip');
+if (chip) chip.hidden = true;
+}
+
+/**
+ * Pita status: hijau bila cadangan terbarunya masih muda, kuning bila mulai
+ * tua, merah bila belum ada sama sekali. Warnanya tidak pernah menjadi
+ * SATU-SATUNYA penanda — ikon dan kalimatnya mengatakan hal yang sama, sebab
+ * sekitar satu dari dua belas laki-laki tidak membedakan merah dan hijau.
+ */
+function gambarPitaCadangan(d) {
+const pita = $('boxRingkasCadangan');
+if (!pita) return;
+const items = d.items || [];
+const terbaru = items[0] || null;
+const umur = umurCadanganHari(terbaru && terbaru.waktu);
+const batas = Number(d.batas) || 10;
+const terpakai = Math.min(items.length, batas);
+const persen = Math.round((terpakai / batas) * 100);
+
+let nada = 'baik', ikon = 'verified_user', utama = '', sub = '';
+if (!terbaru) {
+nada = 'bahaya'; ikon = 'gpp_maybe';
+utama = 'Belum ada cadangan';
+sub = 'Database ini belum punya satu pun salinan. Buat yang pertama sekarang.';
+} else if (umur > 14) {
+nada = 'hati'; ikon = 'gpp_maybe';
+utama = 'Cadangan terakhir ' + waktuRelatif(terbaru.waktu);
+sub = 'Sudah cukup lama. Semua perubahan sesudah itu belum punya salinan.';
+} else {
+utama = 'Cadangan terakhir ' + waktuRelatif(terbaru.waktu);
+sub = waktuCadangan(terbaru.waktu) + ' · ' + ukuranSingkat(terbaru.ukuran);
+}
+
+pita.innerHTML = `
+<div class="cd-pita ${nada}">
+<div class="cd-pita-ikon"><span class="mi">${ikon}</span></div>
+<div class="cd-pita-teks">
+<div class="cd-pita-utama">${esc(utama)}</div>
+<div class="cd-pita-sub">${esc(sub)}</div>
+</div>
+<div class="cd-meter">
+<div class="cd-meter-angka"><b>${terpakai}</b> <span>/ ${batas}</span></div>
+<div class="cd-meter-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${batas}"
+aria-valuenow="${terpakai}" aria-label="Slot cadangan terpakai">
+<span style="width:${persen}%"></span></div>
+<div class="cd-meter-teks">slot cadangan terpakai</div>
+</div>
+</div>`;
+}
+
 function gambarCadangan(d) {
+gambarPitaCadangan(d);
 const box = $('boxCadangan');
 if (!box) return;
 const items = d.items || [];
+const chip = $('cdJumlahChip');
+if (chip) {
+chip.hidden = !items.length;
+chip.textContent = items.length + ' tersimpan';
+}
 box.innerHTML = `
-<p class="muted-sm">${d.batas} cadangan terbaru disimpan; selebihnya dibuang otomatis.</p>
-${items.length ? `<div class="list">${items.map(function (f, i) {
-return `<div class="list-item cd-baris">
-<div class="list-lead ${i === 0 ? 'ok' : ''}"><span class="mi">${i === 0 ? 'verified' : 'history'}</span></div>
-<div class="list-main">
-<div class="list-title">${waktuCadangan(f.waktu)}${i === 0 ? ' · terbaru' : ''}</div>
-<div class="list-sub">${esc(f.nama)} · ${ukuranSingkat(f.ukuran)}</div>
+${items.length ? `<ol class="cd-daftar">${items.map(function (f, i) {
+return `<li class="cd-item${i === 0 ? ' terbaru' : ''}">
+<div class="cd-rel" aria-hidden="true"><span class="cd-titik">
+<span class="mi">${i === 0 ? 'verified' : 'history'}</span></span></div>
+<div class="cd-isi">
+<div class="cd-baris-judul">
+<span class="cd-judul">${esc(waktuRelatif(f.waktu) || waktuCadangan(f.waktu))}</span>
+${i === 0 ? '<span class="chip chip-success cd-lencana">Terbaru</span>' : ''}
 </div>
-<div class="list-tail cd-aksi">
+<div class="cd-sub">${esc(waktuCadangan(f.waktu))} &middot; ${ukuranSingkat(f.ukuran)}</div>
+<div class="cd-berkas" title="${esc(f.nama)}">${esc(f.nama)}</div>
+<div class="cd-aksi">
 <button class="btn btn-outline btn-sm" onclick="pulihkanCadanganUI('${esc(f.id)}','${esc(f.nama)}')">
 <span class="mi">restore</span> Pulihkan</button>
 <a class="btn-icon" href="${esc(f.url)}" target="_blank" rel="noopener"
-aria-label="Buka cadangan ${esc(f.nama)} di Google Drive"><span class="mi">open_in_new</span></a>
-<button class="btn-icon" onclick="hapusCadanganUI('${esc(f.id)}','${esc(f.nama)}')"
-aria-label="Hapus cadangan ${esc(f.nama)}"><span class="mi">delete</span></button>
+aria-label="Buka cadangan ${esc(f.nama)} di Google Drive"
+title="Buka di Google Drive"><span class="mi">open_in_new</span></a>
+<button class="btn-icon danger" onclick="hapusCadanganUI('${esc(f.id)}','${esc(f.nama)}')"
+aria-label="Hapus cadangan ${esc(f.nama)}"
+title="Hapus cadangan ini"><span class="mi">delete</span></button>
 </div>
-</div>`;
-}).join('')}</div>` :
+</div>
+</li>`;
+}).join('')}</ol>
+<p class="muted-sm cd-catatan">${d.batas} cadangan terbaru disimpan; selebihnya dibuang otomatis.</p>` :
 emptyState('cloud_off', 'Belum ada cadangan',
-'Tekan "Cadangkan Sekarang" untuk membuat salinan pertama.')}
+'Tekan "Cadangkan Sekarang" di kanan atas untuk membuat salinan pertama.',
+`<button class="btn btn-primary" onclick="buatCadanganUI()">
+<span class="mi">backup</span> Cadangkan Sekarang</button>`)}
 ${d.folderUrl ? `<a class="btn btn-outline btn-block" style="margin-top:12px"
 href="${esc(d.folderUrl)}" target="_blank" rel="noopener">
-<span class="mi">folder_open</span> Buka Folder Cadangan</a>` : ''}`;
+<span class="mi">folder_open</span> Buka Folder Cadangan di Drive</a>` : ''}`;
 }
 async function buatCadanganUI() {
 tampilkanSibuk('Menyalin database…');
@@ -653,6 +770,27 @@ else { tutupModal(); toast(e.message, 'error', 12000); }
 }
 }
 
+/**
+ * Membuka panel Tutup Periode dari tombol aksi pada baris periode aktif.
+ *
+ * Panelnya tersembunyi sampai diminta: ia menyatakan akibat yang menyentuh
+ * seluruh angkatan, dan sesuatu sebesar itu tidak pantas selalu terpampang di
+ * bawah tabel yang dibuka untuk keperluan sehari-hari.
+ */
+function bukaPanelTutupPeriode() {
+const kartu = $('kartuTutupPeriode');
+if (!kartu) return;
+kartu.hidden = false;
+muatTutupPeriode();
+// Digulir setelah satu bingkai supaya tingginya sudah terhitung.
+requestAnimationFrame(function () {
+kartu.scrollIntoView({ behavior: 'smooth', block: 'center' });
+});
+}
+function tutupPanelTutupPeriode() {
+const kartu = $('kartuTutupPeriode');
+if (kartu) kartu.hidden = true;
+}
 async function muatTutupPeriode() {
 const box = $('boxTutupPeriode');
 if (!box) return;
@@ -758,8 +896,10 @@ return;
 tutupModal();
 toast(res.message, 'success', 12000);
 batalkanPaketData();
-muatTutupPeriode();
-// Sejak v9.6 kartu ini tinggal di halaman Periode PKL, jadi tabel periodenya
+// Periodenya baru saja tidak aktif lagi, jadi panelnya tidak punya apa-apa
+// lagi untuk ditutup — dan tombol aksinya pun ikut hilang dari barisnya.
+tutupPanelTutupPeriode();
+// Sejak v9.6 panel ini tinggal di halaman Periode PKL, jadi tabel periodenya
 // ikut digambar ulang: barisnya baru saja berubah menjadi tidak aktif.
 if ($('tabelMaster')) muatTabelMaster();
 muatCadangan();
@@ -2376,4 +2516,4 @@ if (res.success) { batalkanPaketData(); muatHariLibur(); }
 }
 
 window.__blok = 6;
-window.__SIMPKL_EOF = '9.6';
+window.__SIMPKL_EOF = '9.7';

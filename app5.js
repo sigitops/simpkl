@@ -280,9 +280,18 @@ kosong: { ikon: 'inbox', judul: 'Belum ada data',
 desc: 'Tambahkan data ' + skema.judul.toLowerCase() + ' pertama Anda.',
 tombol: `<button class="btn btn-primary" onclick="bukaFormMaster('${entitas}')">
 <span class="mi">add</span> Tambah Data</button>` },
+// Kolom aksi tanpa judul memaksa orang menebak ikonnya satu per satu. Empat
+// tabel master ini memakai satu perakit yang sama, jadi judulnya dipasang
+// sekaligus — kolom yang bernama di satu tabel dan tidak di tabel sebelahnya
+// justru terbaca sebagai cacat.
+labelAksi: 'Aksi',
 aksi: r => `
 <button class="btn-icon" aria-label="Lihat detail"
 onclick="lihatDetailMaster('${entitas}','${esc(r.ID)}')"><span class="mi">visibility</span></button>
+${entitas === 'PeriodePKL' && String(r.Aktif) === 'Ya' ? `<button class="btn-icon danger"
+aria-label="Tutup periode ${esc(r.TahunAjaran || '')} ${esc(r.Semester || '')}"
+title="Tutup periode ini" onclick="bukaPanelTutupPeriode()">
+<span class="mi">event_available</span></button>` : ''}
 ${entitas === 'TempatPKL' ? `<button class="btn-icon" aria-label="Atur shift kerja"
 title="Atur shift kerja"
 onclick="bukaAturShift('${esc(r.ID)}')"><span class="mi">schedule</span></button>` : ''}
