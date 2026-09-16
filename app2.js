@@ -811,7 +811,13 @@ jenis: AppState.jenisIzin, tanggal: $('izTanggal').value, alasan: alasan,
 buktiBase64: AppState.buktiIzin.base64, namaFile: AppState.buktiIzin.nama,
 mimeType: AppState.buktiIzin.mime });
 sembunyikanSibuk();
-if (!res.success) { toast(res.message, 'error', 6500); return; }
+if (!res.success) {
+// Server sibuk: tidak ada baris yang tertulis, dan mencoba lagi memang jalan
+// keluarnya. Kuning, bukan merah — merah berarti ditolak. (v9.3)
+const sibuk = !!(res.data && res.data.sibuk);
+toast(res.message, sibuk ? 'warning' : 'error', sibuk ? 11000 : 6500);
+return;
+}
 AppState.buktiIzin = null;
 batalkanPaketData();
 tutupModal();
@@ -977,7 +983,16 @@ akurasi: AppState.posisi.accuracy, fotoBase64: AppState.fotoTerambil, catatan: '
 });
 clearInterval(tanda);
 sembunyikanSibuk();
-if (!res.success) { toast(res.message, 'error', 8000); btn.disabled = false; muatKonteksPresensi(); return; }
+// Server sibuk BUKAN kesalahan siswa dan bukan penolakan: tidak ada satu pun
+// baris yang tertulis, dan menekan sekali lagi memang jalan keluarnya. Merah
+// membuat siswa mengira presensinya ditolak lalu berhenti mencoba. (v9.3)
+if (!res.success) {
+const sibuk = !!(res.data && res.data.sibuk);
+toast(res.message, sibuk ? 'warning' : 'error', sibuk ? 11000 : 8000);
+btn.disabled = false;
+if (!sibuk) muatKonteksPresensi();
+return;
+}
 const d = res.data;
 const warna = d.status === 'Hadir' ? 'success' : d.status === 'Telat' ? 'warning' : 'error';
 bukaModal('Presensi Tercatat', `

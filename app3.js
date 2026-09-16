@@ -877,7 +877,13 @@ fotoTetap: daftar.filter(function (f) { return f.id; }).map(function (f) { retur
 fotoBaru: daftar.filter(function (f) { return !f.id && f.data; }).map(function (f) { return f.data; })
 });
 sembunyikanSibuk();
-if (!res.success) { toast(res.message, 'error', 6000); return; }
+if (!res.success) {
+// Server sibuk: tidak ada baris yang tertulis, dan mencoba lagi memang jalan
+// keluarnya. Kuning, bukan merah — merah berarti ditolak. (v9.3)
+const sibuk = !!(res.data && res.data.sibuk);
+toast(res.message, sibuk ? 'warning' : 'error', sibuk ? 11000 : 6000);
+return;
+}
 AppState.fotoJurnal = null;
 batalkanPaketData();
 // Layar konfirmasinya membaca keadaan ini, dan datanya disegarkan SEBELUM
@@ -1595,7 +1601,10 @@ const res = await panggil('unggahLaporanAkhir', AppState.sessionToken, {
 judul: judul, fileBase64: AppState.fileLaporan.base64,
 namaFile: AppState.fileLaporan.nama, mimeType: AppState.fileLaporan.mime });
 sembunyikanSibuk();
-toast(res.message, res.success ? 'success' : 'error', 6000);
+// Server sibuk: tidak ada baris yang tertulis, dan mencoba lagi memang jalan
+// keluarnya. Kuning, bukan merah — merah berarti ditolak. (v9.4)
+const sibuk = !!(res.data && res.data.sibuk);
+toast(res.message, res.success ? 'success' : sibuk ? 'warning' : 'error', sibuk ? 11000 : 6000);
 if (res.success) {
 AppState.fileLaporan = null;
 $('formLaporan').reset();
