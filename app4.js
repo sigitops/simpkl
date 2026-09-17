@@ -109,7 +109,13 @@ if (c1) {
 const garis = function (label, data, warna) {
 return {
 label: label, data: data || [],
-borderColor: warna, backgroundColor: warna,
+borderColor: warna,
+// Area di bawah garis: gradasi dari warna garisnya sendiri di puncak
+// bidang gambar sampai benar-benar bening di garis nol. Yang diberi
+// kedalaman adalah RUANG di bawah garis, jadi gradasinya mengikuti
+// tinggi bidang — bukan tinggi masing-masing garis.
+backgroundColor: gradasiArea(warna),
+fill: 'origin',
 borderWidth: 2,
 // 'monotone', BUKAN tension biasa. Kurva bezier bawaan Chart.js melampaui
 // nilai simpulnya sendiri: dua hari yang sama-sama 10 Alpha akan digambar

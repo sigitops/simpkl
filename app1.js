@@ -1240,6 +1240,69 @@ grid:    gelap ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.06)',
 teks:    gelap ? '#BFC8CE' : '#3F484D'
 };
 }
+
+// ── GRADASI AREA DI BAWAH GARIS ────────────────────────────────────────────
+//
+// Grafik tren kehadiran memuat ENAM garis di atas satu bidang yang sama. Itu
+// yang menentukan seluruh angka di bawah ini.
+//
+// Pada grafik area satu deret, isian pekat justru bagus: ia memberi bobot pada
+// ruang di bawah garis. Pada enam deret, isian pekat saling menutupi — deret
+// yang digambar belakangan menimbun yang di depannya, dan hari dengan enam
+// status aktif berubah menjadi bercak gelap yang tidak berarti apa-apa. Karena
+// itu puncaknya ditahan di bawah seperempat, dan kakinya benar-benar bening.
+// Penumpukan terburuknya ada di puncak bidang — enam lapis .18 bertumpuk
+// menjadi 1−.82⁶ ≈ .70 — dan itu hanya terjadi bila keenam status sama-sama
+// menyentuh nilai tertinggi pada hari yang sama. Di dekat sumbu nol, tempat
+// garis kisi dan label berada, seluruh lapisan sudah bening.
+//
+// Satu nilai untuk kedua tema, dan itu hasil ukur, bukan asumsi. Dugaan awalnya
+// mode gelap perlu alfa lebih tinggi karena warna beralfa rendah di atas
+// permukaan gelap kehilangan kroma. Empat nilai (.14 .18 .22 .26) digambar
+// berdampingan di atas #171D20, dan yang terjadi justru sebaliknya: pada .22 ke
+// atas garis kisi mendatar hilang tertimbun isian hijau, dan bidangnya berubah
+// keruh. Palet mode gelap memang sengaja dipilih lebih muda daripada padanan
+// terangnya, jadi di atas permukaan gelap ia lebih menonjol, bukan kurang.
+const AREA_ALFA = 0.18;
+
+/** '#1C7293' + alfa → 'rgba(28,114,147,.18)'. Menerima juga rgb()/rgba() apa adanya. */
+function warnaBeralfa(warna, alfa) {
+  const m = /^#([0-9a-f]{6})$/i.exec(String(warna).trim());
+  if (!m) return warna;
+  const n = parseInt(m[1], 16);
+  return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + alfa + ')';
+}
+
+/**
+ * backgroundColor untuk dataset garis: gradasi tegak dari warna garis di puncak
+ * bidang gambar sampai bening di kakinya.
+ *
+ * Dikembalikan sebagai FUNGSI, bukan objek gradien jadi, karena dua alasan yang
+ * sama-sama pernah menjatuhkan versi sebelumnya bila diabaikan:
+ *
+ *  1. Pada bingkai pertama chartArea belum ada — Chart.js baru menghitungnya
+ *     setelah tata letak selesai. createLinearGradient dengan koordinat undefined
+ *     melempar, dan seluruh grafik gagal tergambar. Karena itu ada nilai jatuhan.
+ *  2. Tinggi kanvas berubah saat jendela diubah ukurannya dan saat sidebar
+ *     dilipat. Gradien yang dihitung sekali akan tertinggal pada tinggi lama,
+ *     dan isiannya terpotong di tengah bidang. Sebagai fungsi, ia dihitung ulang
+ *     setiap kali Chart.js menggambar.
+ */
+function gradasiArea(warna) {
+  const puncak = AREA_ALFA;
+  return function (konteks) {
+    const area = konteks.chart && konteks.chart.chartArea;
+    if (!area || !(area.bottom > area.top)) return warnaBeralfa(warna, puncak * 0.5);
+    const g = konteks.chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+    g.addColorStop(0, warnaBeralfa(warna, puncak));
+    // Titik tengah sengaja diberi kurang dari separuh alfa: gradasi linier murni
+    // masih terasa sebagai blok berkabut. Meredup lebih cepat di paruh atas
+    // membuat kakinya benar-benar lenyap, bukan sekadar menipis.
+    g.addColorStop(0.55, warnaBeralfa(warna, puncak * 0.28));
+    g.addColorStop(1, warnaBeralfa(warna, 0));
+    return g;
+  };
+}
 function buatTabel(cfg) {
 const st = AppState.tabel[cfg.id] || {};
 AppState.tabel[cfg.id] = {
