@@ -1017,8 +1017,22 @@ ${d.status === 'Hadir' ? 'check_circle' : d.status === 'Telat' ? 'schedule' : 'l
 [{ label: 'Selesai', kelas: 'btn-primary', aksi: () => { tutupModal(); navigateTo('beranda'); } }]);
 batalkanPaketData();
 ulangiFoto();
-renderRiwayatSingkat();
+// renderRiwayatSingkat() TIDAK dipanggil di sini. muatKonteksPresensi()
+// memanggilnya sendiri di ujungnya, dan sampai v9.8 keduanya berjalan — dua
+// getRiwayatPresensi yang sama persis, berurutan, masing-masing membaca sheet
+// Presensi dua kali di server. Dedup SEDANG_TERBANG tidak menangkapnya karena
+// yang kedua berangkat sesudah yang pertama selesai, bukan bersamaan.
+//
+// Keduanya juga lewat panggil(), yang menyalakan bilah kemajuan global. Jadi
+// sesudah modal "Presensi Tercatat" muncul — barisnya sudah tersimpan, tidak
+// ada lagi yang ditunggu — bilah itu masih berjalan beberapa detik. Itulah
+// "loading terlalu lama" yang dilaporkan siswa.
 muatKonteksPresensi();
+// Surel "Presensi Telat" dikirim di sini, di permintaan yang tidak ditunggu
+// siapa pun, bukan di dalam submitPresensi. Sengaja tanpa await dan tanpa
+// bilah kemajuan: gagal pun tidak ada akibatnya, antreannya akan dibersihkan
+// pembukaan halaman berikutnya.
+try { panggilDiam('flushNotifikasi', [AppState.sessionToken]); } catch (e) {}
 } catch (err) {
 clearInterval(tanda);
 sembunyikanSibuk();

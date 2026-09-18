@@ -11,6 +11,18 @@ renderInsight('insightMonitoring', d.insights);
 renderTabelSiswaRingkas(d.siswa);
 gambarGrafikMonitoring(d);
 perbaruiBadgeMenu(d.kpi);
+// Membersihkan antrean pemberitahuan yang tertunda (v9.9). Surel "Presensi
+// Telat" tidak lagi dikirim di dalam waktu tunggu siswa; ia menunggu di
+// antrean sampai ada permintaan yang tidak ditunggu siapa pun. Dasbor guru
+// adalah jaring pengamannya: penerimanya justru orang ini.
+//
+// DITUNDA, bukan ditembakkan langsung. Ini pekerjaan rumah tangga, dan
+// pekerjaan rumah tangga tidak boleh berebut dengan gambar pertama halaman —
+// uji-boot.js menjaga bahwa dasbor tampil dengan tepat SATU perjalanan server,
+// dan penjaga itu benar.
+setTimeout(function () {
+try { panggilDiam('flushNotifikasi', [AppState.sessionToken]); } catch (e) {}
+}, 5000);
 } catch (err) { toast(err.message, 'error'); }
 }
 function tampilkanKpiTersimpan() {
@@ -191,11 +203,19 @@ const PS_UBIN = [
 { k: 'Belum Presensi', ikon: 'pending',      nada: '',      label: 'Belum Presensi' }
 ];
 function gambarRingkasPresensi(siswa) {
+// Modenya dibaca dari keadaan, BUKAN dari argumen. Fungsi ini dipanggil dari
+// tiga tempat — pemuatan, penyaringan lewat ubin, dan penyaringan lewat panel
+// — dan argumen yang harus diingat di tiga tempat adalah argumen yang cepat
+// atau lambat terlupa di salah satunya.
+const perHari = MON_PERIODE.mode !== 'harian';
 const kotak = $('psRingkas');
 const tgl = $('psTanggal');
 if (tgl) tgl.textContent = tglSingkat(new Date().toISOString().slice(0, 10));
 const chip = $('chipJumlahMon');
-if (chip) chip.textContent = (siswa || []).length + ' siswa aktif';
+// Satuannya ikut berubah, dan itu penting: pada mode rentang satu siswa muncul
+// berkali-kali, jadi "120 siswa aktif" akan berbohong. Yang dihitung di sana
+// memang catatan, bukan orang.
+if (chip) chip.textContent = (siswa || []).length + (perHari ? ' catatan' : ' siswa aktif');
 if (!kotak) return;
 const hitung = {};
 let libur = 0;
@@ -446,26 +466,170 @@ if ($('dsIsi') && AppState.siswaDetail) { muatDetailSiswa(AppState.siswaDetail, 
 muatTabelMonitoring();
 muatAntreanPindah();
 }
+// ── SARINGAN PERIODE PADA TABEL PRESENSI SISWA (v9.9) ──────────────────────
+//
+// Sampai v9.8 halaman ini hanya bisa menjawab "bagaimana hari ini". Untuk
+// melihat riwayat, guru harus membuka Detail Siswa satu per satu — dan itulah
+// yang diminta dihapus.
+//
+// Bentuknya sengaja MENIRU panel saring yang sudah ada di halaman Detail
+// Jurnal: lima pilihan yang sama, blok rentang kustom yang sama, tombol Atur
+// Ulang yang sama, kelas CSS yang sama. Pengguna yang sudah pernah memakai
+// saringan di halaman lain tidak perlu mempelajari apa pun yang baru.
+//
+// Prefiks 'monP' — BUKAN 'mon'. Prefiks 'mon' sudah dipakai mesin saring kolom
+// bawaan tabel (id bernama mon_f_*), dan panelSaringKlien mencetak mon_s_*.
+// Dua namespace di satu prefiks akan saling menimpa saat Atur Ulang ditekan.
+const MON_PERIODE = { mode: 'harian', dari: '', sampai: '', hariIni: '' };
+
+const MON_OPSI_PERIODE = [
+['harian', 'Hari ini'], ['mingguan', '7 hari terakhir'],
+['bulanan', 'Bulan ini'], ['custom', 'Rentang tanggal sendiri']
+];
+
+/** Rentang yang sedang berlaku, atau null bila kustomnya belum lengkap. */
+function rentangPresensi() {
+const m = MON_PERIODE.mode;
+if (m !== 'custom') return { mode: m };
+// Rentang kustom yang belum lengkap TIDAK menyaring apa pun — sama seperti
+// halaman Detail Jurnal. Daftar yang berubah sebelum penggunanya selesai
+// memilih terbaca seperti kerusakan.
+if (!MON_PERIODE.dari || !MON_PERIODE.sampai) return null;
+if (MON_PERIODE.dari > MON_PERIODE.sampai) return null;
+return { mode: 'custom', dari: MON_PERIODE.dari, sampai: MON_PERIODE.sampai };
+}
+
+function kustomHtmlPeriode(pfx, aksi) {
+return `
+<div class="dj-kustom" id="${pfx}Kustom" hidden>
+<div class="filter-field">
+<label class="filter-label" for="${pfx}Dari">Dari Tanggal</label>
+<input class="field-input" type="date" id="${pfx}Dari" onchange="${aksi}">
+</div>
+<div class="filter-field">
+<label class="filter-label" for="${pfx}Sampai">Sampai Tanggal</label>
+<input class="field-input" type="date" id="${pfx}Sampai" onchange="${aksi}">
+</div>
+<p class="dj-kustom-pesan" id="${pfx}KustomPesan" role="status"></p>
+</div>`;
+}
+
+/**
+ * Menyisipkan kendali periode ke kepala kartu — lewat JS, bukan lewat kerangka
+ * halaman di server.
+ *
+ * Kerangka halaman 'monitoring' ada di HALAMAN_SERAGAM: ia disinggah per peran
+ * selama tiga puluh menit dan dipakai bersama seluruh guru. Apa pun yang
+ * ditanam di sana tidak boleh bergantung pada data atau tanggal. Menyisipkannya
+ * dari klien membuat aturan itu mustahil dilanggar, dan tidak menambah satu
+ * baris pun ke kerangka yang sudah disinggah di peramban pengguna lama.
+ */
+function pasangPeriodePresensi() {
+const chip = $('chipJumlahMon');
+if (!chip || $('monPFilterBtn')) return;
+const bungkus = document.createElement('div');
+bungkus.className = 'rw-alat';
+bungkus.innerHTML =
+`<span class="chip chip-neutral" id="monPLabel"><span class="mi">event</span>Hari ini</span>` +
+panelSaringKlien('monP', 'Periode Presensi', [
+  { k: 'periode', label: 'Periode', opsi: MON_OPSI_PERIODE, bawaan: 'harian' }
+], kustomHtmlPeriode('monP', 'ubahRentangPresensi()'), 'resetPeriodePresensi()');
+chip.parentNode.insertBefore(bungkus, chip.nextSibling);
+daftarkanSaring('monP', terapkanPeriodePresensi);
+perbaruiLencanaSaring('monP');
+}
+
+function terapkanPeriodePresensi() {
+MON_PERIODE.mode = nilaiSaring('monP', 'periode') || 'harian';
+const kustom = $('monPKustom');
+const tadinyaTertutup = kustom ? kustom.hidden : true;
+if (kustom) kustom.hidden = (MON_PERIODE.mode !== 'custom');
+// Fokus ke kolom tanggal pertama HANYA saat Kustom baru dipilih — kalau setiap
+// penerapan memindahkan fokus, mengubah apa pun sesudahnya merebut kursor.
+if (MON_PERIODE.mode === 'custom' && tadinyaTertutup && $('monPDari')) {
+try { $('monPDari').focus({ preventScroll: true }); } catch (e) {}
+}
+if (!rentangPresensi()) return;   // kustom belum lengkap: jangan muat apa pun
+muatTabelMonitoring();
+}
+
+function ubahRentangPresensi() {
+MON_PERIODE.dari = $('monPDari') ? $('monPDari').value : '';
+MON_PERIODE.sampai = $('monPSampai') ? $('monPSampai').value : '';
+const pesan = $('monPKustomPesan');
+if (pesan) {
+pesan.textContent = (MON_PERIODE.dari && MON_PERIODE.sampai &&
+  MON_PERIODE.dari > MON_PERIODE.sampai) ? 'Tanggal mulai melewati tanggal akhir.' : '';
+}
+if (!rentangPresensi()) return;
+muatTabelMonitoring();
+}
+
+function resetPeriodePresensi() {
+['monPDari', 'monPSampai'].forEach(function (id) { if ($(id)) $(id).value = ''; });
+if ($('monPKustomPesan')) $('monPKustomPesan').textContent = '';
+MON_PERIODE.dari = ''; MON_PERIODE.sampai = '';
+// resetSaring bawaan hanya mengenal <select>; dua kolom tanggal di atas harus
+// dibersihkan sendiri, kalau tidak Atur Ulang meninggalkan separuh saringan
+// yang tidak terlihat lagi.
+resetSaring('monP');
+}
+
+/** Label periode yang sedang tampil — supaya isi tabel tidak pernah ambigu. */
+function labelPeriodePresensi(d) {
+const el = $('monPLabel');
+if (!el) return;
+const r = (d && d.rentang) || null;
+const nama = { harian: 'Hari ini', mingguan: '7 hari terakhir', bulanan: 'Bulan ini' };
+const teks = (MON_PERIODE.mode === 'custom' && r)
+  ? tglRingkas(r.dari) + ' – ' + tglRingkas(r.sampai)
+  : (nama[MON_PERIODE.mode] || 'Hari ini');
+el.innerHTML = `<span class="mi">event</span>${esc(teks)}`;
+}
+
 async function muatTabelMonitoring() {
 const box = $('tabelMonitoring');
 if (!box) return;
-box.innerHTML = memuatInline('Mengambil data siswa…');
+pasangPeriodePresensi();
+const rentang = rentangPresensi();
+// Rentang kustom yang belum lengkap: jangan memuat apa pun, dan jangan pula
+// mengosongkan tabel yang sedang dibaca.
+if (!rentang) return;
+const perHari = rentang.mode !== 'harian';
+box.innerHTML = memuatInline(perHari ? 'Mengambil riwayat presensi…' : 'Mengambil data siswa…');
 try {
-const res = await panggilCepat('getDaftarPenempatan', AppState.sessionToken);
-if (!res.success) { box.innerHTML = emptyState('block', 'Akses ditolak', res.message); return; }
-AppState.dataTabel = res.data;
-pramuatBukti(res.data);
-gambarRingkasPresensi(res.data);
+// Jalur "Hari ini" tetap memakai getDaftarPenempatan apa adanya — termasuk
+// singgahannya. Tidak ada satu pun perilaku lama yang berubah bagi guru yang
+// hanya ingin melihat hari ini, dan itu yang paling sering terjadi.
+const res = perHari
+  ? await panggil('getPresensiRentang', AppState.sessionToken, rentang)
+  : await panggilCepat('getDaftarPenempatan', AppState.sessionToken);
+if (!res.success) { box.innerHTML = emptyState('block', 'Tidak dapat ditampilkan', res.message); return; }
+const data = perHari ? (res.data.items || []) : res.data;
+AppState.dataTabel = data;
+labelPeriodePresensi(perHari ? res.data : null);
+if (perHari && res.data.terpotong) {
+toast('Hasilnya dipotong pada ' + res.data.batasBaris + ' baris. Persempit rentang ' +
+      'tanggalnya untuk melihat seluruhnya.', 'warning', 9000);
+}
+pramuatBukti(data);
+gambarRingkasPresensi(data);
 buatTabel({
 id: 'monitoring', mount: 'tabelMonitoring', idPrefix: 'mon',
 judulEkspor: 'Presensi Siswa PKL',
 // Kolom aksinya diberi judul: dua ikon berdampingan tanpa judul kolom
 // memaksa pembaca menebak apa yang ada di sana sebelum menyorotnya.
 labelAksi: 'Aksi',
-data: res.data, kunciPilih: 'siswaId', sortAwal: 'nama',
-cariField: ['nama', 'nis', 'kelas', 'tempat', 'guru'],
-kosong: { ikon: 'group_off', judul: 'Belum ada siswa PKL aktif',
-desc: 'Data muncul setelah pendaftaran siswa diterima Pokja PKL.' },
+data: data, kunciPilih: perHari ? '' : 'siswaId', sortAwal: perHari ? 'tanggal' : 'nama',
+// Tanggal ikut dicari: guru yang mengetik "16 Sep" harus menemukan barisnya,
+// sama seperti di halaman lain yang sudah memakai pola ini.
+cariField: perHari ? ['nama', 'nis', 'kelas', 'tempat', 'guru', 'tanggal']
+                   : ['nama', 'nis', 'kelas', 'tempat', 'guru'],
+kosong: perHari
+  ? { ikon: 'event_busy', judul: 'Tidak ada catatan pada rentang ini',
+      desc: 'Coba perlebar rentang tanggalnya, atau periksa hari kerja tempat PKL.' }
+  : { ikon: 'group_off', judul: 'Belum ada siswa PKL aktif',
+      desc: 'Data muncul setelah pendaftaran siswa diterima Pokja PKL.' },
 filterTetap: [{
 k: 'statusPresensi', label: 'Status Presensi',
 opsi: ['Hadir', 'Telat', 'Izin', 'Sakit', 'Alpha', 'Libur', 'Belum Presensi'],
@@ -480,12 +644,17 @@ saatFilter: () => { renderTabel('monitoring'); gambarRingkasPresensi(AppState.da
 // Rekap jurnal punya menunya sendiri; menaruhnya di sini membuat pembaca
 // harus memilah dua urusan berbeda di satu baris yang sama.
 kolom: [
+// Kolom Tanggal hanya muncul saat rentangnya lebih dari sehari. Pada mode
+// "Hari ini" ia tidak menambah apa-apa selain satu kolom yang isinya sama
+// untuk setiap baris.
+].concat(perHari ? [{ k: 'tanggal', label: 'Tanggal', sortable: true,
+render: r => `<div class="td-strong">${esc(tglRingkas(r.tanggal))}</div>` }] : []).concat([
 { k: 'nama', label: 'Nama Siswa', sortable: true,
 render: r => `<div class="td-strong">${esc(r.nama)}</div><div class="td-sub">${esc(r.nis)}</div>` },
 { k: 'kelas', label: 'Kelas', sortable: true },
 { k: 'tempat', label: 'Tempat PKL', sortable: true,
 render: r => `<div>${esc(r.tempat)}</div><div class="td-sub">${esc(r.guru)}</div>` },
-{ k: 'statusPresensi', label: 'Status Hari Ini', sortable: true,
+{ k: 'statusPresensi', label: perHari ? 'Status' : 'Status Hari Ini', sortable: true,
 render: r => chipStatus(r.statusPresensi) +
 (r.shift ? `<div class="td-sub">${esc(r.shift)}</div>` : '') },
 { k: 'waktuPresensi', label: 'Jam Masuk', sortable: true,
@@ -508,7 +677,7 @@ render: r => r.waktuPulang
 render: r => (r.menitPulangCepat > 0)
   ? `<span class="tb-cepat">&minus;${r.menitPulangCepat} mnt</span>`
   : `<span class="tb-kosong">—</span>` }
-],
+]),
 aksi: r => `${tombolBukti(r)}
 <button class="btn-icon" aria-label="Lihat detail ${esc(r.nama)}"
 title="Lihat detail presensi"
@@ -893,19 +1062,117 @@ $$('.tab-inline .tab-btn').forEach(b => b.classList.toggle('active', b === tombo
 $('panelRekapJurnal').hidden = (tab !== 'rekap');
 $('panelAntreanJurnal').hidden = (tab !== 'antrean');
 }
+// ── SARINGAN PERIODE PADA TABEL REKAP JURNAL (v9.9) ────────────────────────
+//
+// Pola dan kelas CSS-nya sama persis dengan panel di halaman Presensi Siswa dan
+// Detail Jurnal — hanya prefiksnya yang berbeda ('rjP', bukan 'rj' yang sudah
+// dipakai mesin saring kolom tabel).
+//
+// Yang disaring adalah JURNALNYA di server, bukan barisnya di klien: baris
+// rekap tidak membawa tanggal per jurnal, hanya agregat. Menyaringnya di klien
+// hanya bisa membuang baris siswa, sementara angka Total/Disetujui/Menunggu di
+// sebelahnya tetap angka seumur hidup — dan angka yang berselisih dengan label
+// periodenya lebih buruk daripada tidak ada saringan sama sekali.
+const RJ_PERIODE = { mode: 'semua', dari: '', sampai: '' };
+
+const RJ_OPSI_PERIODE = [
+['semua', 'Semua periode'], ['harian', 'Hari ini'],
+['mingguan', '7 hari terakhir'], ['bulanan', 'Bulan ini'],
+['custom', 'Rentang tanggal sendiri']
+];
+
+function rentangRekapJurnal() {
+const m = RJ_PERIODE.mode;
+if (m !== 'custom') return { mode: m };
+if (!RJ_PERIODE.dari || !RJ_PERIODE.sampai) return null;
+if (RJ_PERIODE.dari > RJ_PERIODE.sampai) return null;
+return { mode: 'custom', dari: RJ_PERIODE.dari, sampai: RJ_PERIODE.sampai };
+}
+
+function pasangPeriodeJurnal() {
+const kepala = $('rjRingkas');
+if (!kepala || $('rjPFilterBtn')) return;
+const bungkus = document.createElement('div');
+bungkus.className = 'rw-alat rw-alat-periode';
+bungkus.innerHTML =
+`<span class="chip chip-neutral" id="rjPLabel"><span class="mi">event</span>Semua periode</span>` +
+panelSaringKlien('rjP', 'Periode Jurnal', [
+  { k: 'periode', label: 'Periode', opsi: RJ_OPSI_PERIODE, bawaan: 'semua' }
+], kustomHtmlPeriode('rjP', 'ubahRentangRekapJurnal()'), 'resetPeriodeJurnal()');
+// Di atas tabel, bukan di atas ubin KPI: kendali yang mengubah isi tabel harus
+// berdiri sedekat mungkin dengan tabel yang diubahnya.
+const panel = $('panelRekapJurnal');
+if (panel) panel.insertBefore(bungkus, panel.firstChild);
+else kepala.parentNode.insertBefore(bungkus, kepala.nextSibling);
+daftarkanSaring('rjP', terapkanPeriodeJurnal);
+perbaruiLencanaSaring('rjP');
+}
+
+function terapkanPeriodeJurnal() {
+RJ_PERIODE.mode = nilaiSaring('rjP', 'periode') || 'semua';
+const kustom = $('rjPKustom');
+const tadinyaTertutup = kustom ? kustom.hidden : true;
+if (kustom) kustom.hidden = (RJ_PERIODE.mode !== 'custom');
+if (RJ_PERIODE.mode === 'custom' && tadinyaTertutup && $('rjPDari')) {
+try { $('rjPDari').focus({ preventScroll: true }); } catch (e) {}
+}
+if (!rentangRekapJurnal()) return;
+muatRekapJurnal();
+}
+
+function ubahRentangRekapJurnal() {
+RJ_PERIODE.dari = $('rjPDari') ? $('rjPDari').value : '';
+RJ_PERIODE.sampai = $('rjPSampai') ? $('rjPSampai').value : '';
+const pesan = $('rjPKustomPesan');
+if (pesan) {
+pesan.textContent = (RJ_PERIODE.dari && RJ_PERIODE.sampai &&
+  RJ_PERIODE.dari > RJ_PERIODE.sampai) ? 'Tanggal mulai melewati tanggal akhir.' : '';
+}
+if (!rentangRekapJurnal()) return;
+muatRekapJurnal();
+}
+
+function resetPeriodeJurnal() {
+['rjPDari', 'rjPSampai'].forEach(function (id) { if ($(id)) $(id).value = ''; });
+if ($('rjPKustomPesan')) $('rjPKustomPesan').textContent = '';
+RJ_PERIODE.dari = ''; RJ_PERIODE.sampai = '';
+resetSaring('rjP');
+}
+
+function labelPeriodeJurnal(d) {
+const el = $('rjPLabel');
+if (!el) return;
+const r = (d && d.rentang) || null;
+const nama = { semua: 'Semua periode', harian: 'Hari ini',
+               mingguan: '7 hari terakhir', bulanan: 'Bulan ini' };
+const teks = (RJ_PERIODE.mode === 'custom' && r)
+  ? tglRingkas(r.dari) + ' – ' + tglRingkas(r.sampai)
+  : (nama[RJ_PERIODE.mode] || 'Semua periode');
+el.innerHTML = `<span class="mi">event</span>${esc(teks)}`;
+}
+
 async function muatRekapJurnal() {
+pasangPeriodeJurnal();
+const rentang = rentangRekapJurnal();
+if (!rentang) return;   // rentang kustom belum lengkap
 try {
-const res = await panggilCepat('getRekapJurnal', AppState.sessionToken);
+// "Semua periode" tetap memakai singgahan — itu pemuatan pertama halaman ini,
+// dan ia harus tetap secepat sebelumnya. Rentang lain selalu segar.
+const res = rentang.mode === 'semua'
+  ? await panggilCepat('getRekapJurnal', AppState.sessionToken)
+  : await panggil('getRekapJurnal', AppState.sessionToken, rentang);
 if (!res.success) {
 $('tabelRekapJurnal').innerHTML = emptyState('block', 'Akses ditolak', res.message);
 return;
 }
 const r = res.data.ringkas;
+labelPeriodeJurnal(res.data);
 $('rjRingkas').innerHTML = [
 { ikon: 'group', kelas: '', nilai: r.totalSiswa, label: 'Siswa PKL' },
 { ikon: 'menu_book', kelas: 'ok', nilai: r.totalJurnal, label: 'Total Jurnal' },
 { ikon: 'hourglass_top', kelas: 'warn', nilai: r.totalMenunggu, label: 'Menunggu Review' },
-{ ikon: 'person_off', kelas: 'danger', nilai: r.belumPernahIsi, label: 'Belum Pernah Isi' }
+{ ikon: 'person_off', kelas: 'danger', nilai: r.belumPernahIsi,
+  label: RJ_PERIODE.mode === 'semua' ? 'Belum Pernah Isi' : 'Nihil di Periode Ini' }
 ].map(c => `<div class="kpi-card">
 <div class="kpi-icon ${c.kelas}"><span class="mi">${c.ikon}</span></div>
 <div><div class="kpi-val">${c.nilai}</div><div class="kpi-lbl">${c.label}</div></div>
@@ -917,6 +1184,9 @@ labelAksi: 'Aksi',
 data: res.data.items, kunciPilih: 'siswaId', sortAwal: 'Nama',
 cariField: ['Nama', 'NIS', 'Kelas', 'Tempat', 'Guru'],
 kosong: { ikon: 'menu_book', judul: 'Belum ada data', desc: 'Belum ada siswa dengan penempatan aktif.' },
+// Ubin "Terakhir Isi" tetap tanggal jurnal terakhir DI DALAM rentang; di luar
+// rentang ia memang tidak ada, dan menampilkan tanggal di luar periode yang
+// dipilih akan membuat kolomnya berselisih dengan label di atasnya.
 kolom: [
 { k: 'Nama', label: 'Siswa', sortable: true,
 render: r => `<div class="td-strong">${esc(r.Nama)}</div><div class="td-sub">${esc(r.NIS)} · ${esc(r.Kelas)}</div>` },
