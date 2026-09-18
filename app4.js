@@ -466,20 +466,25 @@ if ($('dsIsi') && AppState.siswaDetail) { muatDetailSiswa(AppState.siswaDetail, 
 muatTabelMonitoring();
 muatAntreanPindah();
 }
-// ── SARINGAN PERIODE PADA TABEL PRESENSI SISWA (v9.9) ──────────────────────
+// ── KENDALI PERIODE PADA TABEL PRESENSI SISWA (v10.1) ──────────────
 //
 // Sampai v9.8 halaman ini hanya bisa menjawab "bagaimana hari ini". Untuk
-// melihat riwayat, guru harus membuka Detail Siswa satu per satu — dan itulah
-// yang diminta dihapus.
+// melihat riwayat, guru harus membuka Detail Siswa satu per satu.
 //
-// Bentuknya sengaja MENIRU panel saring yang sudah ada di halaman Detail
-// Jurnal: lima pilihan yang sama, blok rentang kustom yang sama, tombol Atur
-// Ulang yang sama, kelas CSS yang sama. Pengguna yang sudah pernah memakai
-// saringan di halaman lain tidak perlu mempelajari apa pun yang baru.
+// v9.9 memasangnya sebagai tombol Filter + panel dropdown. Bentuk itu DIBUANG:
+// bilah alat tabel sudah punya tombol bernama "Filter" sendiri (saringan kolom),
+// jadi di layar berdiri dua tombol dengan nama yang sama persis dan arti yang
+// berbeda — dan periode, yang hampir selalu diubah, tersembunyi di balik satu
+// ketukan tambahan.
 //
-// Prefiks 'monP' — BUKAN 'mon'. Prefiks 'mon' sudah dipakai mesin saring kolom
-// bawaan tabel (id bernama mon_f_*), dan panelSaringKlien mencetak mon_s_*.
-// Dua namespace di satu prefiks akan saling menimpa saat Atur Ulang ditekan.
+// Sekarang ia berupa dropdown polos yang langsung terlihat, DI DALAM bilah alat
+// tabel, tepat mengikuti pola yang sudah ada di sebelahnya: "Tampilkan [10 ▾]"
+// yang memunculkan kotak isian saat "Kustom…" dipilih. Di sini "Rentang tanggal
+// sendiri" memunculkan sepasang date picker. Kelas CSS-nya pun sama
+// (entri-wrap, entri-label, entri-kustom, field-input select-sm).
+//
+// Id-nya berawalan '<pfx>Periode' sehingga tidak bertabrakan dengan mesin saring
+// kolom bawaan tabel (mon_f_*) maupun dengan kendali jumlah baris (monPerHal*).
 const MON_PERIODE = { mode: 'harian', dari: '', sampai: '', hariIni: '' };
 
 const MON_OPSI_PERIODE = [
@@ -499,92 +504,132 @@ if (MON_PERIODE.dari > MON_PERIODE.sampai) return null;
 return { mode: 'custom', dari: MON_PERIODE.dari, sampai: MON_PERIODE.sampai };
 }
 
-function kustomHtmlPeriode(pfx, aksi) {
+// ── Kendali periode yang dipakai bersama kedua halaman ─────────────────
+//
+// Presensi Siswa dan Rekap Jurnal memakai markah yang SAMA PERSIS; hanya daftar
+// pilihan dan nama fungsi penanganannya yang berbeda. Dirakit satu tempat supaya
+// keduanya tidak bisa menyimpang diam-diam.
+
+/**
+ * Markah kendali periode: satu <select> + sepasang date picker yang tersembunyi
+ * sampai "Rentang tanggal sendiri" dipilih, ditutup satu baris keterangan.
+ */
+function kendaliPeriodeHtml(pfx, opsi, bawaan, aksiPeriode, aksiRentang) {
+const pilihan = opsi.map(function (o) {
+  return `<option value="${esc(o[0])}"${o[0] === bawaan ? ' selected' : ''}>${esc(o[1])}</option>`;
+}).join('');
 return `
-<div class="dj-kustom" id="${pfx}Kustom" hidden>
-<div class="filter-field">
-<label class="filter-label" for="${pfx}Dari">Dari Tanggal</label>
-<input class="field-input" type="date" id="${pfx}Dari" onchange="${aksi}">
-</div>
-<div class="filter-field">
-<label class="filter-label" for="${pfx}Sampai">Sampai Tanggal</label>
-<input class="field-input" type="date" id="${pfx}Sampai" onchange="${aksi}">
-</div>
-<p class="dj-kustom-pesan" id="${pfx}KustomPesan" role="status"></p>
-</div>`;
+<label class="entri-wrap">
+  <span class="entri-label">Periode</span>
+  <select class="field-input select-sm" id="${pfx}Periode"
+          aria-label="Periode data yang ditampilkan" onchange="${aksiPeriode}">${pilihan}</select>
+</label>
+<span class="entri-wrap entri-kustom periode-rentang" id="${pfx}PeriodeKustom" hidden>
+  <input class="field-input select-sm periode-input" type="date" id="${pfx}PeriodeDari"
+         aria-label="Dari tanggal" title="Dari tanggal" onchange="${aksiRentang}">
+  <span class="periode-pisah" aria-hidden="true">–</span>
+  <input class="field-input select-sm periode-input" type="date" id="${pfx}PeriodeSampai"
+         aria-label="Sampai tanggal" title="Sampai tanggal" onchange="${aksiRentang}">
+</span>
+<span class="periode-info" id="${pfx}PeriodeInfo" role="status"></span>`;
 }
 
 /**
- * Menyisipkan kendali periode ke kepala kartu — lewat JS, bukan lewat kerangka
- * halaman di server.
+ * Menyisipkan kendali periode ke dalam bilah alat tabel — lewat JS, bukan lewat
+ * kerangka halaman di server.
  *
- * Kerangka halaman 'monitoring' ada di HALAMAN_SERAGAM: ia disinggah per peran
- * selama tiga puluh menit dan dipakai bersama seluruh guru. Apa pun yang
- * ditanam di sana tidak boleh bergantung pada data atau tanggal. Menyisipkannya
- * dari klien membuat aturan itu mustahil dilanggar, dan tidak menambah satu
- * baris pun ke kerangka yang sudah disinggah di peramban pengguna lama.
+ * Kerangka halaman 'monitoring' dan 'rekap-jurnal' ada di HALAMAN_SERAGAM: ia
+ * disinggah per peran selama tiga puluh menit dan dipakai bersama seluruh guru.
+ * Apa pun yang ditanam di sana tidak boleh bergantung pada data atau tanggal.
+ * Menyisipkannya dari klien membuat aturan itu mustahil dilanggar, dan tidak
+ * menambah satu baris pun ke kerangka yang sudah disinggah di peramban pengguna
+ * lama. toolbarTabel() juga dipakai belasan tabel lain yang tidak butuh periode.
+ *
+ * Titik sisipnya TEPAT SEBELUM tombol Filter kolom, sehingga urutan bacanya
+ * Tampilkan → Periode → Filter → Cari.
  */
-function pasangPeriodePresensi() {
-const chip = $('chipJumlahMon');
-if (!chip || $('monPFilterBtn')) return;
-const bungkus = document.createElement('div');
-bungkus.className = 'rw-alat';
-bungkus.innerHTML =
-`<span class="chip chip-neutral" id="monPLabel"><span class="mi">event</span>Hari ini</span>` +
-panelSaringKlien('monP', 'Periode Presensi', [
-  { k: 'periode', label: 'Periode', opsi: MON_OPSI_PERIODE, bawaan: 'harian' }
-], kustomHtmlPeriode('monP', 'ubahRentangPresensi()'), 'resetPeriodePresensi()');
-chip.parentNode.insertBefore(bungkus, chip.nextSibling);
-daftarkanSaring('monP', terapkanPeriodePresensi);
-perbaruiLencanaSaring('monP');
+function pasangKendaliPeriode(pfx, opsi, bawaan, aksiPeriode, aksiRentang) {
+const jangkar = $(pfx + 'FilterWrap');
+if (!jangkar || $(pfx + 'Periode')) return;
+const wadah = document.createElement('div');
+wadah.innerHTML = kendaliPeriodeHtml(pfx, opsi, bawaan, aksiPeriode, aksiRentang);
+while (wadah.firstElementChild) {
+  jangkar.parentNode.insertBefore(wadah.firstElementChild, jangkar);
+}
 }
 
-function terapkanPeriodePresensi() {
-MON_PERIODE.mode = nilaiSaring('monP', 'periode') || 'harian';
-const kustom = $('monPKustom');
-const tadinyaTertutup = kustom ? kustom.hidden : true;
-if (kustom) kustom.hidden = (MON_PERIODE.mode !== 'custom');
-// Fokus ke kolom tanggal pertama HANYA saat Kustom baru dipilih — kalau setiap
-// penerapan memindahkan fokus, mengubah apa pun sesudahnya merebut kursor.
-if (MON_PERIODE.mode === 'custom' && tadinyaTertutup && $('monPDari')) {
-try { $('monPDari').focus({ preventScroll: true }); } catch (e) {}
+/**
+ * Satu baris keterangan di samping kendali, dengan urutan kepentingan:
+ * galat rentang terbalik → rentang sungguhan yang dipakai server → kosong.
+ *
+ * Rentangnya diambil dari JAWABAN SERVER, bukan dihitung ulang di klien: "7 hari
+ * terakhir" menurut jam peramban dan menurut jam server bisa berbeda satu hari,
+ * dan keterangan yang tidak cocok dengan isi tabel lebih buruk daripada tidak
+ * ada keterangan sama sekali.
+ */
+function perbaruiInfoPeriode(pfx, st, rentangServer) {
+const el = $(pfx + 'PeriodeInfo');
+if (!el) return;
+const terbalik = st.mode === 'custom' && st.dari && st.sampai && st.dari > st.sampai;
+el.classList.toggle('periode-galat', terbalik);
+if (terbalik) { el.textContent = 'Tanggal mulai melewati tanggal akhir.'; return; }
+// Hanya untuk periode yang tanggalnya TIDAK kelihatan sendiri. "Hari ini" dan
+// "Semua periode" tidak punya rentang yang perlu dijelaskan, dan pada rentang
+// sendiri kedua date picker sudah menyatakan tanggalnya — mengulanginya di
+// sebelahnya hanya menambah satu hal untuk dibaca, dan pada layar 1280px
+// mendorong kotak Cari turun ke baris kedua.
+const r = rentangServer || null;
+el.textContent = (r && r.dari && r.sampai && (st.mode === 'mingguan' || st.mode === 'bulanan'))
+  ? tglRingkas(r.dari) + ' – ' + tglRingkas(r.sampai)
+  : '';
 }
+
+/**
+ * Membaca kedua date picker ke dalam state.
+ *
+ * Dikembalikan true bila rentangnya sudah layak dipakai memuat data.
+ */
+function bacaRentangPeriode(pfx, st) {
+st.dari = $(pfx + 'PeriodeDari') ? $(pfx + 'PeriodeDari').value : '';
+st.sampai = $(pfx + 'PeriodeSampai') ? $(pfx + 'PeriodeSampai').value : '';
+perbaruiInfoPeriode(pfx, st, null);
+return !!(st.dari && st.sampai && st.dari <= st.sampai);
+}
+
+/**
+ * Menampilkan/menyembunyikan sepasang date picker mengikuti pilihan dropdown.
+ *
+ * Fokus dipindahkan ke kolom tanggal pertama HANYA saat "Rentang tanggal
+ * sendiri" baru dipilih — kalau setiap perubahan memindahkan fokus, mengubah
+ * apa pun sesudahnya merebut kursor dari pengguna.
+ */
+function tampilkanRentangPeriode(pfx, st) {
+const kustom = $(pfx + 'PeriodeKustom');
+const tadinyaTertutup = kustom ? kustom.hidden : true;
+if (kustom) kustom.hidden = (st.mode !== 'custom');
+if (st.mode === 'custom' && tadinyaTertutup && $(pfx + 'PeriodeDari')) {
+  try { $(pfx + 'PeriodeDari').focus({ preventScroll: true }); } catch (e) {}
+}
+}
+
+// ── Penanganan khusus halaman Presensi Siswa ──────────────────────
+
+function pasangPeriodePresensi() {
+pasangKendaliPeriode('mon', MON_OPSI_PERIODE, 'harian',
+  'ubahPeriodePresensi()', 'ubahRentangPresensi()');
+}
+
+function ubahPeriodePresensi() {
+MON_PERIODE.mode = $('monPeriode') ? $('monPeriode').value : 'harian';
+tampilkanRentangPeriode('mon', MON_PERIODE);
+perbaruiInfoPeriode('mon', MON_PERIODE, null);
 if (!rentangPresensi()) return;   // kustom belum lengkap: jangan muat apa pun
 muatTabelMonitoring();
 }
 
 function ubahRentangPresensi() {
-MON_PERIODE.dari = $('monPDari') ? $('monPDari').value : '';
-MON_PERIODE.sampai = $('monPSampai') ? $('monPSampai').value : '';
-const pesan = $('monPKustomPesan');
-if (pesan) {
-pesan.textContent = (MON_PERIODE.dari && MON_PERIODE.sampai &&
-  MON_PERIODE.dari > MON_PERIODE.sampai) ? 'Tanggal mulai melewati tanggal akhir.' : '';
-}
-if (!rentangPresensi()) return;
+if (!bacaRentangPeriode('mon', MON_PERIODE)) return;
 muatTabelMonitoring();
-}
-
-function resetPeriodePresensi() {
-['monPDari', 'monPSampai'].forEach(function (id) { if ($(id)) $(id).value = ''; });
-if ($('monPKustomPesan')) $('monPKustomPesan').textContent = '';
-MON_PERIODE.dari = ''; MON_PERIODE.sampai = '';
-// resetSaring bawaan hanya mengenal <select>; dua kolom tanggal di atas harus
-// dibersihkan sendiri, kalau tidak Atur Ulang meninggalkan separuh saringan
-// yang tidak terlihat lagi.
-resetSaring('monP');
-}
-
-/** Label periode yang sedang tampil — supaya isi tabel tidak pernah ambigu. */
-function labelPeriodePresensi(d) {
-const el = $('monPLabel');
-if (!el) return;
-const r = (d && d.rentang) || null;
-const nama = { harian: 'Hari ini', mingguan: '7 hari terakhir', bulanan: 'Bulan ini' };
-const teks = (MON_PERIODE.mode === 'custom' && r)
-  ? tglRingkas(r.dari) + ' – ' + tglRingkas(r.sampai)
-  : (nama[MON_PERIODE.mode] || 'Hari ini');
-el.innerHTML = `<span class="mi">event</span>${esc(teks)}`;
 }
 
 async function muatTabelMonitoring() {
@@ -607,7 +652,7 @@ const res = perHari
 if (!res.success) { box.innerHTML = emptyState('block', 'Tidak dapat ditampilkan', res.message); return; }
 const data = perHari ? (res.data.items || []) : res.data;
 AppState.dataTabel = data;
-labelPeriodePresensi(perHari ? res.data : null);
+perbaruiInfoPeriode('mon', MON_PERIODE, perHari ? res.data.rentang : null);
 if (perHari && res.data.terpotong) {
 toast('Hasilnya dipotong pada ' + res.data.batasBaris + ' baris. Persempit rentang ' +
       'tanggalnya untuk melihat seluruhnya.', 'warning', 9000);
@@ -1062,11 +1107,10 @@ $$('.tab-inline .tab-btn').forEach(b => b.classList.toggle('active', b === tombo
 $('panelRekapJurnal').hidden = (tab !== 'rekap');
 $('panelAntreanJurnal').hidden = (tab !== 'antrean');
 }
-// ── SARINGAN PERIODE PADA TABEL REKAP JURNAL (v9.9) ────────────────────────
+// ── KENDALI PERIODE PADA TABEL REKAP JURNAL (v10.1) ────────────────────────
 //
-// Pola dan kelas CSS-nya sama persis dengan panel di halaman Presensi Siswa dan
-// Detail Jurnal — hanya prefiksnya yang berbeda ('rjP', bukan 'rj' yang sudah
-// dipakai mesin saring kolom tabel).
+// Dropdown yang sama persis dengan halaman Presensi Siswa, berdiri di dalam
+// bilah alat tabel di antara "Tampilkan" dan tombol Filter kolom.
 //
 // Yang disaring adalah JURNALNYA di server, bukan barisnya di klien: baris
 // rekap tidak membawa tanggal per jurnal, hanya agregat. Menyaringnya di klien
@@ -1089,66 +1133,25 @@ if (RJ_PERIODE.dari > RJ_PERIODE.sampai) return null;
 return { mode: 'custom', dari: RJ_PERIODE.dari, sampai: RJ_PERIODE.sampai };
 }
 
+// Bentuk dan kelas CSS-nya identik dengan halaman Presensi Siswa — dirakit oleh
+// fungsi yang sama persis. Yang berbeda hanya satu pilihan tambahan di paling
+// atas, "Semua periode", yang menjadi bawaan halaman ini.
 function pasangPeriodeJurnal() {
-const kepala = $('rjRingkas');
-if (!kepala || $('rjPFilterBtn')) return;
-const bungkus = document.createElement('div');
-bungkus.className = 'rw-alat rw-alat-periode';
-bungkus.innerHTML =
-`<span class="chip chip-neutral" id="rjPLabel"><span class="mi">event</span>Semua periode</span>` +
-panelSaringKlien('rjP', 'Periode Jurnal', [
-  { k: 'periode', label: 'Periode', opsi: RJ_OPSI_PERIODE, bawaan: 'semua' }
-], kustomHtmlPeriode('rjP', 'ubahRentangRekapJurnal()'), 'resetPeriodeJurnal()');
-// Di atas tabel, bukan di atas ubin KPI: kendali yang mengubah isi tabel harus
-// berdiri sedekat mungkin dengan tabel yang diubahnya.
-const panel = $('panelRekapJurnal');
-if (panel) panel.insertBefore(bungkus, panel.firstChild);
-else kepala.parentNode.insertBefore(bungkus, kepala.nextSibling);
-daftarkanSaring('rjP', terapkanPeriodeJurnal);
-perbaruiLencanaSaring('rjP');
+pasangKendaliPeriode('rj', RJ_OPSI_PERIODE, 'semua',
+  'ubahPeriodeJurnal()', 'ubahRentangRekapJurnal()');
 }
 
-function terapkanPeriodeJurnal() {
-RJ_PERIODE.mode = nilaiSaring('rjP', 'periode') || 'semua';
-const kustom = $('rjPKustom');
-const tadinyaTertutup = kustom ? kustom.hidden : true;
-if (kustom) kustom.hidden = (RJ_PERIODE.mode !== 'custom');
-if (RJ_PERIODE.mode === 'custom' && tadinyaTertutup && $('rjPDari')) {
-try { $('rjPDari').focus({ preventScroll: true }); } catch (e) {}
-}
+function ubahPeriodeJurnal() {
+RJ_PERIODE.mode = $('rjPeriode') ? $('rjPeriode').value : 'semua';
+tampilkanRentangPeriode('rj', RJ_PERIODE);
+perbaruiInfoPeriode('rj', RJ_PERIODE, null);
 if (!rentangRekapJurnal()) return;
 muatRekapJurnal();
 }
 
 function ubahRentangRekapJurnal() {
-RJ_PERIODE.dari = $('rjPDari') ? $('rjPDari').value : '';
-RJ_PERIODE.sampai = $('rjPSampai') ? $('rjPSampai').value : '';
-const pesan = $('rjPKustomPesan');
-if (pesan) {
-pesan.textContent = (RJ_PERIODE.dari && RJ_PERIODE.sampai &&
-  RJ_PERIODE.dari > RJ_PERIODE.sampai) ? 'Tanggal mulai melewati tanggal akhir.' : '';
-}
-if (!rentangRekapJurnal()) return;
+if (!bacaRentangPeriode('rj', RJ_PERIODE)) return;
 muatRekapJurnal();
-}
-
-function resetPeriodeJurnal() {
-['rjPDari', 'rjPSampai'].forEach(function (id) { if ($(id)) $(id).value = ''; });
-if ($('rjPKustomPesan')) $('rjPKustomPesan').textContent = '';
-RJ_PERIODE.dari = ''; RJ_PERIODE.sampai = '';
-resetSaring('rjP');
-}
-
-function labelPeriodeJurnal(d) {
-const el = $('rjPLabel');
-if (!el) return;
-const r = (d && d.rentang) || null;
-const nama = { semua: 'Semua periode', harian: 'Hari ini',
-               mingguan: '7 hari terakhir', bulanan: 'Bulan ini' };
-const teks = (RJ_PERIODE.mode === 'custom' && r)
-  ? tglRingkas(r.dari) + ' – ' + tglRingkas(r.sampai)
-  : (nama[RJ_PERIODE.mode] || 'Semua periode');
-el.innerHTML = `<span class="mi">event</span>${esc(teks)}`;
 }
 
 async function muatRekapJurnal() {
@@ -1166,7 +1169,7 @@ $('tabelRekapJurnal').innerHTML = emptyState('block', 'Akses ditolak', res.messa
 return;
 }
 const r = res.data.ringkas;
-labelPeriodeJurnal(res.data);
+perbaruiInfoPeriode('rj', RJ_PERIODE, res.data.rentang);
 $('rjRingkas').innerHTML = [
 { ikon: 'group', kelas: '', nilai: r.totalSiswa, label: 'Siswa PKL' },
 { ikon: 'menu_book', kelas: 'ok', nilai: r.totalJurnal, label: 'Total Jurnal' },
